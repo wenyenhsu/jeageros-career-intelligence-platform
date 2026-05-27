@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Jobs</h1>
+<a href="{% url 'job-create' %}">Create</a>
+<ul>
+  {% for job in jobs %}
+    <li><a href="{% url 'job-detail' job.pk %}">{{ job }}</a></li>
+  {% empty %}
+    <li>No jobs yet.</li>
+  {% endfor %}
+</ul>
+{% endblock %}

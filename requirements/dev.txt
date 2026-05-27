@@ -1,7 +1,8 @@
-pytest
-pytest-django
-factory-boy
-coverage
-black
-flake8
-isort
+-r base.txt
+pytest>=8.0
+pytest-django>=4.8
+factory-boy>=3.3
+coverage>=7.6
+black>=24.0
+flake8>=7.0
+isort>=5.13

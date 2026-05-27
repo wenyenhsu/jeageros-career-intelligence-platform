@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>JaegerOS</title>
+</head>
+<body>
+  <nav>
+    <a href="/">Dashboard</a> |
+    <a href="/jobs/">Jobs</a> |
+    <a href="/applications/">Applications</a> |
+    <a href="/companies/">Companies</a> |
+    <a href="/admin/">Admin</a>
+  </nav>
+  <hr>
+  {% if messages %}
+    {% for message in messages %}<div>{{ message }}</div>{% endfor %}
+  {% endif %}
+  {% block content %}{% endblock %}
+</body>
+</html>

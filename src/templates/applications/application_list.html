@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Applications</h1>
+<a href="{% url 'application-create' %}">Create</a>
+<ul>
+  {% for application in applications %}
+    <li><a href="{% url 'application-detail' application.pk %}">{{ application }}</a></li>
+  {% empty %}
+    <li>No applications yet.</li>
+  {% endfor %}
+</ul>
+{% endblock %}

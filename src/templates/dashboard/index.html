@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Dashboard</h1>
+<p>Total applications: {{ total_applications }}</p>
+<ul>
+  {% for row in status_counts %}
+    <li>{{ row.status }}: {{ row.total }}</li>
+  {% empty %}
+    <li>No data yet.</li>
+  {% endfor %}
+</ul>
+{% endblock %}
