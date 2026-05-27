@@ -1,0 +1,7 @@
+pytest
+pytest-django
+factory-boy
+coverage
+black
+flake8
+isort

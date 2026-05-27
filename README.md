@@ -1,2 +1,1 @@
-# Job_hunter
-Job_hunter
+# JaegerOS Django Job Tracker
