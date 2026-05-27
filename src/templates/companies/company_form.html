@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block title %}Company Form · JaegerOS{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-xl-8">
+    <div class="card shadow-sm">
+      <div class="card-body p-4 p-lg-5">
+        <h1 class="h3 fw-bold mb-1">Company form</h1>
+        <p class="text-muted mb-4">Create or update a company profile.</p>
+        <form method="post" novalidate>
+          {% include 'shared/bootstrap_form.html' with form=form submit_label='Save company' cancel_url='/companies/' %}
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

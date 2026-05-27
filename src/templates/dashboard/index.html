@@ -1,12 +1,30 @@
 {% extends 'base.html' %}
 {% block content %}
-<h1>Dashboard</h1>
-<p>Total applications: {{ total_applications }}</p>
-<ul>
-  {% for row in status_counts %}
-    <li>{{ row.status }}: {{ row.total }}</li>
-  {% empty %}
-    <li>No data yet.</li>
-  {% endfor %}
-</ul>
+<div class="row g-4">
+  <div class="col-12 col-lg-4">
+    <div class="card stat-card p-4 h-100">
+      <div class="stat-label">Total applications</div>
+      <div class="stat-value">{{ total_applications }}</div>
+      <div class="mt-2 opacity-75">Track all your job applications in one place.</div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-8">
+    <div class="card p-4 h-100">
+      <h2 class="h4 mb-3">Application status</h2>
+      {% if status_counts %}
+        <div class="list-group list-group-flush">
+          {% for row in status_counts %}
+            <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+              <span>{{ row.status|default:"Unknown" }}</span>
+              <span class="badge text-bg-primary rounded-pill">{{ row.total }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">No data yet.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
 {% endblock %}

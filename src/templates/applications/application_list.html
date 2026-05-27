@@ -1,12 +1,51 @@
 {% extends 'base.html' %}
 {% block content %}
-<h1>Applications</h1>
-<a href="{% url 'application-create' %}">Create</a>
-<ul>
-  {% for application in applications %}
-    <li><a href="{% url 'application-detail' application.pk %}">{{ application }}</a></li>
-  {% empty %}
-    <li>No applications yet.</li>
-  {% endfor %}
-</ul>
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h1 class="h2 mb-1">Applications</h1>
+    <p class="text-muted mb-0">Track every application in one place.</p>
+  </div>
+  <a href="{% url 'application-create' %}" class="btn btn-primary">Create Application</a>
+</div>
+
+<div class="card shadow-sm border-0">
+  <div class="card-body">
+    {% if applications %}
+      <div class="table-responsive">
+        <table class="table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Company</th>
+              <th>Job</th>
+              <th>Status</th>
+              <th>Applied At</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for app in applications %}
+              <tr>
+                <td class="fw-semibold">{{ app.company }}</td>
+                <td>{{ app.job }}</td>
+                <td>
+                  <span class="badge text-bg-primary">{{ app.status }}</span>
+                </td>
+                <td>{{ app.applied_at|date:"Y-m-d" }}</td>
+                <td class="text-end">
+                  <a href="{% url 'application-detail' app.id %}" class="btn btn-sm btn-outline-secondary">View</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="text-center py-5">
+        <h3 class="h5 mb-2">No applications yet</h3>
+        <p class="text-muted mb-4">Add your first application to get started.</p>
+        <a href="{% url 'application-create' %}" class="btn btn-primary">Create Application</a>
+      </div>
+    {% endif %}
+  </div>
+</div>
 {% endblock %}
