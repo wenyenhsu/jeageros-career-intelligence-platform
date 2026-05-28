@@ -33,14 +33,20 @@ class UserRoleMixin:
 
 
 class AdminUserCreateForm(UserRoleMixin, UserCreationForm):
+    role = forms.ChoiceField(
+        choices=(
+            ('admin', 'Admin'),
+            ('guest', 'Guest'),
+        ),
+        required=True,
+    )
+
     class Meta(UserCreationForm.Meta):
         model = User
         fields = ('username', 'email', 'first_name', 'last_name')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for name in ('email', 'first_name', 'last_name'):
-            self.fields[name].required = False
         self.fields['role'].widget.attrs['class'] = 'form-select'
 
     def save(self, commit=True):
@@ -55,6 +61,14 @@ class AdminUserCreateForm(UserRoleMixin, UserCreationForm):
 
 
 class AdminUserUpdateForm(UserRoleMixin, StyledModelForm):
+    role = forms.ChoiceField(
+        choices=(
+            ('admin', 'Admin'),
+            ('guest', 'Guest'),
+        ),
+        required=True,
+    )
+
     class Meta:
         model = User
         fields = ('username', 'email', 'first_name', 'last_name', 'is_active')
