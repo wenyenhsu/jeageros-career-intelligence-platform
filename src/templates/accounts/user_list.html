@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex flex-wrap gap-3 justify-content-between align-items-end mb-4">
+  <div>
+    <h1 class="h3 mb-1">User management</h1>
+    <p class="text-secondary mb-0">Create, edit, and remove admin or guest accounts.</p>
+  </div>
+  <a class="btn btn-primary" href="{% url 'user-create' %}"><i class="bi bi-plus-circle me-1"></i>New user</a>
+</div>
+
+<div class="card shadow-sm border-0">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Username</th>
+          <th>Email</th>
+          <th>Name</th>
+          <th>Role</th>
+          <th>Status</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in users %}
+        <tr>
+          <td class="fw-semibold">{{ user.username }}</td>
+          <td>{{ user.email|default:'-' }}</td>
+          <td>{{ user.get_full_name|default:'-' }}</td>
+          <td>
+            {% if user.is_staff %}
+              <span class="badge text-bg-dark">Admin</span>
+            {% else %}
+              <span class="badge text-bg-secondary">Guest</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if user.is_active %}
+              <span class="badge text-bg-success">Active</span>
+            {% else %}
+              <span class="badge text-bg-danger">Disabled</span>
+            {% endif %}
+          </td>
+          <td class="text-end text-nowrap">
+            <a class="btn btn-sm btn-outline-primary" href="{% url 'user-update' user.pk %}">Edit</a>
+            {% if request.user.pk != user.pk %}
+              <a class="btn btn-sm btn-outline-danger" href="{% url 'user-delete' user.pk %}">Delete</a>
+            {% else %}
+              <span class="text-secondary small ms-2">Current user</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="6" class="text-center text-secondary py-5">No users yet.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

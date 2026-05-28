@@ -1,12 +1,12 @@
 {% extends 'base.html' %}
 {% block content %}
 <div class="row justify-content-center">
-  <div class="col-12 col-md-8 col-lg-5">
+  <div class="col-12 col-lg-8 col-xl-7">
     <div class="card shadow-sm border-0">
       <div class="card-body p-4 p-lg-5">
-        <h1 class="h3 mb-3">Login</h1>
+        <h1 class="h3 mb-3">{% if view.object %}Edit user{% else %}New user{% endif %}</h1>
         <form method="post">
-          {% include 'shared/bootstrap_form.html' with submit_label='Login' cancel_url=None %}
+          {% include 'shared/bootstrap_form.html' with submit_label='Save' cancel_url='/accounts/users/' %}
         </form>
       </div>
     </div>
