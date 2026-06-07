@@ -6,3 +6,4 @@ coverage>=7.6
 black>=24.0
 flake8>=7.0
 isort>=5.13
+gunicorn==23.0.0
