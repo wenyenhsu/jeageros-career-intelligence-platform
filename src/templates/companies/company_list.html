@@ -1,17 +1,19 @@
 {% extends 'base.html' %}
 {% block title %}Companies · JaegerOS{% endblock %}
+
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
   <div>
     <h1 class="h2 fw-bold mb-1">Companies</h1>
     <p class="text-muted mb-0">Store the companies you are tracking.</p>
   </div>
+
   <a href="{% url 'company-create' %}" class="btn btn-primary">
     <i class="bi bi-plus-lg me-1"></i>Create company
   </a>
 </div>
 
-<div class="card">
+<div class="card shadow-sm border-0">
   <div class="table-responsive">
     <table class="table align-middle mb-0 table-hover">
       <thead class="table-light">
@@ -22,23 +24,39 @@
           <th class="text-end">Actions</th>
         </tr>
       </thead>
+
       <tbody>
         {% for company in companies %}
           <tr>
-            <td class="fw-semibold">{{ company.name }}</td>
+            <td>
+              <a href="{% url 'company-detail' company.pk %}"
+                 class="fw-semibold text-decoration-none">
+                {{ company.name }}
+              </a>
+            </td>
+
             <td>{{ company.industry|default:'—' }}</td>
+
             <td>{{ company.location|default:'—' }}</td>
+
             <td class="text-end">
-              <a class="btn btn-sm btn-outline-secondary" href="{% url 'company-edit' company.pk %}">Edit</a>
+              <div class="btn-group">
+                <a href="{% url 'company-detail' company.pk %}"
+                   class="btn btn-outline-primary btn-sm">
+                  View
+                </a>
+              </div>
             </td>
           </tr>
         {% empty %}
           <tr>
             <td colspan="4">
-              <div class="empty-state py-5">
+              <div class="empty-state py-5 text-center">
                 <i class="bi bi-building fs-1"></i>
                 <p class="mb-2 mt-2">No companies yet.</p>
-                <a href="{% url 'company-create' %}" class="btn btn-primary">Create your first company</a>
+                <a href="{% url 'company-create' %}" class="btn btn-primary">
+                  Create your first company
+                </a>
               </div>
             </td>
           </tr>

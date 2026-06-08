@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container py-4">
+
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-body p-5">
+
+            <!-- Top row -->
+            <div class="d-flex justify-content-between align-items-start mb-4">
+
+                <div>
+                    <h1 class="fw-bold mb-2">
+                        {{ company.name }}
+                    </h1>
+
+                    <div class="text-muted fs-5">
+                        {% if company.industry %}
+                            {{ company.industry }}
+                        {% elif company.website %}
+                            {{ company.website }}
+                        {% else %}
+                            Company profile
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <a href="{% url 'company-update' company.pk %}" class="btn btn-warning px-4">
+                        Edit
+                    </a>
+
+                    <form method="post" action="{% url 'company-delete' company.pk %}" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-danger"
+                                onclick="return confirm('Delete this company?');">
+                            Delete
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Details -->
+            <div class="mt-5">
+                <div class="row mb-4">
+                    <div class="col-md-2 fw-bold fs-5">Company</div>
+                    <div class="col-md-10 fs-5">{{ company.name }}</div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-2 fw-bold fs-5">Website</div>
+                    <div class="col-md-10 fs-5">
+                        {% if company.website %}
+                            <a href="{{ company.website }}" target="_blank" class="text-decoration-none">
+                                {{ company.website }}
+                            </a>
+                        {% else %}
+                            —
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-2 fw-bold fs-5">Industry</div>
+                    <div class="col-md-10 fs-5">
+                        {{ company.industry|default:"—" }}
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-2 fw-bold fs-5">Location</div>
+                    <div class="col-md-10 fs-5">
+                        {{ company.location|default:"—" }}
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-2 fw-bold fs-5">Notes</div>
+                    <div class="col-md-10 fs-5">
+                        {% if company.notes %}
+                            {{ company.notes|linebreaks }}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-2 fw-bold fs-5">Created At</div>
+                    <div class="col-md-10 fs-5">
+                        {% if company.created_at %}
+                            {{ company.created_at|date:"Y-m-d H:i" }}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-2 fw-bold fs-5">Last Updated</div>
+                    <div class="col-md-10 fs-5">
+                        {% if company.updated_at %}
+                            {{ company.updated_at|date:"Y-m-d H:i" }}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <hr class="my-4">
+
+            <a href="{% url 'company-list' %}" class="btn btn-secondary px-4">
+                Back
+            </a>
+
+        </div>
+    </div>
+</div>
+{% endblock %}
