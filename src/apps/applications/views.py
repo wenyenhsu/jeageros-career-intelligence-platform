@@ -1,5 +1,5 @@
 from django.urls import reverse_lazy
-from django.views.generic import CreateView, DetailView, ListView, UpdateView
+from django.views.generic import CreateView, DetailView, ListView, UpdateView,DeleteView
 from .forms import ApplicationForm
 from .models import Application
 
@@ -28,3 +28,7 @@ class ApplicationUpdateView(UpdateView):
     form_class = ApplicationForm
     template_name = 'applications/application_form.html'
     success_url = reverse_lazy('application-list')
+
+class ApplicationDeleteView(DeleteView):
+    model = Application
+    success_url = reverse_lazy("application-list")
