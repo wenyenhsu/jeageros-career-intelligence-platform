@@ -1,6 +1,73 @@
 {% extends 'base.html' %}
+
 {% block content %}
-<h1>{{ job.title }}</h1>
-<p>{{ job.company.name }}</p>
-<p>{{ job.description }}</p>
+<div class="container mt-5">
+    <div class="card shadow-sm">
+        <div class="card-body">
+
+            <div class="d-flex justify-content-between align-items-start mb-4">
+                <div>
+                    <h1 class="mb-1">{{ job.title }}</h1>
+                    <p class="text-muted mb-0">{{ job.company.name }}</p>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <a href="{% url 'job-update' job.pk %}" class="btn btn-warning">
+                        Edit
+                    </a>
+                    <form method="post" action="{% url 'job-delete' job.pk %}" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-danger" onclick="return confirm('Delete this job?')">
+                            Delete
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <table class="table table-borderless">
+                <tbody>
+                    <tr>
+                        <th style="width: 180px;">Company</th>
+                        <td>{{ job.company.name }}</td>
+                    </tr>
+                    <tr>
+                        <th>Title</th>
+                        <td>{{ job.title }}</td>
+                    </tr>
+                    <tr>
+                        <th>Location</th>
+                        <td>{{ job.location }}</td>
+                    </tr>
+                    <tr>
+                        <th>Status</th>
+                        <td>{{ job.get_status_display }}</td>
+                    </tr>
+                    <tr>
+                        <th>Applied</th>
+                        <td>{% if job.applied %}Yes{% else %}No{% endif %}</td>
+                    </tr>
+                    <tr>
+                        <th>Created At</th>
+                        <td>{{ job.created_at }}</td>
+                    </tr>
+                    <tr>
+                        <th>Updated At</th>
+                        <td>{{ job.updated_at }}</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            {% if job.description %}
+                <hr>
+                <h5>Description</h5>
+                <p>{{ job.description|linebreaks }}</p>
+            {% endif %}
+
+            <a href="{% url 'job-list' %}" class="btn btn-secondary">
+                Back to Jobs
+            </a>
+
+        </div>
+    </div>
+</div>
 {% endblock %}

@@ -1,5 +1,5 @@
 from django.urls import reverse_lazy
-from django.views.generic import CreateView, DetailView, ListView, UpdateView
+from django.views.generic import CreateView, DetailView, ListView, UpdateView,DeleteView
 from .forms import JobPostForm
 from .models import JobPost
 
@@ -27,4 +27,8 @@ class JobUpdateView(UpdateView):
     model = JobPost
     form_class = JobPostForm
     template_name = 'jobs/job_form.html'
+    success_url = reverse_lazy('job-list')
+
+class JobDeleteView(DeleteView):
+    model = JobPost
     success_url = reverse_lazy('job-list')
