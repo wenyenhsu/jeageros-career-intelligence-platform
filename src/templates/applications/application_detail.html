@@ -1,92 +1,106 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<div class="container mt-5">
-    <div class="card shadow-sm">
-        <div class="card-body">
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-12 col-lg-10">
 
-            <div class="d-flex justify-content-between align-items-start mb-4">
-                <div>
-                    <h1 class="mb-1">{{ application.job_post.title }}</h1>
-                    <p class="text-muted mb-0">{{ application.job_post.company.name }}</p>
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-body p-4 p-md-5">
+
+                    <div class="d-flex justify-content-between align-items-start mb-4">
+                        <div>
+                            <h1 class="mb-1 fw-bold">{{ application.job_post.title }}</h1>
+                            <p class="text-muted mb-0">{{ application.job_post.company.name }}</p>
+                        </div>
+
+                        <div class="d-flex gap-2">
+                            <a href="{% url 'application-update' application.pk %}" class="btn btn-warning">
+                                Edit
+                            </a>
+                            <form method="post" action="{% url 'application-delete' application.pk %}" class="d-inline">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-danger" onclick="return confirm('Delete this application?')">
+                                    Delete
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <table class="table table-borderless align-middle mb-0">
+                        <tbody>
+                            <tr>
+                                <th style="width: 180px;">Company</th>
+                                <td>{{ application.job_post.company.name }}</td>
+                            </tr>
+                            <tr>
+                                <th>Job Title</th>
+                                <td>{{ application.job_post.title }}</td>
+                            </tr>
+                            <tr>
+                                <th>Status</th>
+                                <td>
+                                    <span class="badge bg-primary">
+                                        {{ application.get_status_display }}
+                                    </span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Applied At</th>
+                                <td>
+                                    {% if application.applied_at %}
+                                        {{ application.applied_at|date:"Y-m-d H:i" }}
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Priority</th>
+                                <td>{{ application.priority }}</td>
+                            </tr>
+                            <tr>
+                                <th>Referral</th>
+                                <td>{% if application.referral %}Yes{% else %}No{% endif %}</td>
+                            </tr>
+                            <tr>
+                                <th>Last Updated</th>
+                                <td>{{ application.last_updated_at|date:"Y-m-d H:i" }}</td>
+                            </tr>
+                            <tr>
+                                <th>Created At</th>
+                                <td>{{ application.created_at|date:"Y-m-d H:i" }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <hr class="my-4">
+
+                    <h5 class="mb-3">Status History</h5>
+                    {% if application.history.all %}
+                        <div class="list-group">
+                            {% for item in application.history.all %}
+                                <div class="list-group-item">
+                                    <div class="fw-medium">
+                                        {{ item.old_status }} → {{ item.new_status }}
+                                    </div>
+                                    <div class="text-muted small">
+                                        by {{ item.changed_by|default:"-" }} · {{ item.created_at|date:"Y-m-d H:i" }}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted mb-0">No status history yet.</p>
+                    {% endif %}
+
+                    <div class="mt-4">
+                        <a href="{% url 'application-list' %}" class="btn btn-secondary">
+                            Back
+                        </a>
+                    </div>
+
                 </div>
-
-                <div class="d-flex gap-2">
-                    <a href="{% url 'application-update' application.pk %}" class="btn btn-warning">
-                        Edit
-                    </a>
-                    <form method="post" action="{% url 'application-delete' application.pk %}" class="d-inline">
-                        {% csrf_token %}
-                        <button type="submit" class="btn btn-danger" onclick="return confirm('Delete this application?')">
-                            Delete
-                        </button>
-                    </form>
-                </div>
-            </div>
-
-            <table class="table table-borderless">
-                <tbody>
-                    <tr>
-                        <th style="width: 180px;">Company</th>
-                        <td>{{ application.job_post.company.name }}</td>
-                    </tr>
-                    <tr>
-                        <th>Job Title</th>
-                        <td>{{ application.job_post.title }}</td>
-                    </tr>
-                    <tr>
-                        <th>Status</th>
-                        <td>{{ application.get_status_display }}</td>
-                    </tr>
-                    <tr>
-                        <th>Applied At</th>
-                        <td>
-                            {% if application.applied_at %}
-                                {{ application.applied_at }}
-                            {% else %}
-                                -
-                            {% endif %}
-                        </td>
-                    </tr>
-                    <tr>
-                        <th>Priority</th>
-                        <td>{{ application.priority }}</td>
-                    </tr>
-                    <tr>
-                        <th>Referral</th>
-                        <td>{% if application.referral %}Yes{% else %}No{% endif %}</td>
-                    </tr>
-                    <tr>
-                        <th>Last Updated</th>
-                        <td>{{ application.last_updated_at }}</td>
-                    </tr>
-                    <tr>
-                        <th>Created At</th>
-                        <td>{{ application.created_at }}</td>
-                    </tr>
-                </tbody>
-            </table>
-
-            <hr>
-
-            <h5>Status History</h5>
-            {% if application.history.all %}
-                <ul class="list-group">
-                    {% for item in application.history.all %}
-                        <li class="list-group-item">
-                            {{ item.old_status }} → {{ item.new_status }}
-                            <span class="text-muted">by {{ item.changed_by }}</span>
-                        </li>
-                    {% endfor %}
-                </ul>
-            {% else %}
-                <p class="text-muted mb-0">No status history yet.</p>
-            {% endif %}
-
-            <div class="mt-4">
-                <a href="{% url 'application-list' %}" class="btn btn-secondary">
-                    Back
-                </a>
             </div>
 
         </div>
