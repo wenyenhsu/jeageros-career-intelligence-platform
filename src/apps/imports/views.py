@@ -1,13 +1,28 @@
-from django.shortcuts import redirect
+from django.shortcuts import render
 from django.urls import reverse_lazy
-from django.views.generic import CreateView, DeleteView, DetailView, ListView, UpdateView
+from django.views.generic import (
+    CreateView,
+    DeleteView,
+    DetailView,
+    ListView,
+    UpdateView,
+)
 
 from .forms import JobSourceForm
 from .models import JobSource
+from .services import MonitoringService
 
 
 def job_url_import(request):
-    return redirect("source-list")
+    return JobSourceListView.as_view()(request)
+
+
+def monitoring_dashboard(request):
+    return render(
+        request,
+        "imports/monitoring_dashboard.html",
+        MonitoringService.dashboard_summary(),
+    )
 
 
 class JobSourceListView(ListView):

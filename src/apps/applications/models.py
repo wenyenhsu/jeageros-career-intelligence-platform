@@ -21,6 +21,12 @@ class Application(TimeStampedModel):
     applied_at = models.DateTimeField(null=True, blank=True)
     priority = models.PositiveSmallIntegerField(default=3)
     referral = models.BooleanField(default=False)
+    skill_sets = models.ManyToManyField(
+        "skills.SkillSet",
+        through="skills.ApplicationSkill",
+        related_name="applications",
+        blank=True,
+    )
     last_updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

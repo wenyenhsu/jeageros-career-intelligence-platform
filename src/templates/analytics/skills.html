@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center gap-3 mb-4">
+  <div>
+    <h1 class="h3 mb-1">Skill Analytics</h1>
+    <p class="text-secondary mb-0">Ranked technical demand from scored job skills.</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="{% url 'analytics-dashboard' %}">Overview</a>
+</div>
+
+<form method="get" class="row gy-2 gx-2 align-items-end mb-5">
+  <div class="col-sm-6 col-lg-3">
+    <label class="form-label" for="company_id">Company</label>
+    <select class="form-select" id="company_id" name="company_id">
+      <option value="">All companies</option>
+      {% for company in companies %}
+        <option value="{{ company.id }}" {% if filters.company_id == company.id|stringformat:"s" %}selected{% endif %}>{{ company.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <label class="form-label" for="start_date">Start</label>
+    <input class="form-control" id="start_date" type="date" name="start_date" value="{{ filters.start_date }}">
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <label class="form-label" for="end_date">End</label>
+    <input class="form-control" id="end_date" type="date" name="end_date" value="{{ filters.end_date }}">
+  </div>
+  <div class="col-lg-3">
+    <button class="btn btn-primary w-100" type="submit">Apply</button>
+  </div>
+</form>
+
+{% include "analytics/partials/top_skills.html" with top_skills=top_skills %}
+{% endblock %}

@@ -2,12 +2,13 @@ from django.contrib import admin
 from django.urls import include, path
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('', include('apps.analytics.urls')),
-    path('accounts/', include('apps.accounts.urls')),
-    path('companies/', include('apps.companies.urls')),
-    path('imports/', include('apps.imports.urls')),
-    path('jobs/', include('apps.jobs.urls')),
-    path('applications/', include('apps.applications.urls')),
-    path('api/v1/', include('apps.api.urls')),
+    path("admin/", admin.site.urls),
+    path("", include("apps.analytics.urls")),
+    path("accounts/", include("apps.accounts.urls")),
+    path("companies/", include("apps.companies.urls")),
+    path("imports/", include("apps.imports.urls")),
+    path("jobs/", include("apps.jobs.urls")),
+    path("applications/", include("apps.applications.urls")),
+    path("api/", include("apps.api.urls")),
+    path("api/v1/", include("apps.api.urls")),
 ]

@@ -1,0 +1,17 @@
+{% if top_skills %}
+  <div class="vstack gap-3">
+    {% for skill in top_skills %}
+      <div>
+        <div class="d-flex justify-content-between gap-3 mb-1">
+          <span class="fw-medium">{{ skill.name }}</span>
+          <span class="text-secondary small">{{ skill.count }} jobs · avg {{ skill.average_score }}</span>
+        </div>
+        <div class="progress" role="img" aria-label="{{ skill.name }} demand">
+          <div class="progress-bar" style="width: {% widthratio skill.count top_skills.0.count 100 %}%"></div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <p class="text-secondary">No scored skills yet.</p>
+{% endif %}

@@ -1,0 +1,24 @@
+<div class="table-responsive">
+  <table class="table table-sm align-middle">
+    <thead>
+      <tr>
+        <th>Company</th>
+        <th>Skill</th>
+        <th class="text-end">Jobs</th>
+        <th class="text-end">Avg Score</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in company_breakdown %}
+        <tr>
+          <td>{{ row.company }}</td>
+          <td>{{ row.name }}</td>
+          <td class="text-end">{{ row.count }}</td>
+          <td class="text-end">{{ row.average_score }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="text-secondary">No company skill data yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

@@ -15,6 +15,35 @@ services:
     depends_on:
       - db
       - redis
+
+  celery-worker:
+    build: .
+    command: celery -A config worker --loglevel=info
+
+    env_file:
+      - .env
+
+    volumes:
+      - .:/app
+
+    depends_on:
+      - db
+      - redis
+
+  celery-beat:
+    build: .
+    command: celery -A config beat --loglevel=info
+
+    env_file:
+      - .env
+
+    volumes:
+      - .:/app
+
+    depends_on:
+      - db
+      - redis
+
   nginx:
     image: nginx:1.27
     ports:

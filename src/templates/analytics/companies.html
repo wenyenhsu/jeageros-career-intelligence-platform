@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center gap-3 mb-4">
+  <div>
+    <h1 class="h3 mb-1">Company Analytics</h1>
+    <p class="text-secondary mb-0">Skill breakdowns and gaps by company.</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="{% url 'analytics-dashboard' %}">Overview</a>
+</div>
+
+<form method="get" class="row gy-2 gx-2 align-items-end mb-5">
+  <div class="col-sm-8 col-lg-5">
+    <label class="form-label" for="company_id">Company</label>
+    <select class="form-select" id="company_id" name="company_id">
+      <option value="">All companies</option>
+      {% for company in companies %}
+        <option value="{{ company.id }}" {% if filters.company_id == company.id|stringformat:"s" %}selected{% endif %}>{{ company.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-sm-4 col-lg-2">
+    <label class="form-label" for="days">Window</label>
+    <input class="form-control" id="days" type="number" min="1" name="days" value="{{ filters.days }}" placeholder="Days">
+  </div>
+  <div class="col-lg-2">
+    <button class="btn btn-primary w-100" type="submit">Apply</button>
+  </div>
+</form>
+
+<section class="mb-5">
+  <h2 class="h5 mb-3">Skill Breakdown</h2>
+  {% include "analytics/partials/company_breakdown.html" with company_breakdown=company_breakdown %}
+</section>
+
+<section>
+  <h2 class="h5 mb-3">Skill Gaps</h2>
+  {% if filters.company_id %}
+    {% include "analytics/partials/skill_gaps.html" with skill_gaps=skill_gaps %}
+  {% else %}
+    <p class="text-secondary">Select a company to compare it against the rest of the tracked market.</p>
+  {% endif %}
+</section>
+{% endblock %}

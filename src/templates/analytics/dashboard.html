@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between gap-3 align-items-md-center mb-4">
+  <div>
+    <h1 class="h3 mb-1">Analytics</h1>
+    <p class="text-secondary mb-0">Skill demand, company trends, and job-market signals.</p>
+  </div>
+  <div class="btn-group" role="group" aria-label="Analytics views">
+    <a class="btn btn-outline-secondary" href="{% url 'analytics-skills' %}">Skills</a>
+    <a class="btn btn-outline-secondary" href="{% url 'analytics-companies' %}">Companies</a>
+    <a class="btn btn-outline-secondary" href="{% url 'analytics-trends' %}">Trends</a>
+  </div>
+</div>
+
+<form method="get" class="row gy-2 gx-2 align-items-end mb-5">
+  <div class="col-sm-6 col-lg-3">
+    <label class="form-label" for="company_id">Company</label>
+    <select class="form-select" id="company_id" name="company_id">
+      <option value="">All companies</option>
+      {% for company in companies %}
+        <option value="{{ company.id }}" {% if filters.company_id == company.id|stringformat:"s" %}selected{% endif %}>{{ company.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-sm-6 col-lg-2">
+    <label class="form-label" for="days">Window</label>
+    <input class="form-control" id="days" type="number" min="1" name="days" value="{{ filters.days }}" placeholder="Days">
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <label class="form-label" for="location">Location</label>
+    <input class="form-control" id="location" name="location" value="{{ filters.location }}" placeholder="Remote, SF, NYC">
+  </div>
+  <div class="col-sm-6 col-lg-2">
+    <label class="form-label" for="employment_type">Job Type</label>
+    <input class="form-control" id="employment_type" name="employment_type" value="{{ filters.employment_type }}" placeholder="Full-time">
+  </div>
+  <div class="col-lg-2">
+    <button class="btn btn-primary w-100" type="submit">Apply</button>
+  </div>
+</form>
+
+<section class="mb-5">
+  <h2 class="h5 mb-3">Top Skills</h2>
+  {% include "analytics/partials/top_skills.html" with top_skills=top_skills %}
+</section>
+
+<section class="mb-5">
+  <h2 class="h5 mb-3">Skill Trends</h2>
+  {% include "analytics/partials/trends_table.html" with trends=trends %}
+</section>
+
+<section class="mb-5">
+  <h2 class="h5 mb-3">Company Breakdown</h2>
+  {% include "analytics/partials/company_breakdown.html" with company_breakdown=company_breakdown %}
+</section>
+
+{% if skill_gaps %}
+<section class="mb-5">
+  <h2 class="h5 mb-3">Skill Gaps</h2>
+  {% include "analytics/partials/skill_gaps.html" with skill_gaps=skill_gaps %}
+</section>
+{% endif %}
+
+<section>
+  <h2 class="h5 mb-3">Job Categories</h2>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Skill</th>
+          <th class="text-end">Jobs</th>
+          <th class="text-end">Avg Score</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in job_categories %}
+          <tr>
+            <td>{{ row.category }}</td>
+            <td>{{ row.name }}</td>
+            <td class="text-end">{{ row.count }}</td>
+            <td class="text-end">{{ row.average_score }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="4" class="text-secondary">No category data yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

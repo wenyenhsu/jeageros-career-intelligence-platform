@@ -1,0 +1,24 @@
+<div class="table-responsive">
+  <table class="table table-sm align-middle">
+    <thead>
+      <tr>
+        <th>Skill</th>
+        <th class="text-end">Company Jobs</th>
+        <th class="text-end">Benchmark Jobs</th>
+        <th class="text-end">Gap</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in skill_gaps %}
+        <tr>
+          <td>{{ row.name }}</td>
+          <td class="text-end">{{ row.target_count }}</td>
+          <td class="text-end">{{ row.benchmark_count }}</td>
+          <td class="text-end">{{ row.gap }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="text-secondary">No skill gaps for this filter.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

@@ -7,6 +7,7 @@ from .views import (
     JobSourceListView,
     JobSourceUpdateView,
     job_url_import,
+    monitoring_dashboard,
 )
 
 urlpatterns = [
@@ -16,4 +17,5 @@ urlpatterns = [
     path("<int:pk>/edit/", JobSourceUpdateView.as_view(), name="source-update"),
     path("<int:pk>/delete/", JobSourceDeleteView.as_view(), name="source-delete"),
     path("job-url/", job_url_import, name="job-url-import"),
+    path("monitoring/", monitoring_dashboard, name="monitoring-dashboard"),
 ]

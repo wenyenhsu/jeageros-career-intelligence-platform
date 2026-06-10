@@ -7,10 +7,7 @@ ROOT_DIR = BASE_DIR.parent
 SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-change-me")
 DEBUG = os.getenv("DEBUG", "0") == "1"
 
-ALLOWED_HOSTS = os.getenv(
-    "ALLOWED_HOSTS",
-    "localhost,127.0.0.1,jeageros"
-).split(",")
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,jeageros").split(",")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -30,6 +27,7 @@ INSTALLED_APPS = [
     "apps.reminders",
     "apps.analytics",
     "apps.imports",
+    "apps.skills",
     "apps.notifications",
     "apps.api",
 ]
@@ -84,7 +82,9 @@ else:
     }
 
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
+    },
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
@@ -111,4 +111,51 @@ LOGOUT_REDIRECT_URL = "/accounts/login/"
 REST_FRAMEWORK = {
     "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+}
+
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", CELERY_BROKER_URL)
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_BEAT_SCHEDULE = {
+    "crawl-enabled-job-sources": {
+        "task": "apps.imports.tasks.crawl_all_sources",
+        "schedule": int(os.getenv("CRAWL_SCHEDULE_SECONDS", "900")),
+    },
+}
+
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_SKILL_MODEL = os.getenv("OLLAMA_SKILL_MODEL", "llama3.1")
+OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "30"))
+OLLAMA_MAX_CANDIDATE_SKILLS = int(os.getenv("OLLAMA_MAX_CANDIDATE_SKILLS", "20"))
+OLLAMA_MAX_VERIFIED_SKILLS = int(
+    os.getenv("OLLAMA_MAX_VERIFIED_SKILLS", str(OLLAMA_MAX_CANDIDATE_SKILLS))
+)
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "standard": {
+            "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
+        }
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "standard",
+        }
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": os.getenv("DJANGO_LOG_LEVEL", "INFO"),
+    },
+    "loggers": {
+        "apps": {
+            "level": os.getenv("APP_LOG_LEVEL", os.getenv("DJANGO_LOG_LEVEL", "INFO")),
+            "propagate": True,
+        },
+    },
 }
