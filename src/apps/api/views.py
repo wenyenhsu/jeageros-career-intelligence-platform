@@ -1,8 +1,9 @@
 from rest_framework import viewsets
 from apps.applications.models import Application
 from apps.companies.models import Company
+from apps.imports.models import JobSource
 from apps.jobs.models import JobPost
-from .serializers import ApplicationSerializer, CompanySerializer, JobPostSerializer
+from .serializers import ApplicationSerializer, CompanySerializer, JobPostSerializer, JobSourceSerializer
 
 
 class CompanyViewSet(viewsets.ModelViewSet):
@@ -18,3 +19,8 @@ class JobPostViewSet(viewsets.ModelViewSet):
 class ApplicationViewSet(viewsets.ModelViewSet):
     queryset = Application.objects.select_related('user', 'job_post').all()
     serializer_class = ApplicationSerializer
+
+
+class JobSourceViewSet(viewsets.ModelViewSet):
+    queryset = JobSource.objects.all()
+    serializer_class = JobSourceSerializer

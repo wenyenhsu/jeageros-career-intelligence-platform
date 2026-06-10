@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+{% block title %}Job Sources · JaegerOS{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+  <div>
+    <h1 class="h2 fw-bold mb-1">Job Sources</h1>
+    <p class="text-muted mb-0">Configure resources before crawler detection and extraction.</p>
+  </div>
+
+  <a href="{% url 'source-create' %}" class="btn btn-primary">
+    <i class="bi bi-plus-lg me-1"></i>Create source
+  </a>
+</div>
+
+<div class="card shadow-sm border-0">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0 table-hover">
+      <thead class="table-light">
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Base URL</th>
+          <th>Status</th>
+          <th>Last crawled</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for source in sources %}
+          <tr>
+            <td>
+              <a href="{% url 'source-detail' source.pk %}" class="fw-semibold text-decoration-none">
+                {{ source.name }}
+              </a>
+            </td>
+            <td><span class="badge text-bg-secondary">{{ source.get_resource_display }}</span></td>
+            <td>{% if source.base_url %}<a href="{{ source.base_url }}" target="_blank" rel="noreferrer">{{ source.base_url }}</a>{% else %}—{% endif %}</td>
+            <td>
+              {% if source.enabled %}
+                <span class="badge text-bg-success">Enabled</span>
+              {% else %}
+                <span class="badge text-bg-secondary">Disabled</span>
+              {% endif %}
+            </td>
+            <td>{{ source.last_crawled_at|date:"Y-m-d H:i"|default:"—" }}</td>
+            <td class="text-end">
+              <div class="btn-group">
+                <a href="{% url 'source-detail' source.pk %}" class="btn btn-outline-primary btn-sm">View</a>
+                <a href="{% url 'source-update' source.pk %}" class="btn btn-outline-secondary btn-sm">Edit</a>
+              </div>
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="6">
+              <div class="empty-state py-5 text-center">
+                <i class="bi bi-plug fs-1"></i>
+                <p class="mb-2 mt-2">No sources yet.</p>
+                <a href="{% url 'source-create' %}" class="btn btn-primary">Create your first source</a>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

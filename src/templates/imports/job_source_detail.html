@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block title %}Job Source · JaegerOS{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="card shadow-sm border-0 rounded-4">
+    <div class="card-body p-5">
+      <div class="d-flex justify-content-between align-items-start mb-4">
+        <div>
+          <h1 class="fw-bold mb-2">{{ source.name }}</h1>
+          <div class="text-muted fs-5">{{ source.get_resource_display }}</div>
+        </div>
+        <div class="d-flex gap-2">
+          <a href="{% url 'source-update' source.pk %}" class="btn btn-warning px-4">Edit</a>
+          <form method="post" action="{% url 'source-delete' source.pk %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger" onclick="return confirm('Delete this source?');">Delete</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="row mb-3"><div class="col-md-3 fw-bold">Base URL</div><div class="col-md-9">{% if source.base_url %}<a href="{{ source.base_url }}" target="_blank" rel="noreferrer">{{ source.base_url }}</a>{% else %}—{% endif %}</div></div>
+      <div class="row mb-3"><div class="col-md-3 fw-bold">Status</div><div class="col-md-9">{% if source.enabled %}<span class="badge text-bg-success">Enabled</span>{% else %}<span class="badge text-bg-secondary">Disabled</span>{% endif %}</div></div>
+      <div class="row mb-3"><div class="col-md-3 fw-bold">Crawl Interval</div><div class="col-md-9">{{ source.crawl_interval_minutes }} minutes</div></div>
+      <div class="row mb-3"><div class="col-md-3 fw-bold">Last Crawled</div><div class="col-md-9">{{ source.last_crawled_at|date:"Y-m-d H:i"|default:"—" }}</div></div>
+      <div class="row mb-3"><div class="col-md-3 fw-bold">Crawl Config</div><div class="col-md-9"><pre class="mb-0">{{ source.crawl_config|default:"{}" }}</pre></div></div>
+      <div class="row mb-3"><div class="col-md-3 fw-bold">Filter Config</div><div class="col-md-9"><pre class="mb-0">{{ source.filter_config|default:"{}" }}</pre></div></div>
+      <div class="row mb-3"><div class="col-md-3 fw-bold">Notes</div><div class="col-md-9">{{ source.notes|linebreaksbr|default:"—" }}</div></div>
+
+      <a href="{% url 'source-list' %}" class="btn btn-secondary px-4">Back</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
