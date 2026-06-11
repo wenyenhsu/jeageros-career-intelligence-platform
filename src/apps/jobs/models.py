@@ -15,6 +15,28 @@ class JobPost(TimeStampedModel):
         CLOSED = "CLOSED", "Closed"
         ARCHIVED = "ARCHIVED", "Archived"
 
+    JOB_TYPE_CHOICES = (
+        ("Full-time", "Full Time"),
+        ("Internship", "Internship"),
+        ("Part-time", "Part Time"),
+        ("Contract", "Contract"),
+        ("Temporary", "Temporary"),
+    )
+    JOB_TYPE_LABELS = dict(JOB_TYPE_CHOICES)
+    JOB_TYPE_ALIASES = {
+        "full time": "Full-time",
+        "full-time": "Full-time",
+        "fulltime": "Full-time",
+        "intern": "Internship",
+        "internship": "Internship",
+        "part time": "Part-time",
+        "part-time": "Part-time",
+        "parttime": "Part-time",
+        "contract": "Contract",
+        "temporary": "Temporary",
+        "temp": "Temporary",
+    }
+
     company = models.ForeignKey(
         Company, on_delete=models.CASCADE, related_name="job_posts"
     )
@@ -47,3 +69,43 @@ class JobPost(TimeStampedModel):
 
     def __str__(self):
         return f"{self.company.name} - {self.title}"
+
+    @property
+    def title_display(self):
+        return self.title or ""
+
+    @property
+    def source_url_display(self):
+        return (self.source_url or "").strip()
+
+    @property
+    def job_type(self):
+        return self.employment_type or ""
+
+    @job_type.setter
+    def job_type(self, value):
+        self.employment_type = value or ""
+
+    @property
+    def job_type_display(self):
+        return self.JOB_TYPE_LABELS.get(self.job_type, self.job_type)
+
+    @property
+    def skill_set_list(self):
+        return sorted(self.skill_sets.all(), key=lambda skill: skill.name.casefold())
+
+    @property
+    def skill_set_names(self):
+        return [skill.name for skill in self.skill_set_list]
+
+    @property
+    def skill_set_display(self):
+        return ", ".join(self.skill_set_names)
+
+    @classmethod
+    def normalize_job_type(cls, value):
+        text = " ".join(str(value or "").split()).strip()
+        if not text:
+            return ""
+        key = text.casefold().replace("_", " ")
+        return cls.JOB_TYPE_ALIASES.get(key, text)

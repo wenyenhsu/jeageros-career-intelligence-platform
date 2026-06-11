@@ -6,6 +6,7 @@ from .views import (
     CrawlRunViewSet,
     JobPostViewSet,
     JobSourceViewSet,
+    SkillKeywordViewSet,
     analytics_application_comparison,
     analytics_companies,
     analytics_gaps,
@@ -24,6 +25,7 @@ router.register("jobs", JobPostViewSet, basename="api-job")
 router.register("applications", ApplicationViewSet, basename="api-application")
 router.register("sources", JobSourceViewSet, basename="api-source")
 router.register("crawl-runs", CrawlRunViewSet, basename="api-crawl-run")
+router.register("skill-keywords", SkillKeywordViewSet, basename="api-skill-keyword")
 
 urlpatterns = [
     path("analytics/skills/", analytics_skills, name="api-analytics-skills"),

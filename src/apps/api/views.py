@@ -2,22 +2,27 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from django.db.models import Q
 from apps.analytics.services import (
     CompanyAnalyticsService,
     JobAnalyticsService,
     SkillAnalyticsService,
 )
 from apps.applications.models import Application
+from apps.applications.search import filter_applications_for_search
 from apps.companies.models import Company
 from apps.imports.models import CrawlRun, JobSource
 from apps.imports.services import JobSyncService, MonitoringService
 from apps.jobs.models import JobPost
+from apps.jobs.search import filter_jobs_for_search
+from apps.skills.models import SkillKeyword
 from .serializers import (
     ApplicationSerializer,
     CompanySerializer,
     CrawlRunSerializer,
     JobPostSerializer,
     JobSourceSerializer,
+    SkillKeywordSerializer,
 )
 
 
@@ -34,13 +39,60 @@ class CompanyViewSet(viewsets.ModelViewSet):
 
 
 class JobPostViewSet(viewsets.ModelViewSet):
-    queryset = JobPost.objects.select_related("company").all()
     serializer_class = JobPostSerializer
+
+    def get_queryset(self):
+        queryset = JobPost.objects.select_related("company").prefetch_related(
+            "skill_sets",
+            "skill_sets__keywords",
+        )
+        query = self.request.query_params.get("q", "").strip()
+        if not query:
+            return queryset
+
+        return filter_jobs_for_search(queryset, query)
 
 
 class ApplicationViewSet(viewsets.ModelViewSet):
-    queryset = Application.objects.select_related("user", "job_post").all()
     serializer_class = ApplicationSerializer
+
+    def get_queryset(self):
+        queryset = Application.objects.select_related(
+            "user",
+            "job_post__company",
+        ).prefetch_related(
+            "skill_sets",
+            "skill_sets__keywords",
+            "job_post__skill_sets",
+            "job_post__skill_sets__keywords",
+        )
+        query = self.request.query_params.get("q", "").strip()
+        if not query:
+            return queryset
+
+        return filter_applications_for_search(queryset, query)
+
+
+class SkillKeywordViewSet(viewsets.ModelViewSet):
+    serializer_class = SkillKeywordSerializer
+
+    def get_queryset(self):
+        queryset = SkillKeyword.objects.select_related("skill_set")
+        query = self.request.query_params.get("q", "").strip()
+        skill_set_id = _int_from_request(self.request, "skill_set_id")
+        status_value = self.request.query_params.get("status", "").strip()
+
+        if query:
+            normalized_query = SkillKeyword.normalize_keyword(query)
+            filters = Q(raw_text__icontains=query)
+            if normalized_query:
+                filters |= Q(normalized_text__icontains=normalized_query)
+            queryset = queryset.filter(filters)
+        if skill_set_id:
+            queryset = queryset.filter(skill_set_id=skill_set_id)
+        if status_value:
+            queryset = queryset.filter(status=status_value)
+        return queryset
 
 
 class JobSourceViewSet(viewsets.ModelViewSet):

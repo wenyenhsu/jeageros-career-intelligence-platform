@@ -155,13 +155,18 @@ class SkillScoringService:
     @staticmethod
     def _load_skillsets(mapped):
         ids = [item["skillset_id"] for item in mapped]
-        return SkillSet.objects.in_bulk(ids)
+        return SkillSet.objects.prefetch_related("keywords").in_bulk(ids)
 
     @classmethod
     def _skill_terms(cls, item, skillset):
         terms = [item["name"]]
         if skillset:
             terms.append(skillset.name)
+            terms.extend(
+                keyword.raw_text
+                for keyword in skillset.keywords.all()
+                if keyword.status == "ACTIVE"
+            )
             terms.extend(skillset.aliases or [])
 
         normalized_terms = []
@@ -291,7 +296,9 @@ class SkillScoringService:
         fragments = []
         for fragment in source_fragments or []:
             if isinstance(fragment, dict):
-                fragments.append(str(fragment.get("text") or fragment.get("content") or ""))
+                fragments.append(
+                    str(fragment.get("text") or fragment.get("content") or "")
+                )
             else:
                 fragments.append(str(fragment))
         return " ".join(fragments)

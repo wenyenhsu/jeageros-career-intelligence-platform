@@ -155,7 +155,9 @@ class JobSyncService:
             "source_type": JobPost.SourceType.URL,
             "status": JobPost.StatusChoices.ACTIVE,
             "location": data.get("location", ""),
-            "employment_type": data.get("employment_type", ""),
+            "employment_type": JobPost.normalize_job_type(
+                data.get("employment_type") or data.get("job_type") or ""
+            ),
             "description": data.get("description", ""),
             "last_synced_at": synced_at,
         }
@@ -170,6 +172,7 @@ class JobSyncService:
                 "external_id": normalized_job_data.external_id,
                 "location": normalized_job_data.location,
                 "employment_type": normalized_job_data.employment_type,
+                "job_type": normalized_job_data.employment_type,
                 "description": normalized_job_data.description,
             }
         return dict(normalized_job_data or {})

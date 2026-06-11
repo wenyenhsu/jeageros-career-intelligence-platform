@@ -31,6 +31,9 @@
                         <div class="mb-3">
                             <label class="form-label">{{ form.job_post.label }}</label>
                             {{ form.job_post }}
+                            {% if form.job_post.help_text %}
+                                <div class="form-text">{{ form.job_post.help_text }}</div>
+                            {% endif %}
                             <div class="text-danger small">{{ form.job_post.errors }}</div>
                         </div>
 

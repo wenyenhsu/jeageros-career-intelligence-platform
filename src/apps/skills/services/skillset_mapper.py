@@ -5,7 +5,7 @@ from typing import Any
 
 from django.db import IntegrityError, transaction
 
-from apps.skills.models import SkillSet
+from apps.skills.models import SkillKeyword, SkillSet
 
 from .ollama_verifier import SkillVerificationResult, VerifiedSkill
 
@@ -92,9 +92,8 @@ class SkillSetMapper:
             created = False
             if skillset is None and should_auto_create:
                 skillset, created = self._create_skillset(candidate["name"])
-                skill_index[skillset.normalized_name] = skillset
-                for alias in skillset.normalized_aliases:
-                    skill_index.setdefault(alias, skillset)
+                for keyword in SkillKeyword.objects.filter(skill_set=skillset):
+                    skill_index.setdefault(keyword.normalized_text, skillset)
                 if created:
                     logger.info(
                         "Created SkillSet during mapping: name=%s source_job=%s",
@@ -233,9 +232,16 @@ class SkillSetMapper:
     @staticmethod
     def _build_skill_index(skillsets=None):
         index = {}
-        records = skillsets if skillsets is not None else SkillSet.objects.all()
+        records = (
+            skillsets
+            if skillsets is not None
+            else SkillSet.objects.prefetch_related("keywords")
+        )
         for skillset in records:
             index[skillset.normalized_name] = skillset
+            for keyword in skillset.keywords.all():
+                if keyword.status == SkillKeyword.StatusChoices.ACTIVE:
+                    index.setdefault(keyword.normalized_text, skillset)
             for alias in skillset.normalized_aliases:
                 index.setdefault(alias, skillset)
         return index
@@ -246,10 +252,13 @@ class SkillSetMapper:
         display_name = SkillSetMapper._normalize_display_name(name)
         try:
             with transaction.atomic():
-                return SkillSet.objects.create(
-                    name=display_name,
-                    normalized_name=normalized_name,
-                    auto_created=True,
-                ), True
+                return (
+                    SkillSet.objects.create(
+                        name=display_name,
+                        normalized_name=normalized_name,
+                        auto_created=True,
+                    ),
+                    True,
+                )
         except IntegrityError:
             return SkillSet.objects.get(normalized_name=normalized_name), False

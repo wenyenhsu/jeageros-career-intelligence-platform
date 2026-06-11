@@ -10,8 +10,21 @@
 
                     <div class="d-flex justify-content-between align-items-start mb-4">
                         <div>
-                            <h1 class="mb-1 fw-bold">{{ application.job_post.title }}</h1>
-                            <p class="text-muted mb-0">{{ application.job_post.company.name }}</p>
+                            <h1 class="mb-1 fw-bold">
+                                {% if application.source_url_display %}
+                                    <a
+                                        href="{{ application.source_url_display }}"
+                                        target="_blank"
+                                        rel="noopener"
+                                        class="link-dark text-decoration-none"
+                                    >
+                                        {{ application.job_title_display|default:"Application" }}
+                                    </a>
+                                {% else %}
+                                    {{ application.job_title_display|default:"Application" }}
+                                {% endif %}
+                            </h1>
+                            <p class="text-muted mb-0">{{ application.company_display|default:"-" }}</p>
                         </div>
 
                         <div class="d-flex gap-2">
@@ -30,12 +43,60 @@
                     <table class="table table-borderless align-middle mb-0">
                         <tbody>
                             <tr>
+                                <th colspan="2" class="text-uppercase small text-muted pt-0">Linked Job</th>
+                            </tr>
+                            <tr>
                                 <th style="width: 180px;">Company</th>
-                                <td>{{ application.job_post.company.name }}</td>
+                                <td>{{ application.company_display|default:"-" }}</td>
                             </tr>
                             <tr>
                                 <th>Job Title</th>
-                                <td>{{ application.job_post.title }}</td>
+                                <td>
+                                    {% if application.source_url_display %}
+                                        <a
+                                            href="{{ application.source_url_display }}"
+                                            target="_blank"
+                                            rel="noopener"
+                                        >
+                                            {{ application.job_title_display|default:"-" }}
+                                        </a>
+                                    {% else %}
+                                        {{ application.job_title_display|default:"-" }}
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Location</th>
+                                <td>{{ application.location_display|default:"-" }}</td>
+                            </tr>
+                            <tr>
+                                <th>Job Type</th>
+                                <td>{{ application.job_type_display|default:"-" }}</td>
+                            </tr>
+                            <tr>
+                                <th>Source URL</th>
+                                <td>
+                                    {% if application.source_url_display %}
+                                        <a href="{{ application.source_url_display }}" target="_blank" rel="noopener">
+                                            {{ application.source_url_display }}
+                                        </a>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Job Skill Sets</th>
+                                <td>
+                                    {% for skill in application.job_skill_set_list %}
+                                        <span class="badge text-bg-light border me-1 mb-1">{{ skill.name }}</span>
+                                    {% empty %}
+                                        <span class="text-muted">-</span>
+                                    {% endfor %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <th colspan="2" class="text-uppercase small text-muted pt-4">Application</th>
                             </tr>
                             <tr>
                                 <th>Status</th>
@@ -62,6 +123,16 @@
                             <tr>
                                 <th>Referral</th>
                                 <td>{% if application.referral %}Yes{% else %}No{% endif %}</td>
+                            </tr>
+                            <tr>
+                                <th>Application Skill Sets</th>
+                                <td>
+                                    {% for skill in application.skill_set_list %}
+                                        <span class="badge text-bg-light border me-1 mb-1">{{ skill.name }}</span>
+                                    {% empty %}
+                                        <span class="text-muted">-</span>
+                                    {% endfor %}
+                                </td>
                             </tr>
                             <tr>
                                 <th>Last Updated</th>

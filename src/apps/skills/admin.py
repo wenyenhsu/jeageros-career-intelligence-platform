@@ -1,10 +1,24 @@
 from django.contrib import admin
 
-from .models import ApplicationSkill, JobPostSkill, SkillSet
+from .models import ApplicationSkill, JobPostSkill, SkillKeyword, SkillSet
+
+
+class SkillKeywordInline(admin.TabularInline):
+    model = SkillKeyword
+    extra = 0
+    fields = (
+        "raw_text",
+        "normalized_text",
+        "source",
+        "status",
+        "is_primary",
+    )
+    readonly_fields = ("normalized_text",)
 
 
 @admin.register(SkillSet)
 class SkillSetAdmin(admin.ModelAdmin):
+    inlines = (SkillKeywordInline,)
     list_display = (
         "name",
         "normalized_name",
@@ -14,8 +28,37 @@ class SkillSetAdmin(admin.ModelAdmin):
         "updated_at",
     )
     list_filter = ("is_active", "auto_created")
-    search_fields = ("name", "normalized_name", "aliases")
+    search_fields = (
+        "name",
+        "normalized_name",
+        "aliases",
+        "keywords__raw_text",
+        "keywords__normalized_text",
+    )
     readonly_fields = ("normalized_name", "created_at", "updated_at")
+
+
+@admin.register(SkillKeyword)
+class SkillKeywordAdmin(admin.ModelAdmin):
+    list_display = (
+        "raw_text",
+        "normalized_text",
+        "skill_set",
+        "source",
+        "status",
+        "is_primary",
+        "created_at",
+        "updated_at",
+    )
+    list_filter = ("source", "status", "is_primary")
+    search_fields = (
+        "raw_text",
+        "normalized_text",
+        "skill_set__name",
+        "skill_set__normalized_name",
+    )
+    readonly_fields = ("normalized_text", "created_at", "updated_at")
+    autocomplete_fields = ("skill_set",)
 
 
 @admin.register(JobPostSkill)

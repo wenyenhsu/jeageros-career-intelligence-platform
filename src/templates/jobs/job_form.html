@@ -17,4 +17,83 @@
     </div>
   </div>
 </div>
+{{ skill_keyword_lookup|json_script:"skill-keyword-existing-data" }}
+<script>
+  (() => {
+    const input = document.getElementById("id_skill_keywords");
+    const dataElement = document.getElementById("skill-keyword-existing-data");
+    const list = document.querySelector("[data-skill-keyword-list]");
+
+    if (!input || !dataElement || !list) {
+      return;
+    }
+
+    const existingKeywords = JSON.parse(dataElement.textContent || "[]");
+    const keywordMap = new Map();
+    existingKeywords.forEach((keyword) => {
+      if (!keyword.normalized_text || keywordMap.has(keyword.normalized_text)) {
+        return;
+      }
+      keywordMap.set(keyword.normalized_text, keyword);
+    });
+
+    const cleanKeyword = (value) => (
+      String(value || "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(/^[\s.,;:|/\\]+|[\s.,;:|/\\]+$/g, "")
+    );
+
+    const normalizeKeyword = (value) => cleanKeyword(value).toLocaleLowerCase();
+
+    const parseKeywords = (value) => {
+      const seen = new Set();
+      return String(value || "")
+        .replace(/\n/g, ",")
+        .split(",")
+        .map(cleanKeyword)
+        .filter((keyword) => {
+          const normalized = normalizeKeyword(keyword);
+          if (!normalized || seen.has(normalized)) {
+            return false;
+          }
+          seen.add(normalized);
+          return true;
+        })
+        .map((keyword) => ({
+          rawText: keyword,
+          normalizedText: normalizeKeyword(keyword),
+        }));
+    };
+
+    const render = () => {
+      const keywords = parseKeywords(input.value);
+      list.replaceChildren();
+
+      if (!keywords.length) {
+        const empty = document.createElement("span");
+        empty.className = "small text-muted";
+        empty.textContent = "No SkillSet keywords entered.";
+        list.appendChild(empty);
+        return;
+      }
+
+      keywords.forEach((keyword) => {
+        const existing = keywordMap.get(keyword.normalizedText);
+        const chip = document.createElement("span");
+        chip.className = existing
+          ? "badge text-bg-warning border"
+          : "badge text-bg-success border";
+        chip.textContent = existing
+          ? `${keyword.rawText} already exists (${existing.skill_set_name})`
+          : `${keyword.rawText} new`;
+        chip.title = `normalized: ${keyword.normalizedText}`;
+        list.appendChild(chip);
+      });
+    };
+
+    input.addEventListener("input", render);
+    render();
+  })();
+</script>
 {% endblock %}
