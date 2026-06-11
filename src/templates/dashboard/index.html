@@ -1,29 +1,210 @@
 {% extends 'base.html' %}
+
 {% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between gap-3 align-items-md-center mb-4">
+  <div>
+    <h1 class="h3 mb-1">Dashboard</h1>
+    <p class="text-secondary mb-0">Operational status, recent work, and crawl health.</p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-primary" href="{% url 'job-create' %}">
+      <i class="bi bi-plus-lg me-1"></i>Create Job
+    </a>
+    <a class="btn btn-outline-secondary" href="{% url 'application-create' %}">
+      <i class="bi bi-send-plus me-1"></i>Add Application
+    </a>
+    <a class="btn btn-outline-secondary" href="{% url 'source-list' %}">
+      <i class="bi bi-hdd-network me-1"></i>Sources
+    </a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-2">
+    <div class="card p-3 h-100">
+      <div class="stat-label text-secondary">Total Jobs</div>
+      <div class="h2 fw-bold mb-0">{{ kpis.total_jobs }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-2">
+    <div class="card p-3 h-100">
+      <div class="stat-label text-secondary">Active Jobs</div>
+      <div class="h2 fw-bold mb-0">{{ kpis.active_jobs }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-2">
+    <div class="card p-3 h-100">
+      <div class="stat-label text-secondary">Applications</div>
+      <div class="h2 fw-bold mb-0">{{ kpis.total_applications }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-2">
+    <div class="card p-3 h-100">
+      <div class="stat-label text-secondary">Applied Today</div>
+      <div class="h2 fw-bold mb-0">{{ kpis.applications_today }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-2">
+    <div class="card p-3 h-100">
+      <div class="stat-label text-secondary">Companies</div>
+      <div class="h2 fw-bold mb-0">{{ kpis.active_companies }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-2">
+    <div class="card p-3 h-100">
+      <div class="stat-label text-secondary">Enabled Sources</div>
+      <div class="h2 fw-bold mb-0">{{ kpis.enabled_sources }}</div>
+    </div>
+  </div>
+</div>
+
 <div class="row g-4">
-  <div class="col-12 col-lg-4">
-    <div class="card stat-card p-4 h-100">
-      <div class="stat-label">Total applications</div>
-      <div class="stat-value">{{ total_applications }}</div>
-      <div class="mt-2 opacity-75">Track all your job applications in one place.</div>
+  <div class="col-12 col-xl-7">
+    <div class="card p-4 h-100">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="h5 mb-0">Recent Jobs</h2>
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'job-list' %}">View all</a>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Company</th>
+              <th>Status</th>
+              <th>Synced</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for job in recent_jobs %}
+              <tr>
+                <td class="fw-semibold">
+                  {% if job.source_url_display %}
+                    <a href="{{ job.source_url_display }}" target="_blank" rel="noopener" class="link-dark text-decoration-none">{{ job.title_display }}</a>
+                  {% else %}
+                    {{ job.title_display }}
+                  {% endif %}
+                </td>
+                <td>{{ job.company.name }}</td>
+                <td><span class="badge text-bg-light border">{{ job.get_status_display }}</span></td>
+                <td class="text-secondary">
+                  {% if job.last_synced_at %}
+                    {{ job.last_synced_at|date:"m/d H:i" }}
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="4" class="text-secondary py-3">No jobs yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 
-  <div class="col-12 col-lg-8">
+  <div class="col-12 col-xl-5">
     <div class="card p-4 h-100">
-      <h2 class="h4 mb-3">Application status</h2>
-      {% if status_counts %}
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="h5 mb-0">Recent Applications</h2>
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'application-list' %}">View all</a>
+      </div>
+      <div class="list-group list-group-flush">
+        {% for application in recent_applications %}
+          <a class="list-group-item list-group-item-action px-0 d-flex justify-content-between gap-3" href="{% url 'application-detail' application.pk %}">
+            <span>
+              <span class="fw-semibold d-block">{{ application.job_title_display|default:"-" }}</span>
+              <span class="text-secondary small">{{ application.company_display|default:"-" }}</span>
+            </span>
+            <span class="text-end">
+              <span class="badge bg-primary">{{ application.get_status_display }}</span>
+              <span class="text-secondary small d-block">
+                {% if application.applied_at %}{{ application.applied_at|date:"m/d" }}{% else %}-{% endif %}
+              </span>
+            </span>
+          </a>
+        {% empty %}
+          <div class="text-secondary py-3">No applications yet.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-4">
+    <div class="card p-4 h-100">
+      <h2 class="h5 mb-3">Application Status</h2>
+      {% if application_status_counts %}
         <div class="list-group list-group-flush">
-          {% for row in status_counts %}
+          {% for row in application_status_counts %}
             <div class="list-group-item d-flex justify-content-between align-items-center px-0">
-              <span>{{ row.status|default:"Unknown" }}</span>
+              <span>{{ row.label }}</span>
               <span class="badge text-bg-primary rounded-pill">{{ row.total }}</span>
             </div>
           {% endfor %}
         </div>
       {% else %}
-        <div class="empty-state">No data yet.</div>
+        <div class="text-secondary">No application status data yet.</div>
       {% endif %}
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-4">
+    <div class="card p-4 h-100">
+      <h2 class="h5 mb-3">Crawl / Sync Health</h2>
+      {% if latest_crawl_run %}
+        <div class="d-flex justify-content-between mb-2">
+          <span>Status</span>
+          <span class="badge {% if latest_crawl_run.status == 'FAILED' %}text-bg-danger{% elif latest_crawl_run.status == 'RUNNING' %}text-bg-warning{% else %}text-bg-success{% endif %}">
+            {{ latest_crawl_run.get_status_display }}
+          </span>
+        </div>
+        <div class="progress mb-3" role="progressbar" aria-label="Crawl progress" aria-valuenow="{{ latest_crawl_run.progress_percentage }}" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress-bar" style="width: {{ latest_crawl_run.progress_percentage }}%">{{ latest_crawl_run.progress_percentage }}%</div>
+        </div>
+        <div class="small text-secondary">
+          Processed {{ latest_crawl_run.processed_sources }} of {{ latest_crawl_run.total_sources }} sources.
+        </div>
+        <div class="row text-center mt-3 g-2">
+          <div class="col"><div class="fw-bold">{{ latest_crawl_run.jobs_created }}</div><div class="small text-secondary">Created</div></div>
+          <div class="col"><div class="fw-bold">{{ latest_crawl_run.jobs_updated }}</div><div class="small text-secondary">Updated</div></div>
+          <div class="col"><div class="fw-bold">{{ latest_crawl_run.jobs_closed }}</div><div class="small text-secondary">Closed</div></div>
+        </div>
+      {% else %}
+        <div class="text-secondary">No crawl runs yet.</div>
+      {% endif %}
+      <hr>
+      <div class="d-flex justify-content-between small">
+        <span>Sources</span>
+        <span>{{ source_counts.enabled }} enabled / {{ source_counts.total }} total</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-4">
+    <div class="card p-4 h-100">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="h5 mb-0">Pipeline Status</h2>
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'monitoring-dashboard' %}">Monitoring</a>
+      </div>
+      {% if pipeline.recent_failures %}
+        <div class="alert alert-warning py-2 small mb-3">{{ pipeline.recent_failure_count }} recent failure{{ pipeline.recent_failure_count|pluralize }} need review.</div>
+      {% else %}
+        <div class="alert alert-success py-2 small mb-3">No recent pipeline failures.</div>
+      {% endif %}
+      <div class="list-group list-group-flush">
+        {% for log in pipeline.recent_logs %}
+          <div class="list-group-item px-0">
+            <div class="d-flex justify-content-between gap-2">
+              <span class="fw-semibold">{{ log.step_name }}</span>
+              <span class="badge text-bg-light border">{{ log.status }}</span>
+            </div>
+            <div class="small text-secondary">{{ log.message|truncatechars:80 }}</div>
+          </div>
+        {% empty %}
+          <div class="text-secondary">No pipeline logs yet.</div>
+        {% endfor %}
+      </div>
     </div>
   </div>
 </div>

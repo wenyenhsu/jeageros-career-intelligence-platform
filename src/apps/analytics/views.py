@@ -1,21 +1,17 @@
-from django.db.models import Count
 from django.shortcuts import render
-from apps.applications.models import Application
 from apps.companies.models import Company
 
 from .services import (
     CompanyAnalyticsService,
+    DashboardService,
     JobAnalyticsService,
     SkillAnalyticsService,
 )
 
 
 def dashboard(request):
-    summary = {
-        'total_applications': Application.objects.count(),
-        'status_counts': Application.objects.values('status').annotate(total=Count('id')),
-    }
-    return render(request, 'dashboard/index.html', summary)
+    context = DashboardService().operational_summary()
+    return render(request, "dashboard/index.html", context)
 
 
 def analytics_dashboard(request):
