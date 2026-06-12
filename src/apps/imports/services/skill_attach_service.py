@@ -42,8 +42,84 @@ class SkillAttachResult:
 
 
 class SkillAttachService:
+    CANONICAL_KEYS = {
+        "source",
+        "source_url",
+        "external_id",
+        "company_name",
+        "title",
+        "job_type",
+        "employment_type",
+        "remote_type",
+        "location",
+        "description",
+        "sections",
+        "posted_at",
+        "metadata",
+    }
+
     def __init__(self, scoring_service=None):
         self.scoring_service = scoring_service or SkillScoringService()
+
+    def score_and_attach_job_post_from_payload(
+        self,
+        job_post,
+        canonical_job_payload,
+        mapped_skills,
+        verified_skills=None,
+        source_type=SkillAttachmentSource.OLLAMA_PIPELINE,
+        extraction_metadata=None,
+    ):
+        scoring_result = self._score_canonical_payload(
+            canonical_job_payload=canonical_job_payload,
+            mapped_skills=mapped_skills,
+            verified_skills=verified_skills,
+            job_id=job_post.pk,
+            company_id=job_post.company_id,
+        )
+        attach_result = self.attach_to_job_post(
+            job_post=job_post,
+            scored_skills=scoring_result,
+            source_type=source_type,
+            extraction_metadata=self._attachment_metadata(
+                canonical_job_payload,
+                extraction_metadata,
+            ),
+        )
+        return {
+            "scoring": scoring_result.as_dict(),
+            "attachment": attach_result.as_dict(),
+        }
+
+    def score_and_attach_application_from_payload(
+        self,
+        application,
+        canonical_job_payload,
+        mapped_skills,
+        verified_skills=None,
+        source_type=SkillAttachmentSource.OLLAMA_PIPELINE,
+        extraction_metadata=None,
+    ):
+        scoring_result = self._score_canonical_payload(
+            canonical_job_payload=canonical_job_payload,
+            mapped_skills=mapped_skills,
+            verified_skills=verified_skills,
+            job_id=application.job_post_id,
+            company_id=application.job_post.company_id,
+        )
+        attach_result = self.attach_to_application(
+            application=application,
+            scored_skills=scoring_result,
+            source_type=source_type,
+            extraction_metadata=self._attachment_metadata(
+                canonical_job_payload,
+                extraction_metadata,
+            ),
+        )
+        return {
+            "scoring": scoring_result.as_dict(),
+            "attachment": attach_result.as_dict(),
+        }
 
     def score_and_attach_job_post(
         self,
@@ -307,6 +383,71 @@ class SkillAttachService:
         )
         return result
 
+    def _score_canonical_payload(
+        self,
+        canonical_job_payload,
+        mapped_skills,
+        verified_skills,
+        job_id=None,
+        company_id=None,
+    ):
+        data = self._canonical_job_data(canonical_job_payload)
+        source_job_identifier = data.get("external_id") or data.get("source_url") or ""
+        MonitoringService.log_event(
+            step_name="skill_scoring",
+            status=PipelineLog.StatusChoices.STARTED,
+            message="Skill scoring started.",
+            service_name=self.__class__.__name__,
+            job_id=job_id,
+            company_id=company_id,
+            metadata={
+                "source_job_identifier": source_job_identifier,
+                "canonical_payload": True,
+            },
+        )
+        try:
+            result = self.scoring_service.score_canonical_payload(
+                canonical_job_payload=canonical_job_payload,
+                mapped_skills=mapped_skills,
+                verified_skills=verified_skills,
+            )
+        except Exception as exc:
+            MonitoringService.log_failure(
+                step_name="skill_scoring",
+                message="Skill scoring failed.",
+                service_name=self.__class__.__name__,
+                job_id=job_id,
+                company_id=company_id,
+                metadata={
+                    "source_job_identifier": source_job_identifier,
+                    "canonical_payload": True,
+                },
+                error=exc,
+            )
+            raise
+
+        MonitoringService.log_event(
+            step_name="skill_scoring",
+            status=PipelineLog.StatusChoices.SUCCESS,
+            message="Skill scoring finished.",
+            service_name=self.__class__.__name__,
+            job_id=job_id,
+            company_id=company_id,
+            metadata={
+                "source_job_identifier": source_job_identifier,
+                "canonical_payload": True,
+                "scored_count": len(result.scored_skills),
+                "scores": [
+                    {
+                        "skillset_id": skill.skillset_id,
+                        "score": skill.score,
+                    }
+                    for skill in result.scored_skills
+                ],
+            },
+        )
+        return result
+
     @staticmethod
     def _coerce_scored_skills(scored_skills):
         if isinstance(scored_skills, SkillScoringResult):
@@ -342,3 +483,61 @@ class SkillAttachService:
                 }
             )
         return skills
+
+    @classmethod
+    def _canonical_job_data(cls, canonical_job_payload):
+        if hasattr(canonical_job_payload, "as_dict"):
+            canonical_job_payload = canonical_job_payload.as_dict()
+        if not isinstance(canonical_job_payload, dict):
+            raise TypeError(
+                "skill attach requires a CanonicalJobPayload or canonical dict."
+            )
+
+        unexpected_keys = set(canonical_job_payload) - cls.CANONICAL_KEYS
+        if unexpected_keys:
+            raise ValueError(
+                "skill attach requires canonical job payload fields only; "
+                f"unexpected field(s): {', '.join(sorted(unexpected_keys))}"
+            )
+
+        data = {
+            "source": canonical_job_payload.get("source"),
+            "source_url": canonical_job_payload.get("source_url"),
+            "external_id": canonical_job_payload.get("external_id"),
+            "company_name": canonical_job_payload.get("company_name"),
+            "title": canonical_job_payload.get("title"),
+            "job_type": canonical_job_payload.get("job_type"),
+            "employment_type": canonical_job_payload.get("employment_type"),
+            "remote_type": canonical_job_payload.get("remote_type"),
+            "location": canonical_job_payload.get("location"),
+            "description": canonical_job_payload.get("description"),
+            "sections": canonical_job_payload.get("sections") or {},
+            "posted_at": canonical_job_payload.get("posted_at"),
+            "metadata": canonical_job_payload.get("metadata") or {},
+        }
+        cls._validate_canonical_payload(data)
+        return data
+
+    @staticmethod
+    def _validate_canonical_payload(data):
+        missing = []
+        if not data.get("title"):
+            missing.append("title")
+        if not data.get("company_name"):
+            missing.append("company_name")
+        if not (data.get("source_url") or data.get("external_id")):
+            missing.append("source_url_or_external_id")
+        if missing:
+            raise ValueError(
+                "Canonical job payload missing required field(s): " + ", ".join(missing)
+            )
+
+    @classmethod
+    def _attachment_metadata(cls, canonical_job_payload, extraction_metadata=None):
+        data = cls._canonical_job_data(canonical_job_payload)
+        metadata = dict(extraction_metadata or {})
+        metadata.setdefault("source", data.get("source") or "")
+        metadata.setdefault("source_url", data.get("source_url") or "")
+        metadata.setdefault("external_id", data.get("external_id") or "")
+        metadata.setdefault("posted_at", data.get("posted_at") or "")
+        return metadata

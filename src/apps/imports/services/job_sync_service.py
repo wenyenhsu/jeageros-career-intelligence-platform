@@ -5,20 +5,37 @@ from apps.imports.models import PipelineLog
 from apps.jobs.models import JobPost
 
 from .company_upsert_service import CompanyUpsertService
-from .job_extractor import ExtractedJob
+from .job_normalizer import CanonicalJobPayload
 from .monitoring_service import MonitoringService
+from .source_detector import SourceDetector
 from .sync_result import JobUpsertResult, SyncResult
 
 
 class JobSyncService:
+    CANONICAL_KEYS = {
+        "source",
+        "source_url",
+        "external_id",
+        "company_name",
+        "title",
+        "job_type",
+        "employment_type",
+        "remote_type",
+        "location",
+        "description",
+        "sections",
+        "posted_at",
+        "metadata",
+    }
+
     @classmethod
-    def upsert_job(cls, normalized_job_data):
-        data = cls._normalize_job_data(normalized_job_data)
+    def upsert_job(cls, canonical_job_payload):
+        data = cls._canonical_job_data(canonical_job_payload)
         cls._validate_job_data(data)
 
         company_result = CompanyUpsertService.upsert(
             data["company_name"],
-            data.get("company_website") or data.get("website", ""),
+            cls._company_website(data),
         )
         job = cls._find_existing_job(
             external_id=data.get("external_id", ""),
@@ -72,18 +89,20 @@ class JobSyncService:
         return JobUpsertResult(job=job, created=False)
 
     @classmethod
-    def sync_company(cls, company, normalized_jobs=None):
-        if normalized_jobs is None:
+    def sync_company(cls, company, canonical_jobs=None, source=None):
+        if canonical_jobs is None:
             return SyncResult()
 
         jobs_created = 0
         jobs_updated = 0
         seen_job_ids = set()
+        source_scope = cls._source_scope(source)
 
-        for job_data in normalized_jobs:
-            data = cls._normalize_job_data(job_data)
+        for job_data in canonical_jobs:
+            data = cls._canonical_job_data(job_data)
             if not data.get("company_name"):
                 data["company_name"] = company.name
+            source_scope.update(cls._source_scope(data.get("source")))
 
             result = cls.upsert_job(data)
             if result.created:
@@ -93,13 +112,26 @@ class JobSyncService:
             if result.job.company_id == company.id:
                 seen_job_ids.add(result.job.id)
 
-        jobs_closed = cls._close_missing_jobs(company, seen_job_ids)
+        jobs_closed = cls._close_missing_jobs(company, seen_job_ids, source_scope)
 
-        return SyncResult(
+        result = SyncResult(
             jobs_created=jobs_created,
             jobs_updated=jobs_updated,
             jobs_closed=jobs_closed,
         )
+        MonitoringService.log_event(
+            step_name="company_sync",
+            status=PipelineLog.StatusChoices.SUCCESS,
+            message="Company sync completed.",
+            service_name=cls.__name__,
+            company=company,
+            metadata={
+                **result.as_dict(),
+                "source_scope": sorted(source_scope),
+                "jobs_seen": len(seen_job_ids),
+            },
+        )
+        return result
 
     @classmethod
     def _find_existing_job(cls, external_id="", source_url=""):
@@ -116,7 +148,8 @@ class JobSyncService:
         return JobPost.objects.filter(filters).select_related("company").first()
 
     @classmethod
-    def _close_missing_jobs(cls, company, seen_job_ids):
+    def _close_missing_jobs(cls, company, seen_job_ids, source_scope=None):
+        source_scope = source_scope or set()
         queryset = (
             company.job_posts.filter(status=JobPost.StatusChoices.ACTIVE)
             .exclude(external_id="", source_url="")
@@ -126,6 +159,8 @@ class JobSyncService:
         synced_at = timezone.now()
 
         for job in queryset:
+            if source_scope and not cls._job_matches_source_scope(job, source_scope):
+                continue
             job.status = JobPost.StatusChoices.CLOSED
             job.last_synced_at = synced_at
             job.save(update_fields=["status", "last_synced_at", "updated_at"])
@@ -150,32 +185,50 @@ class JobSyncService:
         return {
             "company": company,
             "title": data["title"],
-            "source_url": data.get("source_url", ""),
-            "external_id": data.get("external_id", ""),
+            "source_url": data.get("source_url") or "",
+            "external_id": data.get("external_id") or "",
             "source_type": JobPost.SourceType.URL,
             "status": JobPost.StatusChoices.ACTIVE,
-            "location": data.get("location", ""),
+            "location": data.get("location") or "",
+            "remote_type": data.get("remote_type") or "",
             "employment_type": JobPost.normalize_job_type(
                 data.get("employment_type") or data.get("job_type") or ""
             ),
-            "description": data.get("description", ""),
+            "description": data.get("description") or "",
             "last_synced_at": synced_at,
         }
 
-    @staticmethod
-    def _normalize_job_data(normalized_job_data):
-        if isinstance(normalized_job_data, ExtractedJob):
-            return {
-                "title": normalized_job_data.title,
-                "company_name": normalized_job_data.company_name,
-                "source_url": normalized_job_data.source_url,
-                "external_id": normalized_job_data.external_id,
-                "location": normalized_job_data.location,
-                "employment_type": normalized_job_data.employment_type,
-                "job_type": normalized_job_data.employment_type,
-                "description": normalized_job_data.description,
-            }
-        return dict(normalized_job_data or {})
+    @classmethod
+    def _canonical_job_data(cls, canonical_job_payload):
+        if isinstance(canonical_job_payload, CanonicalJobPayload):
+            return canonical_job_payload.validate().as_dict()
+        if not isinstance(canonical_job_payload, dict):
+            raise TypeError("sync requires a CanonicalJobPayload or canonical dict.")
+
+        unexpected_keys = set(canonical_job_payload) - cls.CANONICAL_KEYS
+        if unexpected_keys:
+            raise ValueError(
+                "sync requires canonical job payload fields only; unexpected "
+                f"field(s): {', '.join(sorted(unexpected_keys))}"
+            )
+
+        data = {
+            "source": canonical_job_payload.get("source"),
+            "source_url": canonical_job_payload.get("source_url"),
+            "external_id": canonical_job_payload.get("external_id"),
+            "company_name": canonical_job_payload.get("company_name"),
+            "title": canonical_job_payload.get("title"),
+            "job_type": canonical_job_payload.get("job_type"),
+            "employment_type": canonical_job_payload.get("employment_type"),
+            "remote_type": canonical_job_payload.get("remote_type"),
+            "location": canonical_job_payload.get("location"),
+            "description": canonical_job_payload.get("description"),
+            "sections": canonical_job_payload.get("sections") or {},
+            "posted_at": canonical_job_payload.get("posted_at"),
+            "metadata": canonical_job_payload.get("metadata") or {},
+        }
+        CanonicalJobPayload(**data).validate()
+        return data
 
     @staticmethod
     def _validate_job_data(data):
@@ -188,3 +241,33 @@ class JobSyncService:
             or (data.get("source_url") or "").strip()
         ):
             raise ValueError("external_id or source_url is required.")
+
+    @staticmethod
+    def _company_website(data):
+        metadata = (
+            data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+        )
+        company_metadata = metadata.get("company")
+        if isinstance(company_metadata, dict):
+            return company_metadata.get("website", "") or ""
+        return metadata.get("company_website", "") or metadata.get("website", "") or ""
+
+    @classmethod
+    def _source_scope(cls, source):
+        normalized = cls._normalize_source(source)
+        return {normalized} if normalized else set()
+
+    @staticmethod
+    def _normalize_source(source):
+        if source is None:
+            return ""
+        if not isinstance(source, str):
+            source = SourceDetector.detect_parser_type(source)
+        return str(source).strip().casefold().replace("-", "_")
+
+    @classmethod
+    def _job_matches_source_scope(cls, job, source_scope):
+        if not job.source_url:
+            return False
+        detected_source = SourceDetector.detect_parser_type(job.source_url)
+        return cls._normalize_source(detected_source) in source_scope

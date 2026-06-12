@@ -25,6 +25,7 @@ def analytics_dashboard(request):
         "companies": Company.objects.order_by("name"),
         "top_skills": skill_service.top_skills(limit=8, filters=filters),
         "trends": skill_service.skill_trends_by_month(limit=5, filters=filters),
+        "coverage": skill_service.skill_coverage_summary(filters=filters),
         "company_breakdown": company_service.company_skill_breakdown(
             limit=5,
             filters=filters,
@@ -48,6 +49,7 @@ def skill_analytics(request):
         "filters": request.GET,
         "companies": Company.objects.order_by("name"),
         "top_skills": service.top_skills(limit=25, filters=request.GET),
+        "coverage": service.skill_coverage_summary(filters=request.GET),
     }
     return render(request, "analytics/skills.html", context)
 

@@ -154,6 +154,103 @@ def test_filters_by_time_window_and_company_work():
 
 
 @pytest.mark.django_db
+def test_filters_by_canonical_resource_metadata_work():
+    company = Company.objects.create(name="OpenAI")
+    python = SkillSet.objects.create(name="Python")
+    react = SkillSet.objects.create(name="React")
+    greenhouse_job = JobPost.objects.create(company=company, title="Python Engineer")
+    linkedin_job = JobPost.objects.create(company=company, title="React Engineer")
+    JobPostSkill.objects.create(
+        job_post=greenhouse_job,
+        skill_set=python,
+        score=92,
+        extraction_metadata={"source": "greenhouse"},
+    )
+    JobPostSkill.objects.create(
+        job_post=linkedin_job,
+        skill_set=react,
+        score=88,
+        extraction_metadata={"source": "linkedin"},
+    )
+
+    result = SkillAnalyticsService().top_skills(filters={"resource": "greenhouse"})
+
+    assert [row["name"] for row in result] == ["Python"]
+
+
+@pytest.mark.django_db
+def test_job_type_filter_normalizes_canonical_values():
+    company = Company.objects.create(name="OpenAI")
+    python = SkillSet.objects.create(name="Python")
+    react = SkillSet.objects.create(name="React")
+    full_time_job = JobPost.objects.create(
+        company=company,
+        title="Python Engineer",
+        employment_type="Full-time",
+    )
+    internship_job = JobPost.objects.create(
+        company=company,
+        title="React Intern",
+        employment_type="Internship",
+    )
+    JobPostSkill.objects.create(job_post=full_time_job, skill_set=python, score=91)
+    JobPostSkill.objects.create(job_post=internship_job, skill_set=react, score=84)
+
+    result = SkillAnalyticsService().top_skills(filters={"job_type": "FULL_TIME"})
+
+    assert [row["name"] for row in result] == ["Python"]
+
+
+@pytest.mark.django_db
+def test_score_filter_and_coverage_summary_use_scored_attachments():
+    company = Company.objects.create(name="OpenAI")
+    python = SkillSet.objects.create(name="Python")
+    sql = SkillSet.objects.create(name="SQL")
+    strong_job = JobPost.objects.create(company=company, title="Python Engineer")
+    weak_job = JobPost.objects.create(company=company, title="SQL Analyst")
+    JobPost.objects.create(company=company, title="Unscored Engineer")
+    JobPostSkill.objects.create(job_post=strong_job, skill_set=python, score=95)
+    JobPostSkill.objects.create(job_post=weak_job, skill_set=sql, score=60)
+
+    service = SkillAnalyticsService()
+    result = service.top_skills(filters={"score_min": "80"})
+    coverage = service.skill_coverage_summary(filters={"company_id": str(company.id)})
+
+    assert [row["name"] for row in result] == ["Python"]
+    assert coverage == {
+        "total_jobs": 3,
+        "jobs_with_scored_skills": 2,
+        "coverage_percent": 66.67,
+        "total_skill_links": 2,
+        "average_score": 77.5,
+        "high_confidence_links": 1,
+    }
+
+
+@pytest.mark.django_db
+def test_time_trends_can_use_last_synced_at():
+    company = Company.objects.create(name="OpenAI")
+    python = SkillSet.objects.create(name="Python")
+    january_job = JobPost.objects.create(company=company, title="Python Engineer")
+    february_job = JobPost.objects.create(company=company, title="Backend Engineer")
+    JobPostSkill.objects.create(job_post=january_job, skill_set=python, score=90)
+    JobPostSkill.objects.create(job_post=february_job, skill_set=python, score=80)
+    JobPost.objects.filter(id=january_job.id).update(
+        last_synced_at=datetime(2026, 1, 20, tzinfo=UTC)
+    )
+    JobPost.objects.filter(id=february_job.id).update(
+        last_synced_at=datetime(2026, 2, 20, tzinfo=UTC)
+    )
+
+    result = SkillAnalyticsService().skill_trends_by_month(
+        limit=1,
+        filters={"date_basis": "last_synced"},
+    )
+
+    assert [row["period"] for row in result] == ["2026-01", "2026-02"]
+
+
+@pytest.mark.django_db
 def test_job_category_analytics_works():
     company = Company.objects.create(name="OpenAI")
     python = SkillSet.objects.create(name="Python")
@@ -205,3 +302,23 @@ def test_analytics_api_and_view_return_expected_output(client, user):
     assert api_response.json()["results"][0]["name"] == "Python"
     assert view_response.status_code == 200
     assert "Python" in view_response.content.decode()
+
+
+@pytest.mark.django_db
+def test_analytics_coverage_api_returns_expected_output(client, user):
+    client.force_login(user)
+    company = Company.objects.create(name="OpenAI")
+    python = SkillSet.objects.create(name="Python")
+    job = JobPost.objects.create(company=company, title="Python Engineer")
+    JobPostSkill.objects.create(
+        job_post=job,
+        skill_set=python,
+        score=95,
+        extraction_metadata={"source": "greenhouse"},
+    )
+
+    response = client.get("/api/analytics/coverage/?resource=greenhouse")
+
+    assert response.status_code == 200
+    assert response.json()["coverage_percent"] == 100
+    assert response.json()["average_score"] == 95

@@ -86,7 +86,9 @@ class OllamaVerifier:
             source_fragments=source_fragments,
         )
         if not content:
-            raise SkillVerificationError("Job content is required for skill verification.")
+            raise SkillVerificationError(
+                "Job content is required for skill verification."
+            )
 
         logger.info(
             "Starting Ollama skill verification: model=%s source_job=%s candidates=%s",
@@ -203,7 +205,7 @@ class OllamaVerifier:
         candidates_json = json.dumps(candidates, ensure_ascii=True)
         return (
             "Verify candidate technical skills against this job content. "
-            "Use the job content as evidence and reject weakly supported, generic, irrelevant, or hallucinated skills. "
+            "Use canonical job fields and sections as evidence and reject weakly supported, generic, irrelevant, or hallucinated skills. "
             "Refine skill names when the intended technical skill is clear. "
             "Return only JSON with verified_skills and rejected_skills arrays. "
             "Each verified skill must include name, status set to accepted, and reason. "
@@ -385,6 +387,11 @@ class OllamaVerifier:
         allowed_sources = {
             "title",
             "description",
+            "about",
+            "responsibilities",
+            "requirements",
+            "minimum_qualifications",
+            "preferred_qualifications",
             "normalized_text",
             "source_fragment",
             "raw_text",

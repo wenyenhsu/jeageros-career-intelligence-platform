@@ -36,6 +36,7 @@ This project is a Django-based job tracking system with the following core direc
    - Automatic scoring
    - Attach to JobPost/Application
    - Analytics consumption
+13. Crawl output is normalized into one canonical job payload before sync, LLM, scoring, or analytics.
 
 ## Architecture Rules
 
@@ -61,6 +62,21 @@ This project is a Django-based job tracking system with the following core direc
   - normalization
   - company upsert
   - job upsert / sync
+- Canonical crawl flow:
+  - Source
+  - SourceDetector
+  - Source-specific parser that returns raw source data
+  - JobNormalizer
+  - CanonicalJobPayload
+  - Sync Pipeline
+  - Ollama Extract
+  - Ollama Verify
+  - SkillSet Mapping
+  - Scoring
+  - Analytics
+- Parsers are responsible only for fetch, parse, and extract.
+- Do not normalize inside individual parsers.
+- Downstream sync, LLM, scoring, and analytics code must consume the canonical job payload instead of source-specific parser output.
 - Already stored jobs must support update/sync.
 - When a job disappears from the source, mark it inactive/closed instead of deleting it unless explicitly required.
 
@@ -105,6 +121,8 @@ When continuing development, work in this order:
 - JobExtractor
 - Parser registry
 - Generic fallback parser for non-LinkedIn sources
+- Source-specific parsers return raw payloads only
+- JobNormalizer converts all sources into CanonicalJobPayload before downstream processing
 
 ### Step 3: Sync pipeline
 - Company upsert
@@ -193,6 +211,7 @@ Already established:
 - `tags` are separate from SkillSet
 - Ollama is the chosen skill extraction engine
 - Source management entry point exists
+- Source-specific parser output is normalized into CanonicalJobPayload before sync and LLM services
 
 Next work should focus on:
 1. crawler/parser foundation

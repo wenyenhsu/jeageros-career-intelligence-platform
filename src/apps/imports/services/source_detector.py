@@ -3,15 +3,21 @@ from urllib.parse import urlparse
 
 class SourceDetector:
     LINKEDIN = "LINKEDIN"
+    HANDSHAKE = "HANDSHAKE"
     GREENHOUSE = "GREENHOUSE"
     LEVER = "LEVER"
     CAREER_SITE = "CAREER_SITE"
+    RSS = "RSS"
+    API = "API"
     GENERIC_HTML = "GENERIC_HTML"
 
     SPECIFIC_PARSER_TYPES = {
         LINKEDIN,
+        HANDSHAKE,
         GREENHOUSE,
         LEVER,
+        RSS,
+        API,
     }
     GENERIC_PARSER_TYPES = {
         CAREER_SITE,
@@ -19,6 +25,7 @@ class SourceDetector:
     }
     DOMAIN_PARSER_TYPES = {
         LINKEDIN: ("linkedin.com",),
+        HANDSHAKE: ("joinhandshake.com", "handshake.com"),
         GREENHOUSE: ("boards.greenhouse.io",),
         LEVER: ("jobs.lever.co",),
     }

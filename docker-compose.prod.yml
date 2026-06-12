@@ -1,6 +1,9 @@
 services:
 
   web:
+    environment:
+      DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-config.settings.prod}
+
     command: >
       sh -c "
       python manage.py migrate &&
@@ -38,6 +41,14 @@ services:
 
   redis:
     ports: []
+
+  celery-worker:
+    environment:
+      DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-config.settings.prod}
+
+  celery-beat:
+    environment:
+      DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-config.settings.prod}
 
 volumes:
   static_volume:

@@ -9,6 +9,7 @@ from .views import (
     SkillKeywordViewSet,
     analytics_application_comparison,
     analytics_companies,
+    analytics_coverage,
     analytics_gaps,
     analytics_job_categories,
     analytics_skills,
@@ -35,6 +36,7 @@ urlpatterns = [
         name="api-analytics-companies",
     ),
     path("analytics/trends/", analytics_trends, name="api-analytics-trends"),
+    path("analytics/coverage/", analytics_coverage, name="api-analytics-coverage"),
     path("analytics/gaps/", analytics_gaps, name="api-analytics-gaps"),
     path(
         "analytics/job-categories/",

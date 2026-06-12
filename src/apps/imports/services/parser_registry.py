@@ -1,49 +1,28 @@
-from .job_extractor import JobExtractor
-from .listing_finder import ListingFinder
+from apps.imports.parsers import (
+    APIParser,
+    CareerSiteParser,
+    GenericCareerSiteParser,
+    GenericHTMLParser,
+    GreenhouseParser,
+    HandshakeParser,
+    LeverParser,
+    LinkedInParser,
+    RSSParser,
+)
+
 from .source_detector import SourceDetector
-
-
-class BaseParser:
-    parser_type = SourceDetector.CAREER_SITE
-    listing_finder_class = ListingFinder
-    job_extractor_class = JobExtractor
-
-    def __init__(self, source=None):
-        self.source = source
-
-    def find_listing_pages(self):
-        return self.listing_finder_class(self.source).find()
-
-    def extract_job(self, payload):
-        return self.job_extractor_class().extract(payload)
-
-    def extract_jobs(self, listing_page):
-        return []
-
-
-class LinkedInParser(BaseParser):
-    parser_type = SourceDetector.LINKEDIN
-
-
-class GreenhouseParser(BaseParser):
-    parser_type = SourceDetector.GREENHOUSE
-
-
-class LeverParser(BaseParser):
-    parser_type = SourceDetector.LEVER
-
-
-class GenericCareerSiteParser(BaseParser):
-    parser_type = SourceDetector.CAREER_SITE
 
 
 class ParserRegistry:
     _parsers = {
-        LinkedInParser.parser_type: LinkedInParser,
-        GreenhouseParser.parser_type: GreenhouseParser,
-        LeverParser.parser_type: LeverParser,
-        GenericCareerSiteParser.parser_type: GenericCareerSiteParser,
-        SourceDetector.GENERIC_HTML: GenericCareerSiteParser,
+        SourceDetector.LINKEDIN: LinkedInParser,
+        SourceDetector.HANDSHAKE: HandshakeParser,
+        SourceDetector.GREENHOUSE: GreenhouseParser,
+        SourceDetector.LEVER: LeverParser,
+        SourceDetector.CAREER_SITE: GenericCareerSiteParser,
+        SourceDetector.RSS: RSSParser,
+        SourceDetector.API: APIParser,
+        SourceDetector.GENERIC_HTML: GenericHTMLParser,
     }
 
     @classmethod

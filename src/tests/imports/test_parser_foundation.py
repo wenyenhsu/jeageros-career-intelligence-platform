@@ -1,8 +1,9 @@
 from apps.imports.models import JobSource
 from apps.imports.services import (
-    ExtractedJob,
-    GenericCareerSiteParser,
+    CareerSiteParser,
+    GenericHTMLParser,
     GreenhouseParser,
+    HandshakeParser,
     LeverParser,
     LinkedInParser,
     ParserRegistry,
@@ -22,6 +23,10 @@ def test_source_detector_detects_supported_job_boards():
     assert (
         SourceDetector.detect_parser_type("https://jobs.lever.co/openai")
         == SourceDetector.LEVER
+    )
+    assert (
+        SourceDetector.detect_parser_type("https://app.joinhandshake.com/stu/jobs")
+        == SourceDetector.HANDSHAKE
     )
 
 
@@ -50,15 +55,19 @@ def test_source_detector_preserves_explicit_resource_for_unknown_source_url():
 
 def test_parser_registry_returns_specific_and_generic_parsers():
     assert ParserRegistry.get_parser_class(SourceDetector.LINKEDIN) is LinkedInParser
+    assert ParserRegistry.get_parser_class(SourceDetector.HANDSHAKE) is HandshakeParser
     assert (
         ParserRegistry.get_parser_class(SourceDetector.GREENHOUSE) is GreenhouseParser
     )
     assert ParserRegistry.get_parser_class(SourceDetector.LEVER) is LeverParser
     assert (
-        ParserRegistry.get_parser_class(SourceDetector.CAREER_SITE)
-        is GenericCareerSiteParser
+        ParserRegistry.get_parser_class(SourceDetector.CAREER_SITE) is CareerSiteParser
     )
-    assert ParserRegistry.get_parser_class("UNKNOWN") is GenericCareerSiteParser
+    assert (
+        ParserRegistry.get_parser_class(SourceDetector.GENERIC_HTML)
+        is GenericHTMLParser
+    )
+    assert ParserRegistry.get_parser_class("UNKNOWN") is CareerSiteParser
 
 
 def test_parser_registry_selects_parser_from_url():
@@ -83,12 +92,12 @@ def test_parser_finds_listing_page_from_source():
     assert pages[0].source_name == "LinkedIn"
 
 
-def test_parser_normalizes_job_payload():
+def test_parser_extracts_raw_job_payload_without_normalizing():
     parser = ParserRegistry.get_parser(SourceDetector.LEVER)
 
     extracted = parser.extract_job(
         {
-            "title": "Backend Engineer",
+            "jobTitle": "Backend Engineer",
             "company": "OpenAI",
             "url": "https://jobs.lever.co/openai/backend-engineer",
             "external_id": "backend-engineer",
@@ -98,10 +107,9 @@ def test_parser_normalizes_job_payload():
         }
     )
 
-    assert isinstance(extracted, ExtractedJob)
-    assert extracted.title == "Backend Engineer"
-    assert extracted.company_name == "OpenAI"
-    assert extracted.source_url == "https://jobs.lever.co/openai/backend-engineer"
-    assert extracted.external_id == "backend-engineer"
-    assert extracted.location == "Remote"
-    assert extracted.remote_type == "Remote"
+    assert isinstance(extracted, dict)
+    assert extracted["jobTitle"] == "Backend Engineer"
+    assert extracted["company"] == "OpenAI"
+    assert extracted["url"] == "https://jobs.lever.co/openai/backend-engineer"
+    assert extracted["external_id"] == "backend-engineer"
+    assert "company_name" not in extracted

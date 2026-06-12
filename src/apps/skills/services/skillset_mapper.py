@@ -39,15 +39,37 @@ class UnmappedSkill:
 
 
 @dataclass(frozen=True)
+class MappedKeyword:
+    skillset_id: int
+    keyword_id: int
+    raw_text: str
+    normalized_text: str
+    source: str
+    status: str
+
+    def as_dict(self):
+        return {
+            "skillset_id": self.skillset_id,
+            "keyword_id": self.keyword_id,
+            "raw_text": self.raw_text,
+            "normalized_text": self.normalized_text,
+            "source": self.source,
+            "status": self.status,
+        }
+
+
+@dataclass(frozen=True)
 class SkillMappingResult:
     matched: list[MappedSkill]
     unmapped: list[UnmappedSkill]
+    keywords: list[MappedKeyword] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self):
         return {
             "matched": [skill.as_dict() for skill in self.matched],
             "unmapped": [skill.as_dict() for skill in self.unmapped],
+            "keywords": [keyword.as_dict() for keyword in self.keywords],
             "metadata": self.metadata,
         }
 
@@ -80,7 +102,9 @@ class SkillSetMapper:
 
         matched = []
         unmapped = []
+        keywords = []
         seen = set()
+        seen_keyword_ids = set()
 
         for candidate in candidates:
             normalized_name = SkillSet.normalize_name(candidate["name"])
@@ -88,12 +112,27 @@ class SkillSetMapper:
                 continue
             seen.add(normalized_name)
 
-            skillset = skill_index.get(normalized_name)
+            match = skill_index.get(normalized_name)
+            skillset = match["skillset"] if match else None
             created = False
             if skillset is None and should_auto_create:
                 skillset, created = self._create_skillset(candidate["name"])
+                match = self._match_payload(
+                    skillset=skillset,
+                    match_type="auto_created",
+                    keyword=skillset.keywords.filter(
+                        normalized_text=skillset.normalized_name
+                    ).first(),
+                )
                 for keyword in SkillKeyword.objects.filter(skill_set=skillset):
-                    skill_index.setdefault(keyword.normalized_text, skillset)
+                    skill_index.setdefault(
+                        keyword.normalized_text,
+                        self._match_payload(
+                            skillset=skillset,
+                            match_type="keyword",
+                            keyword=keyword,
+                        ),
+                    )
                 if created:
                     logger.info(
                         "Created SkillSet during mapping: name=%s source_job=%s",
@@ -117,6 +156,10 @@ class SkillSetMapper:
                     created=created,
                 )
             )
+            keyword = match.get("keyword") if match else None
+            if keyword and keyword.id not in seen_keyword_ids:
+                keywords.append(self._mapped_keyword(keyword))
+                seen_keyword_ids.add(keyword.id)
 
         for rejected_name in rejected_names:
             normalized_name = SkillSet.normalize_name(rejected_name)
@@ -141,11 +184,18 @@ class SkillSetMapper:
         return SkillMappingResult(
             matched=matched,
             unmapped=unmapped,
+            keywords=keywords,
             metadata={
                 "mapper": "skillset",
                 "auto_create": should_auto_create,
                 "source_job_identifier": source_job_identifier or "",
                 "model": model_name or "",
+                "created_skillset_ids": [
+                    skill.skillset_id for skill in matched if skill.created
+                ],
+                "created_skillset_names": [
+                    skill.name for skill in matched if skill.created
+                ],
             },
         )
 
@@ -238,13 +288,57 @@ class SkillSetMapper:
             else SkillSet.objects.prefetch_related("keywords")
         )
         for skillset in records:
-            index[skillset.normalized_name] = skillset
+            canonical_keyword = None
+            for keyword in skillset.keywords.all():
+                if (
+                    keyword.status == SkillKeyword.StatusChoices.ACTIVE
+                    and keyword.normalized_text == skillset.normalized_name
+                ):
+                    canonical_keyword = keyword
+                    break
+            index[skillset.normalized_name] = SkillSetMapper._match_payload(
+                skillset=skillset,
+                match_type="normalized_name",
+                keyword=canonical_keyword,
+            )
             for keyword in skillset.keywords.all():
                 if keyword.status == SkillKeyword.StatusChoices.ACTIVE:
-                    index.setdefault(keyword.normalized_text, skillset)
+                    index.setdefault(
+                        keyword.normalized_text,
+                        SkillSetMapper._match_payload(
+                            skillset=skillset,
+                            match_type="keyword",
+                            keyword=keyword,
+                        ),
+                    )
             for alias in skillset.normalized_aliases:
-                index.setdefault(alias, skillset)
+                index.setdefault(
+                    alias,
+                    SkillSetMapper._match_payload(
+                        skillset=skillset,
+                        match_type="alias",
+                    ),
+                )
         return index
+
+    @staticmethod
+    def _match_payload(skillset, match_type, keyword=None):
+        return {
+            "skillset": skillset,
+            "match_type": match_type,
+            "keyword": keyword,
+        }
+
+    @staticmethod
+    def _mapped_keyword(keyword):
+        return MappedKeyword(
+            skillset_id=keyword.skill_set_id,
+            keyword_id=keyword.id,
+            raw_text=keyword.raw_text,
+            normalized_text=keyword.normalized_text,
+            source=keyword.source,
+            status=keyword.status,
+        )
 
     @staticmethod
     def _create_skillset(name):

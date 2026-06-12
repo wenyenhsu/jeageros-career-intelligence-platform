@@ -65,10 +65,13 @@ def test_status_updates_are_persisted_for_crawl_run(monkeypatch):
     crawl_run = CrawlRun.objects.get(id=summary["crawl_run_id"])
     assert crawl_run.status == CrawlRun.StatusChoices.SUCCESS
     assert crawl_run.processed_sources == 2
-    assert PipelineLog.objects.filter(
-        crawl_run=crawl_run,
-        step_name="crawl_progress",
-    ).count() == 2
+    assert (
+        PipelineLog.objects.filter(
+            crawl_run=crawl_run,
+            step_name="crawl_progress",
+        ).count()
+        == 2
+    )
     assert PipelineLog.objects.filter(
         crawl_run=crawl_run,
         source=first,
@@ -99,12 +102,16 @@ def test_monitoring_service_returns_run_status(monkeypatch):
     assert payload["status"] == CrawlRun.StatusChoices.SUCCESS
     assert payload["progress"] == 100
     assert payload["crawl_run"]["processed_sources"] == 1
+    assert payload["current_step"]["step_name"] == "crawl_run"
+    assert payload["step_summary"]
     assert any(log["source_id"] == source.id for log in payload["recent_logs"])
     assert payload["error_summary"]["count"] == 0
 
 
 @pytest.mark.django_db
-def test_monitoring_api_returns_expected_log_and_status(client, user, monkeypatch):
+def test_monitoring_api_returns_expected_log_and_status(
+    client, user, monkeypatch, company, job
+):
     client.force_login(user)
     JobSource.objects.create(
         name="Greenhouse",
@@ -112,20 +119,34 @@ def test_monitoring_api_returns_expected_log_and_status(client, user, monkeypatc
         base_url="https://boards.greenhouse.io/openai",
         enabled=True,
     )
+    MonitoringService.log_success(
+        step_name="job_upsert",
+        message="Job upsert completed.",
+        service_name="JobSyncService",
+        company=company,
+        job=job,
+    )
     _patch_parser(monkeypatch)
     summary = CrawlService.crawl_enabled_sources()
 
     status_response = client.get(f"/api/runs/{summary['crawl_run_id']}/status/")
     logs_response = client.get("/api/logs/?step_name=source_crawl")
+    job_logs_response = client.get(
+        f"/api/logs/?job_id={job.id}&company_id={company.id}"
+    )
 
     assert status_response.status_code == 200
     assert status_response.json()["progress"] == 100
     assert status_response.json()["recent_logs"]
+    assert status_response.json()["step_summary"]
+    assert "by_step" in status_response.json()["error_summary"]
     assert logs_response.status_code == 200
     assert any(
-        item["step_name"] == "source_crawl"
-        for item in logs_response.json()["results"]
+        item["step_name"] == "source_crawl" for item in logs_response.json()["results"]
     )
+    assert job_logs_response.status_code == 200
+    assert job_logs_response.json()["results"][0]["job_id"] == job.id
+    assert job_logs_response.json()["results"][0]["company_id"] == company.id
 
 
 @pytest.mark.django_db
@@ -164,7 +185,61 @@ def test_monitoring_page_shows_recent_failures(client):
     assert response.status_code == 200
     content = response.content.decode()
     assert "Monitoring" in content
+    assert "Pipeline Step Summary" in content
     assert "Task failed." in content
+
+
+@pytest.mark.django_db
+def test_monitoring_service_returns_step_and_error_summaries(source_factory):
+    source = source_factory()
+    crawl_run = CrawlRun.objects.create(
+        status=CrawlRun.StatusChoices.RUNNING,
+        total_sources=1,
+        current_source=source.name,
+    )
+    MonitoringService.log_success(
+        step_name="source_detection",
+        message="Detected source.",
+        crawl_run=crawl_run,
+        source=source,
+        duration_ms=12,
+    )
+    MonitoringService.log_failure(
+        step_name="job_extraction",
+        message="Extraction failed.",
+        crawl_run=crawl_run,
+        source=source,
+        error=RuntimeError("bad html"),
+        duration_ms=30,
+    )
+
+    status = MonitoringService.run_status(crawl_run.id)
+    errors = MonitoringService.error_summary(source_id=source.id)
+
+    assert status["current_step"] == {
+        "step_name": "source_crawl",
+        "message": f"Crawling {source.name}.",
+        "source_name": source.name,
+    }
+    detection_row = next(
+        row for row in status["step_summary"] if row["step_name"] == "source_detection"
+    )
+    assert {
+        "step_name": "source_detection",
+        "status": PipelineLog.StatusChoices.SUCCESS,
+        "severity": PipelineLog.SeverityChoices.INFO,
+        "total": 1,
+        "average_duration_ms": 12.0,
+    }.items() <= detection_row.items()
+    assert status["error_summary"]["count"] == 1
+    assert errors["by_step"] == [{"step_name": "job_extraction", "total": 1}]
+    assert errors["by_source"] == [
+        {
+            "source_id": source.id,
+            "source_name": source.name,
+            "total": 1,
+        }
+    ]
 
 
 @pytest.mark.django_db
@@ -185,10 +260,13 @@ def test_long_running_flow_updates_progress_logs(monkeypatch):
 
     assert summary["progress_percentage"] == 100
     assert [update["processed_sources"] for update in progress_updates] == [1, 2, 3, 3]
-    assert PipelineLog.objects.filter(
-        crawl_run_id=summary["crawl_run_id"],
-        step_name="crawl_progress",
-    ).count() == 3
+    assert (
+        PipelineLog.objects.filter(
+            crawl_run_id=summary["crawl_run_id"],
+            step_name="crawl_progress",
+        ).count()
+        == 3
+    )
 
 
 @pytest.fixture

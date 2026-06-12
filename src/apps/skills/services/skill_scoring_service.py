@@ -40,6 +40,39 @@ class SkillScoringResult:
 
 
 class SkillScoringService:
+    CANONICAL_KEYS = {
+        "source",
+        "source_url",
+        "external_id",
+        "company_name",
+        "title",
+        "job_type",
+        "employment_type",
+        "remote_type",
+        "location",
+        "description",
+        "sections",
+        "posted_at",
+        "metadata",
+    }
+
+    def score_canonical_payload(
+        self,
+        canonical_job_payload,
+        mapped_skills,
+        verified_skills=None,
+    ):
+        data = self._canonical_job_data(canonical_job_payload)
+        source_job_identifier = data.get("external_id") or data.get("source_url") or ""
+        return self.score_mapped_skills(
+            mapped_skills=mapped_skills,
+            verified_skills=verified_skills,
+            title=data.get("title", ""),
+            description=data.get("description", ""),
+            source_fragments=self._source_fragments_from_sections(data.get("sections")),
+            source_job_identifier=str(source_job_identifier),
+        )
+
     def score_mapped_skills(
         self,
         mapped_skills,
@@ -318,3 +351,61 @@ class SkillScoringService:
     @staticmethod
     def _normalize_reason(reason):
         return re.sub(r"\s+", " ", str(reason or "")).strip()[:160]
+
+    @classmethod
+    def _canonical_job_data(cls, canonical_job_payload):
+        if hasattr(canonical_job_payload, "as_dict"):
+            canonical_job_payload = canonical_job_payload.as_dict()
+        if not isinstance(canonical_job_payload, dict):
+            raise TypeError(
+                "skill scoring requires a CanonicalJobPayload or canonical dict."
+            )
+
+        unexpected_keys = set(canonical_job_payload) - cls.CANONICAL_KEYS
+        if unexpected_keys:
+            raise ValueError(
+                "skill scoring requires canonical job payload fields only; "
+                f"unexpected field(s): {', '.join(sorted(unexpected_keys))}"
+            )
+
+        data = {
+            "source": canonical_job_payload.get("source"),
+            "source_url": canonical_job_payload.get("source_url"),
+            "external_id": canonical_job_payload.get("external_id"),
+            "company_name": canonical_job_payload.get("company_name"),
+            "title": canonical_job_payload.get("title"),
+            "job_type": canonical_job_payload.get("job_type"),
+            "employment_type": canonical_job_payload.get("employment_type"),
+            "remote_type": canonical_job_payload.get("remote_type"),
+            "location": canonical_job_payload.get("location"),
+            "description": canonical_job_payload.get("description"),
+            "sections": canonical_job_payload.get("sections") or {},
+            "posted_at": canonical_job_payload.get("posted_at"),
+            "metadata": canonical_job_payload.get("metadata") or {},
+        }
+        cls._validate_canonical_payload(data)
+        return data
+
+    @staticmethod
+    def _validate_canonical_payload(data):
+        missing = []
+        if not data.get("title"):
+            missing.append("title")
+        if not data.get("company_name"):
+            missing.append("company_name")
+        if not (data.get("source_url") or data.get("external_id")):
+            missing.append("source_url_or_external_id")
+        if missing:
+            raise ValueError(
+                "Canonical job payload missing required field(s): " + ", ".join(missing)
+            )
+
+    @staticmethod
+    def _source_fragments_from_sections(sections):
+        if not isinstance(sections, dict):
+            return []
+        return [
+            {"source": section_name, "text": text}
+            for section_name, text in sections.items()
+            if text
+        ]

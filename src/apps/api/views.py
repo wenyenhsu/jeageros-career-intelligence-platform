@@ -34,7 +34,16 @@ class CompanyViewSet(viewsets.ModelViewSet):
     def sync(self, request, pk=None):
         company = self.get_object()
         jobs = request.data.get("jobs") if isinstance(request.data, dict) else None
-        result = JobSyncService.sync_company(company, jobs)
+        try:
+            result = JobSyncService.sync_company(company, jobs)
+        except (TypeError, ValueError) as exc:
+            return Response(
+                {
+                    "success": False,
+                    "detail": str(exc),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         return Response(result.as_dict())
 
 
@@ -188,6 +197,8 @@ def monitoring_logs(request):
                 step_name=request.query_params.get("step_name", ""),
                 source_id=_int_from_request(request, "source_id"),
                 crawl_run_id=_int_from_request(request, "crawl_run_id"),
+                job_id=_int_from_request(request, "job_id"),
+                company_id=_int_from_request(request, "company_id"),
             )
         }
     )
@@ -235,6 +246,13 @@ def analytics_trends(request):
             )
         }
     )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def analytics_coverage(request):
+    service = SkillAnalyticsService()
+    return Response(service.skill_coverage_summary(filters=request.query_params))
 
 
 @api_view(["GET"])

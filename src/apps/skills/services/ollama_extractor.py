@@ -157,7 +157,9 @@ class OllamaExtractor:
             "Extract candidate technical skills from this job content. "
             "Return only JSON with a skills array. "
             "Each item must include name and source. "
-            "Source must be one of title, description, normalized_text, source_fragment, or raw_text. "
+            "Source must be one of title, description, about, responsibilities, "
+            "requirements, minimum_qualifications, preferred_qualifications, "
+            "or source_fragment. "
             "Each item may include confidence and source_fragment. "
             "Do not include personal notes, tags, soft skills, or unrelated keywords. "
             f"Limit to {self.max_skills} normalized technical skills.\n\n"
@@ -271,7 +273,9 @@ class OllamaExtractor:
         if known:
             return known
         if normalized.islower() or normalized.isupper():
-            return " ".join(word[:1].upper() + word[1:].lower() for word in normalized.split())
+            return " ".join(
+                word[:1].upper() + word[1:].lower() for word in normalized.split()
+            )
         return normalized
 
     @staticmethod
@@ -280,6 +284,11 @@ class OllamaExtractor:
         allowed_sources = {
             "title",
             "description",
+            "about",
+            "responsibilities",
+            "requirements",
+            "minimum_qualifications",
+            "preferred_qualifications",
             "normalized_text",
             "source_fragment",
             "raw_text",

@@ -14,7 +14,7 @@ class CompanyUpsertService:
         if not normalized_name:
             raise ValueError("company_name is required.")
 
-        company = Company.objects.filter(name__iexact=normalized_name).first()
+        company = cls._find_existing_company(normalized_name)
         if company is None:
             company = Company.objects.create(
                 name=normalized_name,
@@ -60,3 +60,15 @@ class CompanyUpsertService:
     @staticmethod
     def _normalize_name(company_name):
         return " ".join((company_name or "").split())
+
+    @classmethod
+    def _find_existing_company(cls, normalized_name):
+        company = Company.objects.filter(name__iexact=normalized_name).first()
+        if company is not None:
+            return company
+
+        normalized_key = normalized_name.casefold()
+        for candidate in Company.objects.all():
+            if cls._normalize_name(candidate.name).casefold() == normalized_key:
+                return candidate
+        return None

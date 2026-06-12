@@ -3,6 +3,7 @@ from io import StringIO
 
 import pytest
 from django.core.management import call_command
+from django.conf import settings
 
 import apps.imports.services.crawl_service as crawl_service
 from config.celery import app as celery_app
@@ -20,6 +21,14 @@ def test_celery_loads_successfully():
 def test_celery_task_can_be_imported():
     assert crawl_all_sources.name == "apps.imports.tasks.crawl_all_sources"
     assert callable(crawl_all_sources.run)
+
+
+def test_celery_beat_schedule_runs_crawl_task():
+    scheduled_task = settings.CELERY_BEAT_SCHEDULE["crawl-enabled-job-sources"]
+
+    assert scheduled_task["task"] == "apps.imports.tasks.crawl_all_sources"
+    assert scheduled_task["schedule"] == settings.CRAWL_SCHEDULE_SECONDS
+    assert scheduled_task["schedule"] > 0
 
 
 @pytest.mark.django_db
@@ -56,6 +65,33 @@ def test_scheduled_crawl_task_runs_against_mocked_job_source(monkeypatch):
     assert crawl_run.jobs_closed == 0
     assert crawl_run.errors == 0
     assert crawl_run.progress_percentage == 100
+
+
+@pytest.mark.django_db
+def test_scheduled_crawl_normalizes_raw_parser_output_before_sync(monkeypatch):
+    source = JobSource.objects.create(
+        name="LinkedIn",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs",
+        enabled=True,
+    )
+    monkeypatch.setattr(
+        crawl_service.ParserRegistry,
+        "get_parser",
+        staticmethod(lambda parser_type, source=None: RawLinkedInParser(source)),
+    )
+
+    summary = crawl_all_sources.run()
+
+    job = JobPost.objects.get(external_id="linkedin-123")
+    assert summary["success"] is True
+    assert summary["jobs_created"] == 1
+    assert job.company.name == "OpenAI"
+    assert job.title == "Software Engineer Intern"
+    assert job.source_url == "https://www.linkedin.com/jobs/view/123"
+    assert job.location == "Remote"
+    assert job.remote_type == "Remote"
+    assert job.employment_type == "Internship"
 
 
 @pytest.mark.django_db
@@ -267,5 +303,21 @@ class FakeParser:
                 "location": "Remote",
                 "employment_type": "Full-time",
                 "description": "Build services.",
+            }
+        ]
+
+
+class RawLinkedInParser(FakeParser):
+    def extract_jobs(self, listing_page):
+        return [
+            {
+                "jobTitle": " Software Engineer Intern ",
+                "companyName": "OpenAI",
+                "jobUrl": "https://www.linkedin.com/jobs/view/123",
+                "jobPostingId": "linkedin-123",
+                "formattedLocation": "REMOTE",
+                "workplaceType": "Remote",
+                "employmentType": "Internship",
+                "description": "Build reliable systems.",
             }
         ]

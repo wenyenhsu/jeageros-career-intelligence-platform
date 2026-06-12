@@ -7,7 +7,7 @@ from django.utils import timezone
 from apps.imports.models import CrawlRun, JobSource, PipelineLog
 
 from .company_upsert_service import CompanyUpsertService
-from .job_extractor import ExtractedJob
+from .job_normalizer import JobNormalizer
 from .job_sync_service import JobSyncService
 from .monitoring_service import MonitoringService
 from .parser_registry import ParserRegistry
@@ -127,8 +127,12 @@ class CrawlService:
 
             normalized_jobs = []
             for listing_page in listing_pages:
-                extracted_jobs = parser.extract_jobs(listing_page)
-                normalized_page_jobs = cls._normalize_jobs(extracted_jobs)
+                raw_jobs = parser.extract_jobs(listing_page)
+                normalized_page_jobs = cls._normalize_jobs(
+                    raw_jobs,
+                    source=source,
+                    parser_type=parser_type,
+                )
                 normalized_jobs.extend(normalized_page_jobs)
                 MonitoringService.log_success(
                     step_name="job_extraction",
@@ -138,7 +142,8 @@ class CrawlService:
                     source=source,
                     metadata={
                         "listing_url": listing_page.url,
-                        "jobs_found": len(normalized_page_jobs),
+                        "raw_jobs_found": len(raw_jobs or []),
+                        "canonical_jobs": len(normalized_page_jobs),
                     },
                 )
 
@@ -210,7 +215,11 @@ class CrawlService:
 
         for company_name, company_jobs in jobs_by_company.items():
             company_result = CompanyUpsertService.upsert(company_name)
-            result = JobSyncService.sync_company(company_result.company, company_jobs)
+            result = JobSyncService.sync_company(
+                company_result.company,
+                company_jobs,
+                source=source,
+            )
             totals["jobs_created"] += result.jobs_created
             totals["jobs_updated"] += result.jobs_updated
             totals["jobs_closed"] += result.jobs_closed
@@ -218,27 +227,12 @@ class CrawlService:
         return totals
 
     @staticmethod
-    def _normalize_jobs(extracted_jobs):
-        if isinstance(extracted_jobs, (ExtractedJob, dict)):
-            extracted_jobs = [extracted_jobs]
-
-        normalized_jobs = []
-        for job in extracted_jobs or []:
-            if isinstance(job, ExtractedJob):
-                normalized_jobs.append(
-                    {
-                        "title": job.title,
-                        "company_name": job.company_name,
-                        "source_url": job.source_url,
-                        "external_id": job.external_id,
-                        "location": job.location,
-                        "employment_type": job.employment_type,
-                        "description": job.description,
-                    }
-                )
-            else:
-                normalized_jobs.append(dict(job))
-        return normalized_jobs
+    def _normalize_jobs(raw_jobs, source=None, parser_type=""):
+        canonical_jobs = JobNormalizer.normalize_many(
+            raw_jobs,
+            source=source or parser_type,
+        )
+        return [job.as_dict() for job in canonical_jobs]
 
     @classmethod
     def _target_company_names(cls, source):

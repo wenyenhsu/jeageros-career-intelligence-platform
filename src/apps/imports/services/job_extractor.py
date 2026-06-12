@@ -22,17 +22,20 @@ class JobExtractor:
     parser_type = SourceDetector.CAREER_SITE
 
     def extract(self, payload):
-        if isinstance(payload, ExtractedJob):
-            return payload
         if isinstance(payload, dict):
-            return self.normalize(payload)
+            return dict(payload)
         if isinstance(payload, str):
-            return self.normalize({"source_url": payload})
+            return {"url": payload}
+        if isinstance(payload, ExtractedJob):
+            return (
+                dict(payload.raw_data) if payload.raw_data else dict(payload.__dict__)
+            )
         raise TypeError(
-            "JobExtractor payload must be a dict, URL string, or ExtractedJob."
+            "JobExtractor payload must be a raw dict, URL string, or ExtractedJob."
         )
 
     def normalize(self, data):
+        """Legacy compatibility shim. Use JobNormalizer for canonical payloads."""
         source_url = data.get("source_url") or data.get("url") or ""
         return ExtractedJob(
             title=data.get("title", ""),

@@ -12,6 +12,7 @@ from .ollama_verifier import (
     VerifiedSkill,
 )
 from .skillset_mapper import (
+    MappedKeyword,
     MappedSkill,
     SkillMappingResult,
     SkillSetMapper,
@@ -26,6 +27,7 @@ from .skill_scoring_service import (
 __all__ = [
     "CandidateSkill",
     "MappedSkill",
+    "MappedKeyword",
     "OllamaExtractor",
     "OllamaVerifier",
     "RejectedSkill",

@@ -119,10 +119,11 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
+CRAWL_SCHEDULE_SECONDS = int(os.getenv("CRAWL_SCHEDULE_SECONDS", "900"))
 CELERY_BEAT_SCHEDULE = {
     "crawl-enabled-job-sources": {
         "task": "apps.imports.tasks.crawl_all_sources",
-        "schedule": int(os.getenv("CRAWL_SCHEDULE_SECONDS", "900")),
+        "schedule": CRAWL_SCHEDULE_SECONDS,
     },
 }
 

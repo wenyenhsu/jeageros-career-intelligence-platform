@@ -4,7 +4,7 @@ import traceback
 
 from django.core.serializers.json import DjangoJSONEncoder
 
-from django.db.models import Count
+from django.db.models import Avg, Count, Max
 
 from apps.imports.models import CrawlRun, PipelineLog
 
@@ -113,6 +113,8 @@ class MonitoringService:
         step_name="",
         source_id=None,
         crawl_run_id=None,
+        job_id=None,
+        company_id=None,
     ):
         qs = PipelineLog.objects.select_related(
             "crawl_run",
@@ -130,6 +132,10 @@ class MonitoringService:
             qs = qs.filter(source_id=source_id)
         if crawl_run_id:
             qs = qs.filter(crawl_run_id=crawl_run_id)
+        if job_id:
+            qs = qs.filter(job_id=job_id)
+        if company_id:
+            qs = qs.filter(company_id=company_id)
         return [cls.log_to_dict(log) for log in qs[:limit]]
 
     @classmethod
@@ -139,19 +145,14 @@ class MonitoringService:
             limit=recent_limit,
             crawl_run_id=crawl_run.id,
         )
-        errors = PipelineLog.objects.filter(
-            crawl_run=crawl_run,
-            status=PipelineLog.StatusChoices.FAILED,
-        )
         return {
             "status": crawl_run.status,
             "progress": crawl_run.progress_percentage,
             "crawl_run": crawl_run.as_progress_dict(),
+            "current_step": cls._current_step_for_run(crawl_run),
+            "step_summary": cls.step_summary(crawl_run_id=crawl_run.id),
             "recent_logs": recent_logs,
-            "error_summary": {
-                "count": errors.count(),
-                "recent": [cls.log_to_dict(log) for log in errors[:5]],
-            },
+            "error_summary": cls.error_summary(crawl_run_id=crawl_run.id),
         }
 
     @classmethod
@@ -171,6 +172,9 @@ class MonitoringService:
         )
         return {
             "latest_run": latest_run.as_progress_dict() if latest_run else None,
+            "step_summary": cls.step_summary(
+                crawl_run_id=latest_run.id if latest_run else None
+            ),
             "recent_logs": cls.recent_logs(limit=recent_limit),
             "recent_failures": [cls.log_to_dict(log) for log in recent_failures],
             "top_error_sources": [
@@ -181,6 +185,75 @@ class MonitoringService:
                 }
                 for row in top_error_sources
             ],
+        }
+
+    @classmethod
+    def step_summary(cls, crawl_run_id=None, limit=20):
+        qs = PipelineLog.objects.all()
+        if crawl_run_id:
+            qs = qs.filter(crawl_run_id=crawl_run_id)
+
+        rows = (
+            qs.values("step_name", "status", "severity")
+            .annotate(
+                total=Count("id"),
+                last_seen_at=Max("created_at"),
+                average_duration_ms=Avg("duration_ms"),
+            )
+            .order_by("step_name", "status", "severity")[:limit]
+        )
+        return [
+            {
+                "step_name": row["step_name"],
+                "status": row["status"],
+                "severity": row["severity"],
+                "total": row["total"],
+                "last_seen_at": (
+                    row["last_seen_at"].isoformat() if row["last_seen_at"] else None
+                ),
+                "average_duration_ms": cls._round_duration(row["average_duration_ms"]),
+            }
+            for row in rows
+        ]
+
+    @classmethod
+    def error_summary(
+        cls,
+        crawl_run_id=None,
+        source_id=None,
+        job_id=None,
+        company_id=None,
+        recent_limit=5,
+    ):
+        qs = PipelineLog.objects.filter(status=PipelineLog.StatusChoices.FAILED)
+        if crawl_run_id:
+            qs = qs.filter(crawl_run_id=crawl_run_id)
+        if source_id:
+            qs = qs.filter(source_id=source_id)
+        if job_id:
+            qs = qs.filter(job_id=job_id)
+        if company_id:
+            qs = qs.filter(company_id=company_id)
+
+        return {
+            "count": qs.count(),
+            "by_step": list(
+                qs.values("step_name")
+                .annotate(total=Count("id"))
+                .order_by("-total", "step_name")
+            ),
+            "by_source": [
+                {
+                    "source_id": row["source_id"],
+                    "source_name": row["source__name"],
+                    "total": row["total"],
+                }
+                for row in qs.filter(source__isnull=False)
+                .values("source_id", "source__name")
+                .annotate(total=Count("id"))
+                .order_by("-total", "source__name")
+            ],
+            "recent": [cls.log_to_dict(log) for log in qs[:recent_limit]],
         }
 
     @staticmethod
@@ -218,3 +291,28 @@ class MonitoringService:
             return json.loads(json.dumps(value, cls=DjangoJSONEncoder, default=str))
         except TypeError:
             return {"value": str(value)}
+
+    @staticmethod
+    def _round_duration(value):
+        return round(float(value), 2) if value is not None else None
+
+    @classmethod
+    def _current_step_for_run(cls, crawl_run):
+        if crawl_run.current_source:
+            return {
+                "step_name": "source_crawl",
+                "message": f"Crawling {crawl_run.current_source}.",
+                "source_name": crawl_run.current_source,
+            }
+        log = (
+            PipelineLog.objects.filter(crawl_run=crawl_run)
+            .only("step_name", "message", "status")
+            .first()
+        )
+        if not log:
+            return {}
+        return {
+            "step_name": log.step_name,
+            "status": log.status,
+            "message": log.message,
+        }

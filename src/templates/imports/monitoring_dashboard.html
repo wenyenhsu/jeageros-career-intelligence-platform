@@ -95,6 +95,38 @@
   </div>
 </section>
 
+<section class="mb-5">
+  <h2 class="h5 mb-3">Pipeline Step Summary</h2>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>Step</th>
+          <th>Status</th>
+          <th>Severity</th>
+          <th class="text-end">Events</th>
+          <th class="text-end">Avg Duration</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in step_summary %}
+          <tr>
+            <td>{{ row.step_name }}</td>
+            <td>{{ row.status }}</td>
+            <td>{{ row.severity }}</td>
+            <td class="text-end">{{ row.total }}</td>
+            <td class="text-end">
+              {% if row.average_duration_ms is not None %}{{ row.average_duration_ms }} ms{% else %}-{% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="5" class="text-secondary">No step summary yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
 <section>
   <h2 class="h5 mb-3">Recent Pipeline Logs</h2>
   <div class="table-responsive">
