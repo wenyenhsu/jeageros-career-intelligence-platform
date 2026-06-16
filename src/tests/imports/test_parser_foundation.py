@@ -1,3 +1,4 @@
+import apps.imports.parsers.linkedin as linkedin_parser_module
 from apps.imports.models import JobSource
 from apps.imports.services import (
     CareerSiteParser,
@@ -113,3 +114,173 @@ def test_parser_extracts_raw_job_payload_without_normalizing():
     assert extracted["url"] == "https://jobs.lever.co/openai/backend-engineer"
     assert extracted["external_id"] == "backend-engineer"
     assert "company_name" not in extracted
+
+
+def test_linkedin_parser_extracts_direct_public_job_url(monkeypatch):
+    source = JobSource(
+        name="LinkedIn SWE Intern",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/view/9876543210/",
+    )
+    parser = LinkedInParser(source=source)
+    monkeypatch.setattr(
+        linkedin_parser_module,
+        "urlopen",
+        _fake_linkedin_urlopen(
+            {
+                "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/9876543210": _linkedin_detail_html(
+                    job_id="9876543210",
+                    title="Software Engineer Intern",
+                    company="OpenAI",
+                    location="San Francisco, CA",
+                    employment_type="Internship",
+                )
+            }
+        ),
+    )
+
+    jobs = parser.extract_jobs(parser.find_listing_pages()[0])
+
+    assert jobs == [
+        {
+            "jobTitle": "Software Engineer Intern",
+            "companyName": "OpenAI",
+            "formattedLocation": "San Francisco, CA",
+            "employmentType": "Internship",
+            "description": "Build reliable Django services.",
+            "postedAt": "2026-06-10",
+            "metadata": {
+                "linkedin_criteria": {"employment type": "Internship"},
+                "source_parser": "LINKEDIN",
+            },
+            "jobPostingId": "9876543210",
+            "jobUrl": "https://www.linkedin.com/jobs/view/9876543210/",
+        }
+    ]
+
+
+def test_linkedin_parser_extracts_search_results_through_guest_endpoint(monkeypatch):
+    source = JobSource(
+        name="LinkedIn Search",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/?keywords=python&location=Remote",
+        crawl_config={"max_pages": 1},
+    )
+    parser = LinkedInParser(source=source)
+    monkeypatch.setattr(
+        linkedin_parser_module,
+        "urlopen",
+        _fake_linkedin_urlopen(
+            {
+                "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=python&location=Remote&start=0": _linkedin_search_html(),
+                "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/5555555555": _linkedin_detail_html(
+                    job_id="5555555555",
+                    title="Backend Engineer",
+                    company="OpenAI",
+                    location="Remote",
+                    employment_type="Full-time",
+                ),
+            }
+        ),
+    )
+
+    jobs = parser.extract_jobs(parser.find_listing_pages()[0])
+
+    assert len(jobs) == 1
+    assert jobs[0]["jobPostingId"] == "5555555555"
+    assert jobs[0]["jobUrl"] == "https://www.linkedin.com/jobs/view/5555555555/"
+    assert jobs[0]["jobTitle"] == "Backend Engineer"
+    assert jobs[0]["companyName"] == "OpenAI"
+    assert jobs[0]["formattedLocation"] == "Remote"
+    assert jobs[0]["employmentType"] == "Full-time"
+
+
+def test_linkedin_parser_rejects_placeholder_job_ids():
+    parser = LinkedInParser(
+        source=JobSource(
+            name="LinkedIn Placeholder",
+            resource=JobSource.ResourceChoices.LINKEDIN,
+            base_url="https://www.linkedin.com/jobs/",
+            crawl_config={
+                "jobs": [
+                    {
+                        "jobTitle": "Backend Engineer",
+                        "companyName": "OpenAI",
+                        "jobUrl": "https://www.linkedin.com/jobs/view/1234567890/",
+                    }
+                ]
+            },
+        )
+    )
+
+    try:
+        parser.extract_jobs(parser.find_listing_pages()[0])
+    except ValueError as exc:
+        assert "placeholder job id" in str(exc)
+    else:
+        raise AssertionError("Expected placeholder LinkedIn job ids to be rejected.")
+
+
+class _FakeLinkedInHeaders:
+    def get_content_charset(self):
+        return "utf-8"
+
+
+class _FakeLinkedInResponse:
+    headers = _FakeLinkedInHeaders()
+
+    def __init__(self, body):
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def read(self):
+        return self.body.encode()
+
+
+def _fake_linkedin_urlopen(responses):
+    def fake_urlopen(request, timeout=None):
+        url = request.full_url
+        assert timeout
+        if url not in responses:
+            raise AssertionError(f"Unexpected LinkedIn URL requested: {url}")
+        return _FakeLinkedInResponse(responses[url])
+
+    return fake_urlopen
+
+
+def _linkedin_search_html():
+    return """
+    <div class="base-search-card" data-entity-urn="urn:li:jobPosting:5555555555">
+      <a class="base-card__full-link" href="https://www.linkedin.com/jobs/view/5555555555/?refId=abc">View job</a>
+      <h3 class="base-search-card__title">Backend Engineer</h3>
+      <h4 class="base-search-card__subtitle"><a>OpenAI</a></h4>
+      <span class="job-search-card__location">Remote</span>
+      <time datetime="2026-06-11"></time>
+    </div>
+    """
+
+
+def _linkedin_detail_html(job_id, title, company, location, employment_type):
+    return f"""
+    <html>
+      <body>
+        <h1 class="top-card-layout__title">{title}</h1>
+        <a class="topcard__org-name-link">{company}</a>
+        <span class="topcard__flavor--bullet">{location}</span>
+        <time datetime="2026-06-10"></time>
+        <div class="show-more-less-html__markup">
+          <p>Build reliable Django services.</p>
+        </div>
+        <li class="description__job-criteria-item">
+          <h3 class="description__job-criteria-subheader">Employment type</h3>
+          <span class="description__job-criteria-text">{employment_type}</span>
+        </li>
+        <a href="https://www.linkedin.com/jobs/view/{job_id}/">Canonical</a>
+      </body>
+    </html>
+    """
