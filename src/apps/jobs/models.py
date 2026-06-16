@@ -51,6 +51,7 @@ class JobPost(TimeStampedModel):
     )
     location = models.CharField(max_length=120, blank=True)
     remote_type = models.CharField(max_length=50, blank=True)
+    job_type = models.CharField(max_length=100, blank=True, default="")
     employment_type = models.CharField(max_length=100, blank=True)
     salary_min = models.PositiveIntegerField(null=True, blank=True)
     salary_max = models.PositiveIntegerField(null=True, blank=True)
@@ -70,6 +71,14 @@ class JobPost(TimeStampedModel):
     def __str__(self):
         return f"{self.company.name} - {self.title}"
 
+    def save(self, *args, **kwargs):
+        normalized_job_type = self.normalize_job_type(
+            self.employment_type or self.job_type
+        )
+        self.job_type = normalized_job_type
+        self.employment_type = normalized_job_type
+        super().save(*args, **kwargs)
+
     @property
     def title_display(self):
         return self.title or ""
@@ -77,14 +86,6 @@ class JobPost(TimeStampedModel):
     @property
     def source_url_display(self):
         return (self.source_url or "").strip()
-
-    @property
-    def job_type(self):
-        return self.employment_type or ""
-
-    @job_type.setter
-    def job_type(self, value):
-        self.employment_type = value or ""
 
     @property
     def job_type_display(self):

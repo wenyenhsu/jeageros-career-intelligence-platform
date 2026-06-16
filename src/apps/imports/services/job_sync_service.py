@@ -182,6 +182,9 @@ class JobSyncService:
 
     @staticmethod
     def _job_fields(data, company, synced_at):
+        job_type = JobPost.normalize_job_type(
+            data.get("employment_type") or data.get("job_type") or ""
+        )
         return {
             "company": company,
             "title": data["title"],
@@ -191,9 +194,8 @@ class JobSyncService:
             "status": JobPost.StatusChoices.ACTIVE,
             "location": data.get("location") or "",
             "remote_type": data.get("remote_type") or "",
-            "employment_type": JobPost.normalize_job_type(
-                data.get("employment_type") or data.get("job_type") or ""
-            ),
+            "job_type": job_type,
+            "employment_type": job_type,
             "description": data.get("description") or "",
             "last_synced_at": synced_at,
         }

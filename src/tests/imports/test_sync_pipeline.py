@@ -67,6 +67,7 @@ def test_job_sync_creates_job_from_canonical_dict():
     assert result.job.external_id == "openai-backend-engineer"
     assert result.job.location == "Remote"
     assert result.job.remote_type == "Remote"
+    assert result.job.job_type == "Full-time"
     assert result.job.employment_type == "Full-time"
     assert result.job.status == JobPost.StatusChoices.ACTIVE
     assert result.job.source_type == JobPost.SourceType.URL
@@ -97,6 +98,7 @@ def test_job_sync_accepts_canonical_payload_dataclass():
     assert result.created is True
     assert result.job.title == "Platform Engineer"
     assert result.job.remote_type == "Hybrid"
+    assert result.job.job_type == "Full-time"
     assert result.job.employment_type == "Full-time"
 
 
