@@ -1,9 +1,11 @@
 import logging
+from types import SimpleNamespace
 from io import StringIO
 
 import pytest
 from django.core.management import call_command
 from django.conf import settings
+from django.test import override_settings
 
 import apps.imports.services.crawl_service as crawl_service
 from config.celery import app as celery_app
@@ -144,6 +146,64 @@ def test_scheduled_crawl_processes_enabled_sources(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_scheduled_crawl_filters_jobs_to_target_companies(monkeypatch):
+    source = JobSource.objects.create(
+        name="LinkedIn OpenAI",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/?keywords=backend",
+        enabled=True,
+        filter_config={"target_companies": ["OpenAI"]},
+    )
+    monkeypatch.setattr(
+        crawl_service.ParserRegistry,
+        "get_parser",
+        staticmethod(lambda parser_type, source=None: MixedCompanyParser(source)),
+    )
+
+    summary = CrawlService.crawl_all_sources([source])
+
+    assert summary["success"] is True
+    assert summary["jobs_created"] == 1
+    assert summary["sources"][0]["jobs_found"] == 1
+    assert summary["sources"][0]["jobs_filtered"] == 1
+    assert list(JobPost.objects.values_list("company__name", flat=True)) == ["OpenAI"]
+
+
+@pytest.mark.django_db
+@override_settings(CRAWL_SKILL_PIPELINE_ENABLED=True)
+def test_scheduled_crawl_runs_skill_pipeline_after_sync(monkeypatch):
+    source = JobSource.objects.create(
+        name="Greenhouse",
+        resource=JobSource.ResourceChoices.GREENHOUSE,
+        base_url="https://boards.greenhouse.io/openai",
+        enabled=True,
+        crawl_config={"auto_create_skills": True},
+    )
+    _patch_parser(monkeypatch)
+    processed = []
+
+    class FakeSkillPipelineService:
+        def process_job_post(self, job_post, canonical_job_payload, auto_create=None):
+            processed.append((job_post.id, canonical_job_payload["external_id"], auto_create))
+            return SimpleNamespace(success=True, attached_count=2)
+
+    monkeypatch.setattr(
+        crawl_service,
+        "SkillPipelineService",
+        FakeSkillPipelineService,
+    )
+
+    summary = CrawlService.crawl_all_sources([source])
+
+    assert summary["success"] is True
+    assert processed == [(JobPost.objects.get().id, f"{source.id}-backend", True)]
+    assert summary["skill_pipeline_jobs_processed"] == 1
+    assert summary["skill_pipeline_failures"] == 0
+    assert summary["skills_attached"] == 2
+    assert summary["sources"][0]["skills_attached"] == 2
+
+
+@pytest.mark.django_db
 def test_scheduled_crawl_returns_summary_and_logs_counts(monkeypatch, caplog):
     JobSource.objects.create(
         name="Greenhouse",
@@ -269,6 +329,9 @@ def test_manual_crawl_command_displays_progress_bar(monkeypatch):
     assert "Created: 1" in output
     assert "Updated: 0" in output
     assert "Closed: 0" in output
+    assert "Filtered: 0" in output
+    assert "Skills attached: 0" in output
+    assert "Skill pipeline failures: 0" in output
     assert '"jobs_created": 1' in output
 
 
@@ -320,4 +383,28 @@ class RawLinkedInParser(FakeParser):
                 "employmentType": "Internship",
                 "description": "Build reliable systems.",
             }
+        ]
+
+
+class MixedCompanyParser(FakeParser):
+    def extract_jobs(self, listing_page):
+        return [
+            {
+                "title": "Backend Engineer",
+                "company_name": "OpenAI",
+                "source_url": f"{listing_page.url}/openai-backend",
+                "external_id": "openai-backend",
+                "location": "Remote",
+                "employment_type": "Full-time",
+                "description": "Build Python services.",
+            },
+            {
+                "title": "Backend Engineer",
+                "company_name": "Netflix",
+                "source_url": f"{listing_page.url}/netflix-backend",
+                "external_id": "netflix-backend",
+                "location": "Remote",
+                "employment_type": "Full-time",
+                "description": "Build Python services.",
+            },
         ]

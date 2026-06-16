@@ -39,6 +39,14 @@ class Command(BaseCommand):
         self.stdout.write(f"Created: {summary['jobs_created']}")
         self.stdout.write(f"Updated: {summary['jobs_updated']}")
         self.stdout.write(f"Closed: {summary['jobs_closed']}")
+        filtered_count = sum(
+            source.get("jobs_filtered", 0) for source in summary["sources"]
+        )
+        self.stdout.write(f"Filtered: {filtered_count}")
+        self.stdout.write(f"Skills attached: {summary.get('skills_attached', 0)}")
+        self.stdout.write(
+            f"Skill pipeline failures: {summary.get('skill_pipeline_failures', 0)}"
+        )
         self.stdout.write(f"Errors: {summary['errors']}")
         self.stdout.write(json.dumps(summary, indent=2, sort_keys=True))
 

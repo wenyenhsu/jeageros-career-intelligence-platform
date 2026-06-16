@@ -174,11 +174,12 @@ def test_monitoring_admin_list_and_search_work(client):
 
 @pytest.mark.django_db
 def test_monitoring_page_shows_recent_failures(client):
-    MonitoringService.log_failure(
+    log = MonitoringService.log_failure(
         step_name="celery_task",
         message="Task failed.",
         error=RuntimeError("boom"),
     )
+    timestamp = MonitoringService.log_to_dict(log)
 
     response = client.get(reverse("monitoring-dashboard"))
 
@@ -187,6 +188,11 @@ def test_monitoring_page_shows_recent_failures(client):
     assert "Monitoring" in content
     assert "Pipeline Step Summary" in content
     assert "Task failed." in content
+    assert "<time" in content
+    assert "datetime=" in content
+    assert timestamp["created_at_display"] in content
+    assert timestamp["created_at_title"] in content
+    assert "+00:00" not in content
 
 
 @pytest.mark.django_db

@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load tz %}
 
 {% block content %}
 <div class="container mt-5">
@@ -83,11 +84,25 @@
                     </tr>
                     <tr>
                         <th>Created At</th>
-                        <td>{{ job.created_at }}</td>
+                        <td>
+                            <time
+                                datetime="{{ job.created_at|date:'c' }}"
+                                title="{{ job.created_at|localtime|date:'Y-m-d H:i:s T' }}"
+                            >
+                                {{ job.created_at|localtime|date:'M j, g:i A' }}
+                            </time>
+                        </td>
                     </tr>
                     <tr>
                         <th>Updated At</th>
-                        <td>{{ job.updated_at }}</td>
+                        <td>
+                            <time
+                                datetime="{{ job.updated_at|date:'c' }}"
+                                title="{{ job.updated_at|localtime|date:'Y-m-d H:i:s T' }}"
+                            >
+                                {{ job.updated_at|localtime|date:'M j, g:i A' }}
+                            </time>
+                        </td>
                     </tr>
                 </tbody>
             </table>

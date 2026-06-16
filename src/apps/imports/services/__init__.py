@@ -20,6 +20,7 @@ from .parser_registry import (
 from .skill_attach_service import SkillAttachResult, SkillAttachService
 from .skill_extraction_service import SkillExtractionService
 from .skill_mapping_service import SkillMappingService
+from .skill_pipeline_service import SkillPipelineResult, SkillPipelineService
 from .skill_verification_service import SkillVerificationService
 from .source_detector import SourceDetector
 from .sync_result import CompanyUpsertResult, JobUpsertResult, SyncResult
@@ -51,6 +52,8 @@ __all__ = [
     "SkillAttachService",
     "SkillExtractionService",
     "SkillMappingService",
+    "SkillPipelineResult",
+    "SkillPipelineService",
     "SkillVerificationService",
     "SourceDetector",
     "SyncResult",

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -11,6 +11,7 @@ class CompanyUpsertResult:
 class JobUpsertResult:
     job: object
     created: bool
+    canonical_job_payload: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -19,6 +20,7 @@ class SyncResult:
     jobs_created: int = 0
     jobs_updated: int = 0
     jobs_closed: int = 0
+    job_results: list[JobUpsertResult] = field(default_factory=list)
 
     def as_dict(self):
         return {

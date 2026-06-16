@@ -61,6 +61,7 @@ class JobSyncService:
             return JobUpsertResult(
                 job=job,
                 created=True,
+                canonical_job_payload=data,
             )
 
         changed_fields = []
@@ -86,7 +87,7 @@ class JobSyncService:
                 "updated_fields": changed_fields,
             },
         )
-        return JobUpsertResult(job=job, created=False)
+        return JobUpsertResult(job=job, created=False, canonical_job_payload=data)
 
     @classmethod
     def sync_company(cls, company, canonical_jobs=None, source=None):
@@ -95,6 +96,7 @@ class JobSyncService:
 
         jobs_created = 0
         jobs_updated = 0
+        job_results = []
         seen_job_ids = set()
         source_scope = cls._source_scope(source)
 
@@ -109,6 +111,7 @@ class JobSyncService:
                 jobs_created += 1
             else:
                 jobs_updated += 1
+            job_results.append(result)
             if result.job.company_id == company.id:
                 seen_job_ids.add(result.job.id)
 
@@ -118,6 +121,7 @@ class JobSyncService:
             jobs_created=jobs_created,
             jobs_updated=jobs_updated,
             jobs_closed=jobs_closed,
+            job_results=job_results,
         )
         MonitoringService.log_event(
             step_name="company_sync",

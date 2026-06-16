@@ -134,6 +134,14 @@ OLLAMA_MAX_CANDIDATE_SKILLS = int(os.getenv("OLLAMA_MAX_CANDIDATE_SKILLS", "20")
 OLLAMA_MAX_VERIFIED_SKILLS = int(
     os.getenv("OLLAMA_MAX_VERIFIED_SKILLS", str(OLLAMA_MAX_CANDIDATE_SKILLS))
 )
+CRAWL_SKILL_PIPELINE_ENABLED = (
+    os.getenv("CRAWL_SKILL_PIPELINE_ENABLED", "true").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
+CRAWL_SKILL_AUTO_CREATE = (
+    os.getenv("CRAWL_SKILL_AUTO_CREATE", "true").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
 
 LOGGING = {
     "version": 1,

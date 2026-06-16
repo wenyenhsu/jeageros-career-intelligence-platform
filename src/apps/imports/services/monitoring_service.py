@@ -5,6 +5,8 @@ import traceback
 from django.core.serializers.json import DjangoJSONEncoder
 
 from django.db.models import Avg, Count, Max
+from django.utils import timezone
+from django.utils.dateformat import format as date_format
 
 from apps.imports.models import CrawlRun, PipelineLog
 
@@ -258,9 +260,13 @@ class MonitoringService:
 
     @staticmethod
     def log_to_dict(log):
+        created_at = MonitoringService._display_timestamp(log.created_at)
         return {
             "id": log.id,
             "created_at": log.created_at.isoformat() if log.created_at else None,
+            "created_at_datetime": created_at["datetime"],
+            "created_at_display": created_at["display"],
+            "created_at_title": created_at["title"],
             "service_name": log.service_name,
             "step_name": log.step_name,
             "status": log.status,
@@ -295,6 +301,17 @@ class MonitoringService:
     @staticmethod
     def _round_duration(value):
         return round(float(value), 2) if value is not None else None
+
+    @staticmethod
+    def _display_timestamp(value):
+        if not value:
+            return {"datetime": "", "display": "-", "title": ""}
+        local_value = timezone.localtime(value)
+        return {
+            "datetime": local_value.isoformat(),
+            "display": date_format(local_value, "M j, g:i A"),
+            "title": date_format(local_value, "Y-m-d H:i:s T"),
+        }
 
     @classmethod
     def _current_step_for_run(cls, crawl_run):

@@ -1,4 +1,6 @@
 {% extends 'base.html' %}
+{% load tz %}
+
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
   <div>
@@ -41,6 +43,8 @@
               <th>Job Type</th>
               <th>Location</th>
               <th>Skills</th>
+              <th>Created</th>
+              <th>Updated</th>
               <th class="text-end">Actions</th>
             </tr>
           </thead>
@@ -70,6 +74,22 @@
                   {% empty %}
                     <span class="text-muted">-</span>
                   {% endfor %}
+                </td>
+                <td class="text-nowrap">
+                  <time
+                    datetime="{{ job.created_at|date:'c' }}"
+                    title="{{ job.created_at|localtime|date:'Y-m-d H:i:s T' }}"
+                  >
+                    {{ job.created_at|localtime|date:'M j, g:i A' }}
+                  </time>
+                </td>
+                <td class="text-nowrap">
+                  <time
+                    datetime="{{ job.updated_at|date:'c' }}"
+                    title="{{ job.updated_at|localtime|date:'Y-m-d H:i:s T' }}"
+                  >
+                    {{ job.updated_at|localtime|date:'M j, g:i A' }}
+                  </time>
                 </td>
                 <td class="text-end">
                   <a href="{% url 'job-detail' job.id %}" class="btn btn-sm btn-outline-secondary">View</a>

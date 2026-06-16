@@ -2,6 +2,7 @@ import logging
 import time
 from collections import defaultdict
 
+from django.conf import settings
 from django.utils import timezone
 
 from apps.imports.models import CrawlRun, JobSource, PipelineLog
@@ -11,6 +12,7 @@ from .job_normalizer import JobNormalizer
 from .job_sync_service import JobSyncService
 from .monitoring_service import MonitoringService
 from .parser_registry import ParserRegistry
+from .skill_pipeline_service import SkillPipelineService
 from .source_detector import SourceDetector
 
 logger = logging.getLogger(__name__)
@@ -65,6 +67,13 @@ class CrawlService:
                 summary["jobs_created"] += source_summary["jobs_created"]
                 summary["jobs_updated"] += source_summary["jobs_updated"]
                 summary["jobs_closed"] += source_summary["jobs_closed"]
+                summary["skill_pipeline_jobs_processed"] += source_summary[
+                    "skill_pipeline_jobs_processed"
+                ]
+                summary["skill_pipeline_failures"] += source_summary[
+                    "skill_pipeline_failures"
+                ]
+                summary["skills_attached"] += source_summary["skills_attached"]
 
             cls._update_crawl_run_progress(crawl_run, source_summary, summary)
             summary["progress"] = crawl_run.as_progress_dict()
@@ -126,6 +135,7 @@ class CrawlService:
             )
 
             normalized_jobs = []
+            jobs_filtered = 0
             for listing_page in listing_pages:
                 raw_jobs = parser.extract_jobs(listing_page)
                 normalized_page_jobs = cls._normalize_jobs(
@@ -133,10 +143,17 @@ class CrawlService:
                     source=source,
                     parser_type=parser_type,
                 )
-                normalized_jobs.extend(normalized_page_jobs)
+                filtered_page_jobs, filtered_out_count = (
+                    cls._filter_normalized_jobs_for_source(
+                        normalized_page_jobs,
+                        source=source,
+                    )
+                )
+                jobs_filtered += filtered_out_count
+                normalized_jobs.extend(filtered_page_jobs)
                 MonitoringService.log_success(
                     step_name="job_extraction",
-                    message=f"Extracted {len(normalized_page_jobs)} jobs from listing page.",
+                    message=f"Extracted {len(filtered_page_jobs)} jobs from listing page.",
                     service_name=cls.__name__,
                     crawl_run=crawl_run,
                     source=source,
@@ -144,10 +161,13 @@ class CrawlService:
                         "listing_url": listing_page.url,
                         "raw_jobs_found": len(raw_jobs or []),
                         "canonical_jobs": len(normalized_page_jobs),
+                        "canonical_jobs_after_filters": len(filtered_page_jobs),
+                        "jobs_filtered": filtered_out_count,
                     },
                 )
 
             source_summary["jobs_found"] = len(normalized_jobs)
+            source_summary["jobs_filtered"] = jobs_filtered
             sync_summary = cls._sync_jobs_for_source(source, normalized_jobs)
             source_summary.update(sync_summary)
             source_summary["status"] = "processed"
@@ -202,6 +222,9 @@ class CrawlService:
             "jobs_created": 0,
             "jobs_updated": 0,
             "jobs_closed": 0,
+            "skill_pipeline_jobs_processed": 0,
+            "skill_pipeline_failures": 0,
+            "skills_attached": 0,
         }
         jobs_by_company = defaultdict(list)
 
@@ -223,7 +246,45 @@ class CrawlService:
             totals["jobs_created"] += result.jobs_created
             totals["jobs_updated"] += result.jobs_updated
             totals["jobs_closed"] += result.jobs_closed
+            skill_totals = cls._run_skill_pipeline_for_results(
+                result.job_results,
+                source=source,
+            )
+            totals["skill_pipeline_jobs_processed"] += skill_totals[
+                "skill_pipeline_jobs_processed"
+            ]
+            totals["skill_pipeline_failures"] += skill_totals[
+                "skill_pipeline_failures"
+            ]
+            totals["skills_attached"] += skill_totals["skills_attached"]
 
+        return totals
+
+    @classmethod
+    def _run_skill_pipeline_for_results(cls, job_results, source):
+        totals = {
+            "skill_pipeline_jobs_processed": 0,
+            "skill_pipeline_failures": 0,
+            "skills_attached": 0,
+        }
+        if not cls._skill_pipeline_enabled(source):
+            return totals
+
+        service = SkillPipelineService()
+        auto_create = cls._skill_auto_create_enabled(source)
+        for result in job_results:
+            if not result.canonical_job_payload:
+                continue
+            pipeline_result = service.process_job_post(
+                job_post=result.job,
+                canonical_job_payload=result.canonical_job_payload,
+                auto_create=auto_create,
+            )
+            totals["skill_pipeline_jobs_processed"] += 1
+            if not pipeline_result.success:
+                totals["skill_pipeline_failures"] += 1
+                continue
+            totals["skills_attached"] += pipeline_result.attached_count
         return totals
 
     @staticmethod
@@ -235,6 +296,72 @@ class CrawlService:
         return [job.as_dict() for job in canonical_jobs]
 
     @classmethod
+    def _filter_normalized_jobs_for_source(cls, normalized_jobs, source):
+        filtered = []
+        filtered_out_count = 0
+        for job_data in normalized_jobs:
+            if cls._job_matches_source_filters(job_data, source):
+                filtered.append(job_data)
+            else:
+                filtered_out_count += 1
+                logger.info(
+                    "Filtered job outside JobSource config: source=%s title=%s company=%s",
+                    getattr(source, "name", ""),
+                    job_data.get("title", ""),
+                    job_data.get("company_name", ""),
+                )
+        if filtered_out_count:
+            MonitoringService.log_event(
+                step_name="job_source_filter",
+                status=PipelineLog.StatusChoices.INFO,
+                message="Filtered jobs outside JobSource config.",
+                service_name=cls.__name__,
+                source=source,
+                metadata={
+                    "jobs_before": len(normalized_jobs),
+                    "jobs_after": len(filtered),
+                    "jobs_filtered": filtered_out_count,
+                    "target_companies": cls._target_company_names(source),
+                },
+            )
+        return filtered, filtered_out_count
+
+    @classmethod
+    def _job_matches_source_filters(cls, job_data, source):
+        target_companies = cls._normalized_company_names(cls._target_company_names(source))
+        if target_companies:
+            company_name = cls._normalize_company_name(job_data.get("company_name"))
+            if company_name not in target_companies:
+                return False
+
+        config = cls._merged_source_config(source)
+        searchable_text = cls._job_searchable_text(job_data)
+
+        include_keywords = cls._coerce_text_values(
+            config.get("include_keywords")
+            or config.get("keywords")
+            or config.get("keyword")
+        )
+        if include_keywords and not any(
+            keyword.casefold() in searchable_text for keyword in include_keywords
+        ):
+            return False
+
+        exclude_keywords = cls._coerce_text_values(config.get("exclude_keywords"))
+        if exclude_keywords and any(
+            keyword.casefold() in searchable_text for keyword in exclude_keywords
+        ):
+            return False
+
+        location = str(config.get("location") or "").strip()
+        if location and location.casefold() != "united states":
+            job_location = str(job_data.get("location") or "").casefold()
+            if location.casefold() not in job_location:
+                return False
+
+        return True
+
+    @classmethod
     def _target_company_names(cls, source):
         names = []
         for config in (source.filter_config or {}, source.crawl_config or {}):
@@ -242,6 +369,78 @@ class CrawlService:
                 names.extend(cls._coerce_company_names(config.get(key)))
             names.extend(cls._coerce_company_names(config.get("company_name")))
         return list(dict.fromkeys(names))
+
+    @classmethod
+    def _merged_source_config(cls, source):
+        if source is None or isinstance(source, str):
+            return {}
+        config = {}
+        config.update(getattr(source, "filter_config", None) or {})
+        config.update(getattr(source, "crawl_config", None) or {})
+        return config
+
+    @staticmethod
+    def _normalized_company_names(names):
+        return {CrawlService._normalize_company_name(name) for name in names if name}
+
+    @staticmethod
+    def _normalize_company_name(name):
+        text = " ".join(str(name or "").split()).strip().casefold()
+        for suffix in (", inc.", " inc.", ", llc", " llc", " ltd.", " ltd"):
+            if text.endswith(suffix):
+                text = text[: -len(suffix)].strip()
+        return text
+
+    @classmethod
+    def _job_searchable_text(cls, job_data):
+        sections = job_data.get("sections") if isinstance(job_data.get("sections"), dict) else {}
+        parts = [
+            job_data.get("title"),
+            job_data.get("company_name"),
+            job_data.get("location"),
+            job_data.get("description"),
+            *sections.values(),
+        ]
+        return " ".join(str(part or "") for part in parts).casefold()
+
+    @staticmethod
+    def _coerce_text_values(value):
+        if not value:
+            return []
+        if isinstance(value, str):
+            raw_values = [item.strip() for item in value.split(",")]
+        else:
+            raw_values = [str(item).strip() for item in value]
+        return [value for value in raw_values if value]
+
+    @classmethod
+    def _skill_pipeline_enabled(cls, source):
+        config = cls._merged_source_config(source)
+        return cls._config_bool(
+            config,
+            ("enable_skill_pipeline", "skill_pipeline_enabled", "extract_skills"),
+            default=settings.CRAWL_SKILL_PIPELINE_ENABLED,
+        )
+
+    @classmethod
+    def _skill_auto_create_enabled(cls, source):
+        config = cls._merged_source_config(source)
+        return cls._config_bool(
+            config,
+            ("auto_create_skills", "skill_auto_create"),
+            default=settings.CRAWL_SKILL_AUTO_CREATE,
+        )
+
+    @staticmethod
+    def _config_bool(config, keys, default=False):
+        for key in keys:
+            if key not in config:
+                continue
+            value = config[key]
+            if isinstance(value, bool):
+                return value
+            return str(value).strip().casefold() in {"1", "true", "yes", "on"}
+        return default
 
     @staticmethod
     def _coerce_company_names(value):
@@ -262,6 +461,9 @@ class CrawlService:
             "jobs_created": 0,
             "jobs_updated": 0,
             "jobs_closed": 0,
+            "skill_pipeline_jobs_processed": 0,
+            "skill_pipeline_failures": 0,
+            "skills_attached": 0,
             "errors": 0,
             "failures": [],
             "sources": [],
@@ -280,6 +482,10 @@ class CrawlService:
             "jobs_created": 0,
             "jobs_updated": 0,
             "jobs_closed": 0,
+            "jobs_filtered": 0,
+            "skill_pipeline_jobs_processed": 0,
+            "skill_pipeline_failures": 0,
+            "skills_attached": 0,
             "error": "",
         }
 

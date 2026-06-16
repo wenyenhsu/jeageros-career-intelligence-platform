@@ -2,6 +2,8 @@ import re
 
 import pytest
 from django.contrib.messages import get_messages
+from django.utils import timezone
+from django.utils.dateformat import format as date_format
 from django.urls import reverse
 
 from apps.api.serializers import JobPostSerializer
@@ -28,6 +30,10 @@ def _title_source_link_count(content, title, source_url):
 
 def _title_has_any_link(content, title):
     return re.search(rf"<a[^>]*>\s*{re.escape(title)}\s*</a>", content) is not None
+
+
+def _display_timestamp(value):
+    return date_format(timezone.localtime(value), "M j, g:i A")
 
 
 @pytest.mark.django_db
@@ -81,6 +87,21 @@ def test_job_list_title_is_plain_text_when_source_url_is_missing(client, company
 
 
 @pytest.mark.django_db
+def test_job_list_renders_created_and_updated_columns(client, company):
+    job = JobPost.objects.create(company=company, title="Timestamped Job")
+
+    response = client.get(reverse("job-list"))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "Created" in content
+    assert "Updated" in content
+    assert _display_timestamp(job.created_at) in content
+    assert _display_timestamp(job.updated_at) in content
+    assert "<time" in content
+
+
+@pytest.mark.django_db
 def test_job_detail_title_links_to_source_url_when_present(client, company):
     source_url = "https://example.com/jobs/data-engineer"
     job = JobPost.objects.create(
@@ -108,6 +129,21 @@ def test_job_detail_title_is_plain_text_when_source_url_is_missing(client, compa
     content = response.content.decode()
     assert "Manual Data Engineer" in content
     assert not _title_has_any_link(content, "Manual Data Engineer")
+
+
+@pytest.mark.django_db
+def test_job_detail_formats_created_and_updated_timestamps(client, company):
+    job = JobPost.objects.create(company=company, title="Timestamp Detail Job")
+
+    response = client.get(reverse("job-detail", args=[job.id]))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "Created At" in content
+    assert "Updated At" in content
+    assert _display_timestamp(job.created_at) in content
+    assert _display_timestamp(job.updated_at) in content
+    assert "<time" in content
 
 
 @pytest.mark.django_db
