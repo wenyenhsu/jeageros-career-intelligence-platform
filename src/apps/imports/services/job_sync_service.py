@@ -64,6 +64,7 @@ class JobSyncService:
                 canonical_job_payload=data,
             )
 
+        fields = cls._preserve_existing_values(fields, job)
         changed_fields = []
         for field_name, value in fields.items():
             if getattr(job, field_name) != value:
@@ -203,6 +204,25 @@ class JobSyncService:
             "description": data.get("description") or "",
             "last_synced_at": synced_at,
         }
+
+    @staticmethod
+    def _preserve_existing_values(fields, job):
+        preserved_fields = {
+            "source_url",
+            "external_id",
+            "location",
+            "remote_type",
+            "job_type",
+            "employment_type",
+            "description",
+        }
+        fields = dict(fields)
+        for field_name in preserved_fields:
+            incoming_value = fields.get(field_name)
+            existing_value = getattr(job, field_name, "")
+            if incoming_value in (None, "") and existing_value not in (None, ""):
+                fields[field_name] = existing_value
+        return fields
 
     @classmethod
     def _canonical_job_data(cls, canonical_job_payload):

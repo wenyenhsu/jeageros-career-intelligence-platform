@@ -131,6 +131,69 @@ def test_empty_field_normalization():
     assert payload.description is None
 
 
+def test_job_type_is_inferred_from_title_when_missing():
+    payload = JobNormalizer.normalize(
+        {
+            "jobTitle": "Software Engineer Intern",
+            "companyName": "OpenAI",
+            "jobUrl": "https://www.linkedin.com/jobs/view/123",
+            "jobPostingId": "123",
+            "formattedLocation": "San Francisco, CA",
+        },
+        source=SourceDetector.LINKEDIN,
+    )
+
+    assert payload.job_type == "INTERNSHIP"
+    assert payload.employment_type == "INTERNSHIP"
+
+
+def test_source_config_can_supply_default_job_type_when_missing():
+    source = JobSource(
+        name="LinkedIn Data",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
+        crawl_config={"default_job_type": "Full-time"},
+    )
+
+    payload = JobNormalizer.normalize(
+        {
+            "jobTitle": "Data Engineer",
+            "companyName": "Netflix",
+            "jobUrl": "https://www.linkedin.com/jobs/view/456",
+            "jobPostingId": "456",
+            "formattedLocation": "United States",
+        },
+        source=source,
+    )
+
+    assert payload.job_type == "FULL_TIME"
+    assert payload.employment_type == "FULL_TIME"
+
+
+def test_webpage_job_type_overrides_source_default_job_type():
+    source = JobSource(
+        name="LinkedIn Data",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
+        crawl_config={"default_job_type": "Internship"},
+    )
+
+    payload = JobNormalizer.normalize(
+        {
+            "jobTitle": "Data Scientist, Product Analytics",
+            "companyName": "Meta",
+            "jobUrl": "https://www.linkedin.com/jobs/view/777",
+            "jobPostingId": "777",
+            "formattedLocation": "Burlingame, CA",
+            "employmentType": "Full-time",
+        },
+        source=source,
+    )
+
+    assert payload.job_type == "FULL_TIME"
+    assert payload.employment_type == "FULL_TIME"
+
+
 @pytest.mark.parametrize(
     ("raw_value", "expected"),
     [

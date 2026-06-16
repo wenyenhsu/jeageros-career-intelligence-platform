@@ -1,3 +1,7 @@
+import pytest
+from urllib.error import HTTPError
+
+from apps.companies.models import Company
 import apps.imports.parsers.linkedin as linkedin_parser_module
 from apps.imports.models import JobSource
 from apps.imports.services import (
@@ -10,6 +14,7 @@ from apps.imports.services import (
     ParserRegistry,
     SourceDetector,
 )
+from apps.jobs.models import JobPost
 
 
 def test_source_detector_detects_supported_job_boards():
@@ -195,16 +200,12 @@ def test_linkedin_parser_extracts_search_results_through_guest_endpoint(monkeypa
     assert jobs[0]["employmentType"] == "Full-time"
 
 
-def test_linkedin_parser_does_not_apply_filter_keywords_to_search_url(monkeypatch):
+def test_linkedin_parser_extracts_job_type_from_search_card_without_detail(monkeypatch):
     source = JobSource(
-        name="LinkedIn Location Only",
+        name="LinkedIn Search Card Type",
         resource=JobSource.ResourceChoices.LINKEDIN,
-        base_url="https://www.linkedin.com/jobs/search/?location=United+States",
-        crawl_config={"max_pages": 1},
-        filter_config={
-            "include_keywords": ["backend", "python", "django"],
-            "target_companies": ["OpenAI"],
-        },
+        base_url="https://www.linkedin.com/jobs/search/?keywords=data&location=CA",
+        crawl_config={"max_pages": 1, "fetch_details": False},
     )
     parser = LinkedInParser(source=source)
     monkeypatch.setattr(
@@ -212,7 +213,118 @@ def test_linkedin_parser_does_not_apply_filter_keywords_to_search_url(monkeypatc
         "urlopen",
         _fake_linkedin_urlopen(
             {
-                "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?location=United+States&start=0": _linkedin_search_html(),
+                "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=data&location=CA&start=0": _linkedin_search_html(
+                    job_id="7777777777",
+                    title="Data Scientist, Product Analytics",
+                    company="Meta",
+                    location="Burlingame, CA",
+                    employment_type="Full-time",
+                ),
+            }
+        ),
+    )
+
+    jobs = parser.extract_jobs(parser.find_listing_pages()[0])
+
+    assert len(jobs) == 1
+    assert jobs[0]["jobTitle"] == "Data Scientist, Product Analytics"
+    assert jobs[0]["employmentType"] == "Full-time"
+
+
+def test_linkedin_parser_extracts_job_type_from_detail_top_card_without_criteria(
+    monkeypatch,
+):
+    source = JobSource(
+        name="LinkedIn Detail Type",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/view/7777777777/",
+    )
+    parser = LinkedInParser(source=source)
+    monkeypatch.setattr(
+        linkedin_parser_module,
+        "urlopen",
+        _fake_linkedin_urlopen(
+            {
+                "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/7777777777": _linkedin_detail_html(
+                    job_id="7777777777",
+                    title="Data Scientist, Product Analytics",
+                    company="Meta",
+                    location="Burlingame, CA",
+                    employment_type="Full-time",
+                    include_criteria=False,
+                )
+            }
+        ),
+    )
+
+    jobs = parser.extract_jobs(parser.find_listing_pages()[0])
+
+    assert len(jobs) == 1
+    assert jobs[0]["employmentType"] == "Full-time"
+
+
+@pytest.mark.django_db
+def test_linkedin_parser_skips_detail_fetch_for_existing_described_job(monkeypatch):
+    company = Company.objects.create(name="OpenAI")
+    JobPost.objects.create(
+        company=company,
+        title="Backend Engineer",
+        source_url="https://www.linkedin.com/jobs/view/5555555555/",
+        external_id="5555555555",
+        employment_type="Full-time",
+        description="Already fetched from LinkedIn.",
+    )
+    source = JobSource(
+        name="LinkedIn Search",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/?keywords=python&location=Remote",
+        crawl_config={"max_pages": 1, "fetch_details": "new_or_missing"},
+    )
+    parser = LinkedInParser(source=source)
+    monkeypatch.setattr(
+        linkedin_parser_module,
+        "urlopen",
+        _fake_linkedin_urlopen(
+            {
+                "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=python&location=Remote&start=0": _linkedin_search_html(),
+            }
+        ),
+    )
+
+    jobs = parser.extract_jobs(parser.find_listing_pages()[0])
+
+    assert len(jobs) == 1
+    assert jobs[0]["jobPostingId"] == "5555555555"
+    assert jobs[0]["jobUrl"] == "https://www.linkedin.com/jobs/view/5555555555/"
+    assert "description" not in jobs[0]
+    assert "employmentType" not in jobs[0]
+
+
+@pytest.mark.django_db
+def test_linkedin_parser_fetches_detail_for_existing_job_missing_description(
+    monkeypatch,
+):
+    company = Company.objects.create(name="OpenAI")
+    JobPost.objects.create(
+        company=company,
+        title="Backend Engineer",
+        source_url="https://www.linkedin.com/jobs/view/5555555555/",
+        external_id="5555555555",
+        description="",
+    )
+    source = JobSource(
+        name="LinkedIn Search",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/?keywords=python&location=Remote",
+        crawl_config={"max_pages": 1, "fetch_details_for": "new_or_missing"},
+    )
+    parser = LinkedInParser(source=source)
+    monkeypatch.setattr(
+        linkedin_parser_module,
+        "urlopen",
+        _fake_linkedin_urlopen(
+            {
+                "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=python&location=Remote&start=0": _linkedin_search_html(),
                 "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/5555555555": _linkedin_detail_html(
                     job_id="5555555555",
                     title="Backend Engineer",
@@ -227,7 +339,188 @@ def test_linkedin_parser_does_not_apply_filter_keywords_to_search_url(monkeypatc
     jobs = parser.extract_jobs(parser.find_listing_pages()[0])
 
     assert len(jobs) == 1
-    assert jobs[0]["companyName"] == "OpenAI"
+    assert jobs[0]["description"] == "Build reliable Django services."
+    assert jobs[0]["employmentType"] == "Full-time"
+
+
+@pytest.mark.django_db
+def test_linkedin_parser_fetches_detail_for_new_job_when_new_or_missing(monkeypatch):
+    source = JobSource(
+        name="LinkedIn Search",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/?keywords=python&location=Remote",
+        crawl_config={"max_pages": 1, "fetch_details": "new_or_missing"},
+    )
+    parser = LinkedInParser(source=source)
+    monkeypatch.setattr(
+        linkedin_parser_module,
+        "urlopen",
+        _fake_linkedin_urlopen(
+            {
+                "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=python&location=Remote&start=0": _linkedin_search_html(),
+                "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/5555555555": _linkedin_detail_html(
+                    job_id="5555555555",
+                    title="Backend Engineer",
+                    company="OpenAI",
+                    location="Remote",
+                    employment_type="Full-time",
+                ),
+            }
+        ),
+    )
+
+    jobs = parser.extract_jobs(parser.find_listing_pages()[0])
+
+    assert len(jobs) == 1
+    assert jobs[0]["description"] == "Build reliable Django services."
+    assert jobs[0]["employmentType"] == "Full-time"
+
+
+def test_linkedin_parser_expands_filter_config_into_search_urls():
+    source = JobSource(
+        name="LinkedIn Location Only",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
+        crawl_config={"max_pages": 1},
+        filter_config={
+            "include_keywords": ["data engineer", "backend"],
+            "location": ["CA", "TX"],
+            "workplace_types": ["Remote", "Hybrid", "On-site"],
+        },
+    )
+    parser = LinkedInParser(source=source)
+
+    urls = parser._search_urls(source.base_url)
+
+    assert urls == [
+        "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=data+engineer&location=CA&start=0",
+        "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=data+engineer&location=TX&start=0",
+        "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=backend&location=CA&start=0",
+        "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=backend&location=TX&start=0",
+    ]
+
+
+def test_linkedin_parser_limits_expanded_search_combinations():
+    source = JobSource(
+        name="LinkedIn Limited Search",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
+        crawl_config={"max_pages": 1, "max_search_combinations": 2},
+        filter_config={
+            "include_keywords": ["data engineer", "backend"],
+            "location": ["CA", "TX"],
+        },
+    )
+    parser = LinkedInParser(source=source)
+
+    urls = parser._search_urls(source.base_url)
+
+    assert len(urls) == 2
+    assert "keywords=data+engineer&location=CA" in urls[0]
+    assert "keywords=data+engineer&location=TX" in urls[1]
+
+
+def test_linkedin_parser_maps_job_type_config_to_linkedin_filter():
+    source = JobSource(
+        name="LinkedIn Full-time Search",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
+        crawl_config={"max_pages": 1},
+        filter_config={
+            "search_keywords": ["data engineer"],
+            "location": ["CA"],
+            "job_types": ["Full-time", "Internship"],
+        },
+    )
+    parser = LinkedInParser(source=source)
+
+    urls = parser._search_urls(source.base_url)
+
+    assert urls == [
+        "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=data+engineer&location=CA&f_JT=F&start=0",
+        "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=data+engineer&location=CA&f_JT=I&start=0",
+    ]
+
+
+def test_linkedin_parser_limits_total_search_requests_across_pages():
+    source = JobSource(
+        name="LinkedIn Request Limited Search",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
+        crawl_config={"max_pages": 2, "max_search_requests": 3},
+        filter_config={
+            "include_keywords": ["data engineer", "backend", "python"],
+            "location": ["CA", "TX"],
+        },
+    )
+    parser = LinkedInParser(source=source)
+
+    urls = parser._search_urls(source.base_url)
+
+    assert len(urls) == 3
+    assert all("start=0" in url for url in urls)
+    assert "keywords=data+engineer&location=CA" in urls[0]
+    assert "keywords=data+engineer&location=TX" in urls[1]
+    assert "keywords=backend&location=CA" in urls[2]
+
+
+def test_linkedin_parser_limits_detail_requests(monkeypatch):
+    source = JobSource(
+        name="LinkedIn Detail Limited Search",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/?keywords=python&location=Remote",
+        crawl_config={"max_pages": 1, "max_detail_requests": 1},
+    )
+    parser = LinkedInParser(source=source)
+    monkeypatch.setattr(
+        linkedin_parser_module,
+        "urlopen",
+        _fake_linkedin_urlopen(
+            {
+                "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=python&location=Remote&start=0": (
+                    _linkedin_search_html(job_id="5555555555")
+                    + _linkedin_search_html(
+                        job_id="6666666666",
+                        title="Data Engineer",
+                    )
+                ),
+                "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/5555555555": _linkedin_detail_html(
+                    job_id="5555555555",
+                    title="Backend Engineer",
+                    company="OpenAI",
+                    location="Remote",
+                    employment_type="Full-time",
+                ),
+            }
+        ),
+    )
+
+    jobs = parser.extract_jobs(parser.find_listing_pages()[0])
+
+    assert len(jobs) == 2
+    assert jobs[0]["description"] == "Build reliable Django services."
+    assert "description" not in jobs[1]
+
+
+def test_linkedin_parser_raises_helpful_rate_limit_error(monkeypatch):
+    source = JobSource(
+        name="LinkedIn Rate Limited Search",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/?keywords=python&location=Remote",
+        crawl_config={"max_pages": 1},
+    )
+    parser = LinkedInParser(source=source)
+
+    def fake_urlopen(request, timeout=None):
+        raise HTTPError(request.full_url, 429, "Too Many Requests", hdrs=None, fp=None)
+
+    monkeypatch.setattr(linkedin_parser_module, "urlopen", fake_urlopen)
+
+    with pytest.raises(
+        linkedin_parser_module.LinkedInRateLimitError,
+        match="max_search_requests/max_detail_requests",
+    ):
+        parser.extract_jobs(parser.find_listing_pages()[0])
 
 
 def test_linkedin_parser_rejects_placeholder_job_ids():
@@ -288,33 +581,60 @@ def _fake_linkedin_urlopen(responses):
     return fake_urlopen
 
 
-def _linkedin_search_html():
-    return """
-    <div class="base-search-card" data-entity-urn="urn:li:jobPosting:5555555555">
-      <a class="base-card__full-link" href="https://www.linkedin.com/jobs/view/5555555555/?refId=abc">View job</a>
-      <h3 class="base-search-card__title">Backend Engineer</h3>
-      <h4 class="base-search-card__subtitle"><a>OpenAI</a></h4>
-      <span class="job-search-card__location">Remote</span>
+def _linkedin_search_html(
+    job_id="5555555555",
+    title="Backend Engineer",
+    company="OpenAI",
+    location="Remote",
+    employment_type=None,
+):
+    employment_type_html = (
+        f'<span class="job-search-card__job-type">{employment_type}</span>'
+        if employment_type
+        else ""
+    )
+    return f"""
+    <div class="base-search-card" data-entity-urn="urn:li:jobPosting:{job_id}">
+      <a class="base-card__full-link" href="https://www.linkedin.com/jobs/view/{job_id}/?refId=abc">View job</a>
+      <h3 class="base-search-card__title">{title}</h3>
+      <h4 class="base-search-card__subtitle"><a>{company}</a></h4>
+      <span class="job-search-card__location">{location}</span>
+      {employment_type_html}
       <time datetime="2026-06-11"></time>
     </div>
     """
 
 
-def _linkedin_detail_html(job_id, title, company, location, employment_type):
+def _linkedin_detail_html(
+    job_id,
+    title,
+    company,
+    location,
+    employment_type,
+    include_criteria=True,
+):
+    criteria_html = (
+        f"""
+        <li class="description__job-criteria-item">
+          <h3 class="description__job-criteria-subheader">Employment type</h3>
+          <span class="description__job-criteria-text">{employment_type}</span>
+        </li>
+        """
+        if include_criteria
+        else ""
+    )
     return f"""
     <html>
       <body>
         <h1 class="top-card-layout__title">{title}</h1>
         <a class="topcard__org-name-link">{company}</a>
         <span class="topcard__flavor--bullet">{location}</span>
+        <span class="top-card-layout__job-type">{employment_type}</span>
         <time datetime="2026-06-10"></time>
         <div class="show-more-less-html__markup">
           <p>Build reliable Django services.</p>
         </div>
-        <li class="description__job-criteria-item">
-          <h3 class="description__job-criteria-subheader">Employment type</h3>
-          <span class="description__job-criteria-text">{employment_type}</span>
-        </li>
+        {criteria_html}
         <a href="https://www.linkedin.com/jobs/view/{job_id}/">Canonical</a>
       </body>
     </html>

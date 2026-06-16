@@ -72,6 +72,31 @@ def test_scheduled_crawl_task_runs_against_mocked_job_source(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_scheduled_crawl_task_can_run_selected_source_ids(monkeypatch):
+    first = JobSource.objects.create(
+        name="Greenhouse",
+        resource=JobSource.ResourceChoices.GREENHOUSE,
+        base_url="https://boards.greenhouse.io/openai",
+        enabled=True,
+    )
+    second = JobSource.objects.create(
+        name="Lever",
+        resource=JobSource.ResourceChoices.LEVER,
+        base_url="https://jobs.lever.co/anthropic",
+        enabled=True,
+    )
+    _patch_parser(monkeypatch)
+
+    summary = crawl_all_sources.run(source_ids=[second.id])
+
+    assert summary["success"] is True
+    assert summary["sources_processed"] == 1
+    assert summary["sources"][0]["source_id"] == second.id
+    assert not JobPost.objects.filter(external_id=f"{first.id}-backend").exists()
+    assert JobPost.objects.filter(external_id=f"{second.id}-backend").exists()
+
+
+@pytest.mark.django_db
 def test_scheduled_crawl_normalizes_raw_parser_output_before_sync(monkeypatch):
     source = JobSource.objects.create(
         name="LinkedIn",
@@ -169,6 +194,64 @@ def test_scheduled_crawl_filters_jobs_to_target_companies(monkeypatch):
     assert summary["sources"][0]["jobs_found"] == 1
     assert summary["sources"][0]["jobs_filtered"] == 1
     assert list(JobPost.objects.values_list("company__name", flat=True)) == ["OpenAI"]
+
+
+@pytest.mark.django_db
+def test_scheduled_crawl_filters_jobs_with_location_lists(monkeypatch):
+    source = JobSource.objects.create(
+        name="LinkedIn Data Roles",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
+        enabled=True,
+        filter_config={
+            "location": ["TX", "CA"],
+            "include_keywords": ["data engineer", "backend"],
+            "target_companies": ["Amazon", "Microsoft"],
+            "workplace_types": ["Remote", "Hybrid", "On-site"],
+        },
+    )
+    monkeypatch.setattr(
+        crawl_service.ParserRegistry,
+        "get_parser",
+        staticmethod(lambda parser_type, source=None: LocationListParser(source)),
+    )
+
+    summary = CrawlService.crawl_all_sources([source])
+
+    assert summary["success"] is True
+    assert summary["jobs_created"] == 1
+    assert summary["sources"][0]["jobs_found"] == 1
+    assert summary["sources"][0]["jobs_filtered"] == 1
+    job = JobPost.objects.get()
+    assert job.company.name == "Amazon"
+    assert job.title == "Data Engineer II - AMZ26527.1"
+    assert job.location == "Santa Clara, CA"
+
+
+@pytest.mark.django_db
+def test_scheduled_crawl_filters_jobs_by_job_type(monkeypatch):
+    source = JobSource.objects.create(
+        name="LinkedIn Full-time Roles",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
+        enabled=True,
+        filter_config={"job_types": ["Full-time"]},
+    )
+    monkeypatch.setattr(
+        crawl_service.ParserRegistry,
+        "get_parser",
+        staticmethod(lambda parser_type, source=None: JobTypeParser(source)),
+    )
+
+    summary = CrawlService.crawl_all_sources([source])
+
+    assert summary["success"] is True
+    assert summary["jobs_created"] == 1
+    assert summary["sources"][0]["jobs_found"] == 1
+    assert summary["sources"][0]["jobs_filtered"] == 1
+    job = JobPost.objects.get()
+    assert job.title == "Data Engineer"
+    assert job.job_type == "Full-time"
 
 
 @pytest.mark.django_db
@@ -502,6 +585,54 @@ class MixedCompanyParser(FakeParser):
                 "location": "Remote",
                 "employment_type": "Full-time",
                 "description": "Build Python services.",
+            },
+        ]
+
+
+class LocationListParser(FakeParser):
+    def extract_jobs(self, listing_page):
+        return [
+            {
+                "title": "Data Engineer II - AMZ26527.1",
+                "company_name": "Amazon",
+                "source_url": f"{listing_page.url}/amazon-data-engineer",
+                "external_id": "amazon-data-engineer",
+                "location": "Santa Clara, CA",
+                "employment_type": "Full-time",
+                "description": "Build data platforms and distributed systems.",
+            },
+            {
+                "title": "Backend Engineer",
+                "company_name": "Microsoft",
+                "source_url": f"{listing_page.url}/microsoft-backend",
+                "external_id": "microsoft-backend",
+                "location": "Toronto, Canada",
+                "employment_type": "Full-time",
+                "description": "Build backend systems.",
+            },
+        ]
+
+
+class JobTypeParser(FakeParser):
+    def extract_jobs(self, listing_page):
+        return [
+            {
+                "title": "Data Engineer",
+                "company_name": "OpenAI",
+                "source_url": f"{listing_page.url}/openai-data",
+                "external_id": "openai-data",
+                "location": "San Francisco, CA",
+                "employment_type": "Full-time",
+                "description": "Build data systems.",
+            },
+            {
+                "title": "Software Engineer Intern",
+                "company_name": "OpenAI",
+                "source_url": f"{listing_page.url}/openai-intern",
+                "external_id": "openai-intern",
+                "location": "San Francisco, CA",
+                "employment_type": "Internship",
+                "description": "Build tools during an internship.",
             },
         ]
 

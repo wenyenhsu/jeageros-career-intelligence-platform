@@ -9,7 +9,7 @@
   </div>
 
   <div class="d-flex flex-wrap gap-2">
-    <form method="post" action="{% url 'source-run-all' %}">
+    <form method="post" action="{% url 'source-run-all' %}" class="js-crawl-run-form" data-crawl-label="All enabled job sources">
       {% csrf_token %}
       <button type="submit" class="btn btn-outline-success">
         <i class="bi bi-play-fill me-1"></i>Run all sources
@@ -18,6 +18,77 @@
     <a href="{% url 'source-create' %}" class="btn btn-primary">
       <i class="bi bi-plus-lg me-1"></i>Create source
     </a>
+  </div>
+</div>
+
+<div
+  id="crawlLivePanel"
+  class="card shadow-sm border-0 mb-4 d-none"
+  data-active-run-id="{{ active_crawl_run_id }}"
+  data-status-url-template="{{ crawl_status_url_template }}"
+  data-monitoring-url="{% url 'monitoring-dashboard' %}"
+>
+  <div class="card-body">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+      <div>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <h2 class="h5 fw-bold mb-0">Live Pipeline Status</h2>
+          <span id="crawlRunBadge" class="badge text-bg-secondary">Pending</span>
+        </div>
+        <div id="crawlRunMeta" class="text-secondary small mt-1">Waiting for crawl run.</div>
+      </div>
+      <a id="crawlMonitoringLink" class="btn btn-outline-secondary btn-sm" href="{% url 'monitoring-dashboard' %}">
+        Monitoring
+      </a>
+    </div>
+
+    <div class="progress mb-3" role="progressbar" aria-label="Crawl pipeline progress" aria-valuemin="0" aria-valuemax="100">
+      <div id="crawlProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%">0%</div>
+    </div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-6 col-lg">
+        <div class="border rounded-2 p-3 h-100">
+          <div class="text-secondary small">Processed</div>
+          <div id="crawlProcessedStat" class="fw-bold">0 / 0</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg">
+        <div class="border rounded-2 p-3 h-100">
+          <div class="text-secondary small">Created</div>
+          <div id="crawlCreatedStat" class="fw-bold">0</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg">
+        <div class="border rounded-2 p-3 h-100">
+          <div class="text-secondary small">Updated</div>
+          <div id="crawlUpdatedStat" class="fw-bold">0</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg">
+        <div class="border rounded-2 p-3 h-100">
+          <div class="text-secondary small">Closed</div>
+          <div id="crawlClosedStat" class="fw-bold">0</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg">
+        <div class="border rounded-2 p-3 h-100">
+          <div class="text-secondary small">Errors</div>
+          <div id="crawlErrorStat" class="fw-bold">0</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="crawlCurrentStep" class="alert alert-light border py-2 mb-3">
+      Current step: queued
+    </div>
+
+    <div id="crawlFailureSummary" class="alert alert-danger d-none mb-3"></div>
+
+    <div>
+      <div class="fw-semibold mb-2">Pipeline Flow</div>
+      <div id="crawlFlow" class="vstack gap-2"></div>
+    </div>
   </div>
 </div>
 
@@ -54,7 +125,7 @@
             <td>{{ source.last_crawled_at|date:"Y-m-d H:i"|default:"—" }}</td>
             <td class="text-end">
               <div class="d-inline-flex gap-1">
-                <form method="post" action="{% url 'source-run' source.pk %}" class="d-inline">
+                <form method="post" action="{% url 'source-run' source.pk %}" class="d-inline js-crawl-run-form" data-crawl-label="{{ source.name }}">
                   {% csrf_token %}
                   <button type="submit" class="btn btn-outline-success btn-sm">Run</button>
                 </form>
@@ -79,4 +150,241 @@
     </table>
   </div>
 </div>
+
+<script>
+  (() => {
+    const panel = document.getElementById("crawlLivePanel");
+    if (!panel) return;
+
+    const statusUrlTemplate = panel.dataset.statusUrlTemplate || "";
+    const monitoringUrl = panel.dataset.monitoringUrl || "";
+    const runBadge = document.getElementById("crawlRunBadge");
+    const runMeta = document.getElementById("crawlRunMeta");
+    const progressBar = document.getElementById("crawlProgressBar");
+    const processedStat = document.getElementById("crawlProcessedStat");
+    const createdStat = document.getElementById("crawlCreatedStat");
+    const updatedStat = document.getElementById("crawlUpdatedStat");
+    const closedStat = document.getElementById("crawlClosedStat");
+    const errorStat = document.getElementById("crawlErrorStat");
+    const currentStep = document.getElementById("crawlCurrentStep");
+    const failureSummary = document.getElementById("crawlFailureSummary");
+    const flow = document.getElementById("crawlFlow");
+    const monitoringLink = document.getElementById("crawlMonitoringLink");
+    const terminalStatuses = new Set(["SUCCESS", "FAILED"]);
+    const storageKey = "jaegeros.activeCrawlRunId";
+    let pollTimer = null;
+    let activeStatusUrl = "";
+
+    function csrfToken(form) {
+      const input = form.querySelector("input[name='csrfmiddlewaretoken']");
+      return input ? input.value : "";
+    }
+
+    function statusUrlForRun(runId) {
+      return statusUrlTemplate.replace("/0/status/", `/${runId}/status/`);
+    }
+
+    function monitoringUrlForRun(runId) {
+      return `${monitoringUrl}?crawl_run_id=${runId}#recent-pipeline-logs`;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function badgeClass(status, severity) {
+      if (status === "FAILED" || severity === "ERROR") return "text-bg-danger";
+      if (status === "SUCCESS") return "text-bg-success";
+      if (status === "STARTED" || status === "RUNNING") return "text-bg-primary";
+      if (status === "SKIPPED" || severity === "WARNING") return "text-bg-warning";
+      return "text-bg-secondary";
+    }
+
+    function showQueuedState(runId, label) {
+      if (window.localStorage) {
+        window.localStorage.setItem(storageKey, runId);
+      }
+      panel.classList.remove("d-none");
+      runBadge.className = "badge text-bg-secondary";
+      runBadge.textContent = "QUEUED";
+      runMeta.textContent = `Run #${runId} · ${label}`;
+      monitoringLink.href = monitoringUrlForRun(runId);
+      progressBar.className = "progress-bar progress-bar-striped progress-bar-animated";
+      progressBar.style.width = "0%";
+      progressBar.textContent = "0%";
+      processedStat.textContent = "0 / 0";
+      createdStat.textContent = "0";
+      updatedStat.textContent = "0";
+      closedStat.textContent = "0";
+      errorStat.textContent = "0";
+      currentStep.className = "alert alert-light border py-2 mb-3";
+      currentStep.textContent = "Current step: queued";
+      failureSummary.classList.add("d-none");
+      failureSummary.textContent = "";
+      flow.innerHTML = '<div class="text-secondary small">Waiting for pipeline events.</div>';
+    }
+
+    function renderStatus(payload) {
+      const run = payload.crawl_run || {};
+      const runId = run.id || "";
+      const status = payload.status || run.status || "PENDING";
+      const progress = Math.max(0, Math.min(100, Number(payload.display_progress ?? payload.progress ?? run.progress_percentage ?? 0)));
+      const progressLabel = payload.display_progress_label || `${progress}%`;
+      const current = payload.current_step || {};
+      const logs = Array.isArray(payload.recent_logs) ? payload.recent_logs.slice().reverse() : [];
+      const errors = payload.error_summary || {};
+
+      panel.classList.remove("d-none");
+      runBadge.className = `badge ${badgeClass(status)}`;
+      runBadge.textContent = status;
+      runMeta.textContent = runId
+        ? `Run #${runId} · ${run.processed_sources || 0} of ${run.total_sources || 0} sources · ${progressLabel}`
+        : "Run status";
+      if (runId) monitoringLink.href = monitoringUrlForRun(runId);
+
+      progressBar.className = `progress-bar ${status === "FAILED" ? "bg-danger" : ""} ${terminalStatuses.has(status) ? "" : "progress-bar-striped progress-bar-animated"}`;
+      progressBar.style.width = `${progress}%`;
+      progressBar.textContent = `${progress}%`;
+
+      processedStat.textContent = `${run.processed_sources || 0} / ${run.total_sources || 0}`;
+      createdStat.textContent = run.jobs_created || 0;
+      updatedStat.textContent = run.jobs_updated || 0;
+      closedStat.textContent = run.jobs_closed || 0;
+      errorStat.textContent = run.errors || 0;
+
+      const sourceText = current.source_name ? ` · ${current.source_name}` : "";
+      const stepText = current.step_name || "queued";
+      const messageText = current.message ? `: ${current.message}` : "";
+      currentStep.className = `alert ${status === "FAILED" ? "alert-danger" : "alert-light"} border py-2 mb-3`;
+      currentStep.textContent = `Current step: ${stepText}${sourceText}${messageText}`;
+
+      const recentFailures = Array.isArray(errors.recent) ? errors.recent : [];
+      if (recentFailures.length) {
+        const firstReason = recentFailures[0].error_reason || recentFailures[0].message || "Pipeline failure";
+        failureSummary.classList.remove("d-none");
+        failureSummary.innerHTML = `<strong>Latest failure:</strong> ${escapeHtml(firstReason)}`;
+      } else {
+        failureSummary.classList.add("d-none");
+        failureSummary.textContent = "";
+      }
+
+      if (!logs.length) {
+        flow.innerHTML = '<div class="text-secondary small">Waiting for pipeline events.</div>';
+        return;
+      }
+
+      flow.innerHTML = logs.map((log) => {
+        const reason = log.error_reason
+          ? `<div class="small text-danger mt-1">${escapeHtml(log.error_reason)}</div>`
+          : "";
+        const source = log.source_name
+          ? `<span class="text-secondary small ms-2">${escapeHtml(log.source_name)}</span>`
+          : "";
+        return `
+          <div class="border rounded-2 p-2">
+            <div class="d-flex flex-wrap justify-content-between gap-2">
+              <div>
+                <span class="badge ${badgeClass(log.status, log.severity)}">${escapeHtml(log.status)}</span>
+                <span class="fw-semibold ms-2">${escapeHtml(log.step_name)}</span>
+                ${source}
+              </div>
+              <time class="text-secondary small" datetime="${escapeHtml(log.created_at_datetime)}" title="${escapeHtml(log.created_at_title)}">
+                ${escapeHtml(log.created_at_display)}
+              </time>
+            </div>
+            <div class="small mt-1">${escapeHtml(log.message)}</div>
+            ${reason}
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function pollStatus() {
+      if (!activeStatusUrl) return;
+      const response = await fetch(activeStatusUrl, {
+        headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" },
+      });
+      if (!response.ok) throw new Error(`Status request failed: ${response.status}`);
+      const payload = await response.json();
+      renderStatus(payload);
+      if (terminalStatuses.has(payload.status)) {
+        if (window.localStorage) {
+          window.localStorage.removeItem(storageKey);
+        }
+        window.clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }
+
+    function startPolling(statusUrl) {
+      activeStatusUrl = statusUrl;
+      if (pollTimer) window.clearInterval(pollTimer);
+      pollStatus().catch((error) => {
+        failureSummary.classList.remove("d-none");
+        failureSummary.textContent = error.message;
+      });
+      pollTimer = window.setInterval(() => {
+        pollStatus().catch((error) => {
+          failureSummary.classList.remove("d-none");
+          failureSummary.textContent = error.message;
+        });
+      }, 1500);
+    }
+
+    document.querySelectorAll(".js-crawl-run-form").forEach((form) => {
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const button = form.querySelector("button[type='submit']");
+        const originalText = button ? button.innerHTML : "";
+        if (button) {
+          button.disabled = true;
+          button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Run';
+        }
+
+        try {
+          const response = await fetch(form.action, {
+            method: "POST",
+            headers: {
+              "Accept": "application/json",
+              "X-Requested-With": "XMLHttpRequest",
+              "X-CSRFToken": csrfToken(form),
+            },
+            body: new FormData(form),
+          });
+          const payload = await response.json();
+          if (!payload.crawl_run_id) throw new Error(payload.error || "Crawl run was not created.");
+          showQueuedState(payload.crawl_run_id, payload.label || form.dataset.crawlLabel || "Crawl");
+          startPolling(payload.status_url || statusUrlForRun(payload.crawl_run_id));
+          if (!response.ok) throw new Error(payload.error || payload.message || "Crawl could not be started.");
+        } catch (error) {
+          panel.classList.remove("d-none");
+          failureSummary.classList.remove("d-none");
+          failureSummary.textContent = error.message;
+        } finally {
+          if (button) {
+            button.disabled = false;
+            button.innerHTML = originalText;
+          }
+        }
+      });
+    });
+
+    const initialRunId = panel.dataset.activeRunId;
+    if (initialRunId) {
+      showQueuedState(initialRunId, "Crawl");
+      startPolling(statusUrlForRun(initialRunId));
+    } else if (window.localStorage) {
+      const storedRunId = window.localStorage.getItem(storageKey);
+      if (storedRunId) {
+        showQueuedState(storedRunId, "Crawl");
+        startPolling(statusUrlForRun(storedRunId));
+      }
+    }
+  })();
+</script>
 {% endblock %}

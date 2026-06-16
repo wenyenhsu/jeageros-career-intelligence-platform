@@ -1,9 +1,17 @@
 import html
 import re
+import time
+from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
+from django.db.models import Q
+
 from .base import BaseParser
+
+
+class LinkedInRateLimitError(RuntimeError):
+    pass
 
 
 class LinkedInParser(BaseParser):
@@ -14,7 +22,41 @@ class LinkedInParser(BaseParser):
     GUEST_JOB_URL = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}"
     DEFAULT_PAGE_SIZE = 25
     DEFAULT_TIMEOUT_SECONDS = 12
+    DEFAULT_MAX_SEARCH_REQUESTS = 10
+    DEFAULT_MAX_DETAIL_REQUESTS = 10
     PLACEHOLDER_JOB_IDS = {"1234567890", "0000000000", "1111111111"}
+    JOB_TYPE_PATTERNS = (
+        ("Full-time", r"\bfull[\s-]?time\b"),
+        ("Part-time", r"\bpart[\s-]?time\b"),
+        ("Internship", r"\binternship\b|\bco[\s-]?op\b"),
+        ("Contract", r"\bcontract(or)?\b"),
+        ("Temporary", r"\btemp(orary)?\b"),
+    )
+    LINKEDIN_JOB_TYPE_FILTERS = {
+        "full time": "F",
+        "full-time": "F",
+        "fulltime": "F",
+        "full_time": "F",
+        "f": "F",
+        "part time": "P",
+        "part-time": "P",
+        "parttime": "P",
+        "part_time": "P",
+        "p": "P",
+        "contract": "C",
+        "contractor": "C",
+        "c": "C",
+        "temporary": "T",
+        "temp": "T",
+        "t": "T",
+        "internship": "I",
+        "intern": "I",
+        "i": "I",
+        "volunteer": "V",
+        "v": "V",
+        "other": "O",
+        "o": "O",
+    }
     REQUEST_HEADERS = {
         "User-Agent": (
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -24,6 +66,11 @@ class LinkedInParser(BaseParser):
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
     }
+
+    def __init__(self, source=None):
+        super().__init__(source=source)
+        self._request_count = 0
+        self._detail_requests_made = 0
 
     def extract_job(self, payload):
         raw = super().extract_job(payload)
@@ -68,6 +115,12 @@ class LinkedInParser(BaseParser):
             if not job_id:
                 jobs.append(card)
                 continue
+            if not self._should_fetch_detail_for_card(card):
+                jobs.append(card)
+                continue
+            if not self._detail_request_available():
+                jobs.append(card)
+                continue
             try:
                 detail = self._fetch_job_detail(job_id)
             except Exception:
@@ -81,50 +134,135 @@ class LinkedInParser(BaseParser):
         if "jobs-guest/jobs/api/seeMoreJobPostings/search" in base_url:
             return [base_url]
 
-        query = self._search_query_params(base_url)
+        query_sets = self._search_query_param_sets(base_url)
         max_pages = self._positive_int_config("max_pages", default=1)
+        max_search_requests = self._positive_int_config(
+            "max_search_requests",
+            default=self.DEFAULT_MAX_SEARCH_REQUESTS,
+        )
         urls = []
         for page in range(max_pages):
-            page_query = dict(query)
-            page_query["start"] = str(page * self.DEFAULT_PAGE_SIZE)
-            urls.append(f"{self.GUEST_SEARCH_URL}?{urlencode(page_query, doseq=True)}")
+            for query in query_sets:
+                page_query = dict(query)
+                page_query["start"] = str(page * self.DEFAULT_PAGE_SIZE)
+                urls.append(
+                    f"{self.GUEST_SEARCH_URL}?{urlencode(page_query, doseq=True)}"
+                )
+                if len(urls) >= max_search_requests:
+                    return urls
         return urls
 
-    def _search_query_params(self, base_url):
+    def _search_query_param_sets(self, base_url):
         parsed = urlparse(base_url or "")
-        query = {
+        base_query = {
             key: value[-1]
             for key, value in parse_qs(parsed.query, keep_blank_values=False).items()
             if value
         }
-        config = self._crawl_config()
+        config = self._merged_config()
 
-        keywords = self._first_config_value(
+        keyword_values = self._query_values(
+            base_query,
             config,
             "keywords",
-            "keyword",
-            "query",
-            "search",
+            ("search_keywords", "include_keywords", "keywords", "keyword", "query"),
         )
-        location = self._first_config_value(config, "location", "locations")
+        location_values = self._query_values(
+            base_query,
+            config,
+            "location",
+            ("locations", "location"),
+        )
+        workplace_values = self._workplace_query_values(base_query, config)
+        job_type_values = self._job_type_query_values(base_query, config)
 
-        if keywords and "keywords" not in query:
-            query["keywords"] = self._coerce_query_value(keywords)
-        if location and "location" not in query:
-            query["location"] = self._coerce_query_value(location)
+        for key in ("geoId", "f_TPR", "f_WT", "f_E"):
+            if key in config and key not in base_query:
+                base_query[key] = self._coerce_query_value(config[key])
 
-        if config.get("remote_only") and "f_WT" not in query:
-            query["f_WT"] = "2"
+        base_query.pop("currentJobId", None)
+        query_sets = []
+        seen = set()
+        for keywords in keyword_values:
+            for location in location_values:
+                for workplace in workplace_values:
+                    for job_type in job_type_values:
+                        query = dict(base_query)
+                        if keywords:
+                            query["keywords"] = keywords
+                        if location:
+                            query["location"] = location
+                        if workplace:
+                            query["f_WT"] = workplace
+                        if job_type:
+                            query["f_JT"] = job_type
+                        key = tuple(sorted(query.items()))
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        query_sets.append(query)
 
-        for key in ("geoId", "f_TPR", "f_WT", "f_E", "f_JT"):
-            if key in config and key not in query:
-                query[key] = self._coerce_query_value(config[key])
+        max_combinations = self._positive_int_config(
+            "max_search_combinations",
+            default=60,
+        )
+        return query_sets[:max_combinations] or [base_query]
 
-        query.pop("currentJobId", None)
-        return query
+    def _query_values(self, base_query, config, query_key, config_keys):
+        if query_key in base_query:
+            return [self._coerce_query_value(base_query[query_key])]
+
+        for key in config_keys:
+            value = config.get(key)
+            values = self._coerce_query_values(value)
+            if values:
+                return values
+        return [""]
+
+    def _workplace_query_values(self, base_query, config):
+        if "f_WT" in base_query:
+            return [self._coerce_query_value(base_query["f_WT"])]
+        if config.get("remote_only"):
+            return ["2"]
+        if "f_WT" in config:
+            return self._coerce_query_values(config.get("f_WT")) or [""]
+
+        workplace_types = self._coerce_query_values(config.get("workplace_types"))
+        if not workplace_types:
+            return [""]
+
+        mapped = {
+            self._workplace_type_to_linkedin_filter(workplace_type)
+            for workplace_type in workplace_types
+        }
+        mapped.discard("")
+        if not mapped or {"1", "2", "3"}.issubset(mapped):
+            return [""]
+        return sorted(mapped)
+
+    def _job_type_query_values(self, base_query, config):
+        if "f_JT" in base_query:
+            return [self._coerce_query_value(base_query["f_JT"])]
+        if "f_JT" in config:
+            return self._coerce_query_values(config.get("f_JT")) or [""]
+
+        configured = (
+            config.get("job_types")
+            or config.get("job_type")
+            or config.get("employment_types")
+            or config.get("employment_type")
+        )
+        values = self._coerce_query_values(configured)
+        if not values:
+            return [""]
+
+        mapped = {self._job_type_to_linkedin_filter(value) for value in values}
+        mapped.discard("")
+        return sorted(mapped) or [""]
 
     def _fetch_job_detail(self, job_id):
         self._reject_placeholder_job({"jobPostingId": job_id})
+        self._detail_requests_made += 1
         detail_html = self._fetch_url(self.GUEST_JOB_URL.format(job_id=job_id))
         raw_job = self._parse_job_detail(detail_html)
         raw_job.setdefault("jobPostingId", job_id)
@@ -135,14 +273,25 @@ class LinkedInParser(BaseParser):
     def _fetch_url(self, url):
         if not url:
             return ""
+        self._throttle_request()
+        self._request_count += 1
         request = Request(str(url), headers=self.REQUEST_HEADERS)
         timeout = self._positive_int_config(
             "timeout_seconds", default=self.DEFAULT_TIMEOUT_SECONDS
         )
-        with urlopen(request, timeout=timeout) as response:
-            body = response.read()
-            charset = response.headers.get_content_charset() or "utf-8"
-            return body.decode(charset, errors="replace")
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                body = response.read()
+                charset = response.headers.get_content_charset() or "utf-8"
+                return body.decode(charset, errors="replace")
+        except HTTPError as exc:
+            if exc.code == 429:
+                raise LinkedInRateLimitError(
+                    "HTTP Error 429: Too Many Requests. LinkedIn rate-limited "
+                    "this crawl; reduce max_search_requests/max_detail_requests "
+                    "or wait before retrying."
+                ) from exc
+            raise
 
     def _parse_search_cards(self, content):
         if not content:
@@ -173,6 +322,7 @@ class LinkedInParser(BaseParser):
                 "formattedLocation": self._extract_class_text(
                     block, "job-search-card__location"
                 ),
+                "employmentType": self._extract_job_type_label(block),
                 "postedAt": self._extract_time_value(block),
             }
             jobs.append({key: value for key, value in raw_job.items() if value})
@@ -188,6 +338,9 @@ class LinkedInParser(BaseParser):
             "show-more-less-html__markup",
             preserve_breaks=True,
         )
+        employment_type = criteria.get(
+            "employment type"
+        ) or self._extract_detail_job_type(content)
         raw_job = {
             "jobTitle": self._extract_class_text(content, "top-card-layout__title")
             or self._extract_tag_text(content, "h1"),
@@ -197,7 +350,7 @@ class LinkedInParser(BaseParser):
                 content,
                 "topcard__flavor--bullet",
             ),
-            "employmentType": criteria.get("employment type"),
+            "employmentType": employment_type,
             "description": description,
             "postedAt": self._extract_time_value(content),
             "metadata": {
@@ -219,6 +372,28 @@ class LinkedInParser(BaseParser):
             if label and value:
                 criteria[label.casefold()] = value
         return criteria
+
+    @classmethod
+    def _extract_detail_job_type(cls, content):
+        if not content:
+            return ""
+        top_card_content = re.split(
+            r'class=["\'][^"\']*show-more-less-html__markup[^"\']*["\']',
+            content,
+            maxsplit=1,
+            flags=re.IGNORECASE,
+        )[0]
+        return cls._extract_job_type_label(top_card_content)
+
+    @classmethod
+    def _extract_job_type_label(cls, content):
+        text = cls._html_to_text(content or "")
+        if not text:
+            return ""
+        for label, pattern in cls.JOB_TYPE_PATTERNS:
+            if re.search(pattern, text, flags=re.IGNORECASE):
+                return label
+        return ""
 
     def _extract_job_url(self, block, job_id):
         url = self._first_match(
@@ -342,7 +517,90 @@ class LinkedInParser(BaseParser):
 
     def _fetch_details_enabled(self):
         config = self._merged_config()
-        return config.get("fetch_details", True) is not False
+        value = config.get("fetch_details", True)
+        if isinstance(value, str):
+            return value.strip().casefold() not in {
+                "0",
+                "false",
+                "no",
+                "off",
+                "none",
+                "never",
+            }
+        return value is not False
+
+    def _fetch_details_strategy(self):
+        config = self._merged_config()
+        if self._config_bool(
+            config,
+            ("fetch_details_for_new_only", "fetch_details_new_only"),
+            default=False,
+        ):
+            return "new_only"
+
+        value = (
+            config.get("fetch_details_for")
+            or config.get("fetch_details_strategy")
+            or config.get("detail_fetch_strategy")
+        )
+        if value is None and isinstance(config.get("fetch_details"), str):
+            value = config.get("fetch_details")
+
+        key = str(value or "all").strip().casefold().replace("-", "_")
+        aliases = {
+            "all": "all",
+            "always": "all",
+            "new": "new_only",
+            "new_only": "new_only",
+            "new_jobs": "new_only",
+            "new_or_missing": "new_or_missing",
+            "new_or_missing_description": "new_or_missing",
+            "missing": "new_or_missing",
+            "missing_description": "new_or_missing",
+            "missing_only": "new_or_missing",
+        }
+        return aliases.get(key, "all")
+
+    def _should_fetch_detail_for_card(self, card):
+        strategy = self._fetch_details_strategy()
+        if strategy == "all":
+            return True
+
+        existing_job = self._existing_job_for_card(card)
+        if existing_job is None:
+            return True
+        if strategy == "new_only":
+            return False
+        if strategy == "new_or_missing":
+            return not (existing_job.description or "").strip()
+        return True
+
+    def _detail_request_available(self):
+        max_detail_requests = self._positive_int_config(
+            "max_detail_requests",
+            default=self.DEFAULT_MAX_DETAIL_REQUESTS,
+        )
+        return self._detail_requests_made < max_detail_requests
+
+    def _existing_job_for_card(self, card):
+        from apps.jobs.models import JobPost
+
+        external_id = (card.get("jobPostingId") or "").strip()
+        source_url = (card.get("jobUrl") or "").strip()
+        if not source_url and external_id:
+            source_url = self._canonical_job_url(external_id)
+
+        filters = None
+        if external_id:
+            filters = Q(external_id=external_id)
+        if source_url:
+            source_url_filter = Q(source_url=source_url)
+            filters = (
+                source_url_filter if filters is None else filters | source_url_filter
+            )
+        if filters is None:
+            return None
+        return JobPost.objects.filter(filters).only("id", "description").first()
 
     def _positive_int_config(self, key, default):
         value = self._merged_config().get(key, default)
@@ -351,6 +609,19 @@ class LinkedInParser(BaseParser):
         except (TypeError, ValueError):
             return default
         return value if value > 0 else default
+
+    def _positive_float_config(self, key, default):
+        value = self._merged_config().get(key, default)
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            return default
+        return value if value > 0 else default
+
+    def _throttle_request(self):
+        delay = self._positive_float_config("request_delay_seconds", default=0)
+        if self._request_count and delay > 0:
+            time.sleep(delay)
 
     def _merged_config(self):
         if self.source is None or isinstance(self.source, str):
@@ -378,6 +649,56 @@ class LinkedInParser(BaseParser):
         if isinstance(value, (list, tuple, set)):
             return " ".join(str(item).strip() for item in value if str(item).strip())
         return str(value).strip()
+
+    @classmethod
+    def _coerce_query_values(cls, value):
+        if value in (None, "", [], {}):
+            return []
+        if isinstance(value, str):
+            raw_values = value.split(",") if "," in value else [value]
+        elif isinstance(value, (list, tuple, set)):
+            raw_values = value
+        else:
+            raw_values = [value]
+
+        values = []
+        seen = set()
+        for raw_value in raw_values:
+            text = cls._coerce_query_value(raw_value)
+            key = text.casefold()
+            if not text or key in seen:
+                continue
+            seen.add(key)
+            values.append(text)
+        return values
+
+    @staticmethod
+    def _config_bool(config, keys, default=False):
+        for key in keys:
+            if key not in config:
+                continue
+            value = config[key]
+            if isinstance(value, bool):
+                return value
+            return str(value).strip().casefold() in {"1", "true", "yes", "on"}
+        return default
+
+    @staticmethod
+    def _workplace_type_to_linkedin_filter(value):
+        key = " ".join(str(value or "").casefold().replace("_", " ").split())
+        aliases = {
+            "on site": "1",
+            "onsite": "1",
+            "on-site": "1",
+            "remote": "2",
+            "hybrid": "3",
+        }
+        return aliases.get(key, "")
+
+    @classmethod
+    def _job_type_to_linkedin_filter(cls, value):
+        key = " ".join(str(value or "").casefold().replace("_", " ").split())
+        return cls.LINKEDIN_JOB_TYPE_FILTERS.get(key, "")
 
     @classmethod
     def _reject_placeholder_job(cls, raw_job):

@@ -1,3 +1,4 @@
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from typing import Any
@@ -192,11 +193,20 @@ class JobNormalizer:
         )
         if description is None:
             description = cls._description_from_sections(sections)
+        title = cls._clean_text(cls._first_value(raw, cls.FIELD_ALIASES["title"]))
 
         job_type = cls.normalize_job_type(
             cls._first_value(raw, cls.FIELD_ALIASES["job_type"])
             or cls._category_value(raw, "commitment")
         )
+        if job_type is None:
+            job_type = cls._infer_job_type(
+                raw=raw,
+                title=title,
+                description=description,
+                sections=sections,
+                source=source,
+            )
         employment_type = cls.normalize_job_type(
             cls._first_value(raw, cls.FIELD_ALIASES["employment_type"])
             or cls._category_value(raw, "commitment")
@@ -212,7 +222,7 @@ class JobNormalizer:
                 cls._first_value(raw, cls.FIELD_ALIASES["external_id"])
             ),
             company_name=cls._company_name(raw, source),
-            title=cls._clean_text(cls._first_value(raw, cls.FIELD_ALIASES["title"])),
+            title=title,
             job_type=job_type,
             employment_type=employment_type,
             remote_type=cls.normalize_location(
@@ -252,6 +262,47 @@ class JobNormalizer:
         return cls.JOB_TYPE_ALIASES.get(
             key, text.upper().replace(" ", "_").replace("-", "_")
         )
+
+    @classmethod
+    def _infer_job_type(cls, raw, title, description, sections, source):
+        configured_default = cls._default_job_type_from_source(source)
+        searchable_text = " ".join(
+            str(part or "")
+            for part in (
+                title,
+                description,
+                *(sections or {}).values(),
+            )
+        ).casefold()
+
+        inference_patterns = (
+            (r"\b(intern|internship|co[\s-]?op)\b", "INTERNSHIP"),
+            (r"\b(part[\s-]?time)\b", "PART_TIME"),
+            (r"\b(contract|contractor)\b", "CONTRACT"),
+            (r"\b(temp|temporary)\b", "TEMPORARY"),
+            (r"\b(full[\s-]?time|fulltime)\b", "FULL_TIME"),
+        )
+        for pattern, normalized in inference_patterns:
+            if re.search(pattern, searchable_text):
+                return normalized
+
+        raw_metadata = raw.get("metadata") if isinstance(raw.get("metadata"), dict) else {}
+        metadata_default = cls.normalize_job_type(
+            raw_metadata.get("default_job_type")
+            or raw_metadata.get("default_employment_type")
+        )
+        return metadata_default or configured_default
+
+    @classmethod
+    def _default_job_type_from_source(cls, source):
+        for config in cls._source_configs(source):
+            configured = cls.normalize_job_type(
+                config.get("default_job_type")
+                or config.get("default_employment_type")
+            )
+            if configured:
+                return configured
+        return None
 
     @classmethod
     def normalize_location(cls, value):

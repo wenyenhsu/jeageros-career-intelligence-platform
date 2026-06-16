@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 from collections import defaultdict
 from urllib.parse import urlparse
@@ -481,11 +482,14 @@ class CrawlService:
         ):
             return False
 
-        location = str(config.get("location") or "").strip()
-        if location and location.casefold() != "united states":
-            job_location = str(job_data.get("location") or "").casefold()
-            if location.casefold() not in job_location:
-                return False
+        if not cls._job_matches_location_filter(job_data, config):
+            return False
+
+        if not cls._job_matches_workplace_filter(job_data, config):
+            return False
+
+        if not cls._job_matches_job_type_filter(job_data, config):
+            return False
 
         return True
 
@@ -530,6 +534,120 @@ class CrawlService:
             *sections.values(),
         ]
         return " ".join(str(part or "") for part in parts).casefold()
+
+    @classmethod
+    def _job_matches_location_filter(cls, job_data, config):
+        locations = cls._coerce_text_values(
+            config.get("locations") or config.get("location")
+        )
+        if not locations:
+            return True
+
+        normalized_locations = {
+            " ".join(location.casefold().replace("_", " ").split())
+            for location in locations
+        }
+        if normalized_locations & {"united states", "us", "usa", "u.s.", "u.s.a."}:
+            return True
+
+        job_location = str(job_data.get("location") or "").casefold()
+        if not job_location:
+            return False
+
+        return any(
+            cls._location_value_matches_job_location(location, job_location)
+            for location in normalized_locations
+        )
+
+    @staticmethod
+    def _location_value_matches_job_location(location, job_location):
+        if not location:
+            return False
+        if len(location) == 2:
+            return bool(
+                re.search(
+                    rf"(^|[,\s]){re.escape(location)}($|[,\s(])",
+                    job_location,
+                )
+            )
+        return location in job_location
+
+    @classmethod
+    def _job_matches_workplace_filter(cls, job_data, config):
+        if cls._config_bool(config, ("remote_only",), default=False):
+            workplace_types = ["remote"]
+        else:
+            workplace_types = cls._coerce_text_values(config.get("workplace_types"))
+        if not workplace_types:
+            return True
+
+        normalized_types = {
+            cls._normalize_workplace_type(workplace_type)
+            for workplace_type in workplace_types
+        }
+        normalized_types.discard("")
+        if not normalized_types or {"remote", "hybrid", "on-site"}.issubset(
+            normalized_types
+        ):
+            return True
+
+        text = " ".join(
+            str(value or "")
+            for value in (
+                job_data.get("remote_type"),
+                job_data.get("location"),
+                job_data.get("description"),
+            )
+        ).casefold()
+        if "remote" in normalized_types and "remote" in text:
+            return True
+        if "hybrid" in normalized_types and "hybrid" in text:
+            return True
+        if "on-site" in normalized_types:
+            return not ("remote" in text or "hybrid" in text)
+        return False
+
+    @classmethod
+    def _job_matches_job_type_filter(cls, job_data, config):
+        configured_types = cls._coerce_text_values(
+            config.get("job_types")
+            or config.get("job_type")
+            or config.get("employment_types")
+            or config.get("employment_type")
+        )
+        if not configured_types:
+            return True
+
+        allowed_types = {
+            cls._normalize_job_type_filter(job_type)
+            for job_type in configured_types
+        }
+        allowed_types.discard("")
+        if not allowed_types:
+            return True
+
+        job_types = {
+            cls._normalize_job_type_filter(job_data.get("employment_type")),
+            cls._normalize_job_type_filter(job_data.get("job_type")),
+        }
+        job_types.discard("")
+        return bool(job_types & allowed_types)
+
+    @staticmethod
+    def _normalize_job_type_filter(value):
+        normalized = JobNormalizer.normalize_job_type(value)
+        return normalized or ""
+
+    @staticmethod
+    def _normalize_workplace_type(value):
+        key = " ".join(str(value or "").casefold().replace("_", " ").split())
+        if key in {"remote", "work from home", "wfh"}:
+            return "remote"
+        if key == "hybrid":
+            return "hybrid"
+        if key in {"on site", "onsite", "on-site", "office", "in office"}:
+            return "on-site"
+        return ""
 
     @staticmethod
     def _coerce_text_values(value):

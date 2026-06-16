@@ -155,6 +155,42 @@ def test_job_sync_updates_existing_job_by_external_id():
 
 
 @pytest.mark.django_db
+def test_job_sync_preserves_existing_optional_fields_from_card_only_payload():
+    original = JobSyncService.upsert_job(
+        {
+            "title": "Backend Engineer",
+            "company_name": "OpenAI",
+            "source_url": "https://www.linkedin.com/jobs/view/5555555555/",
+            "external_id": "5555555555",
+            "location": "Remote",
+            "employment_type": "Full-time",
+            "description": "Already fetched from LinkedIn.",
+        }
+    ).job
+
+    result = JobSyncService.upsert_job(
+        {
+            "source": "linkedin",
+            "title": "Backend Engineer",
+            "company_name": "OpenAI",
+            "source_url": "https://www.linkedin.com/jobs/view/5555555555/",
+            "external_id": "5555555555",
+            "location": "",
+            "employment_type": "",
+            "description": "",
+        }
+    )
+
+    original.refresh_from_db()
+    assert result.created is False
+    assert result.job.id == original.id
+    assert original.location == "Remote"
+    assert original.job_type == "Full-time"
+    assert original.employment_type == "Full-time"
+    assert original.description == "Already fetched from LinkedIn."
+
+
+@pytest.mark.django_db
 def test_job_sync_prevents_duplicate_jobs_by_source_url():
     payload = {
         "title": "Frontend Engineer",

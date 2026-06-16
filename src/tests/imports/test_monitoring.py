@@ -109,6 +109,29 @@ def test_monitoring_service_returns_run_status(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_monitoring_service_returns_estimated_progress_for_running_pipeline():
+    crawl_run = CrawlRun.objects.create(
+        status=CrawlRun.StatusChoices.RUNNING,
+        total_sources=1,
+        processed_sources=0,
+        current_source="LinkedIn",
+    )
+    PipelineLog.objects.create(
+        crawl_run=crawl_run,
+        step_name="source_detection",
+        status=PipelineLog.StatusChoices.SUCCESS,
+        severity=PipelineLog.SeverityChoices.INFO,
+        message="Detected parser type LINKEDIN.",
+    )
+
+    payload = MonitoringService.run_status(crawl_run.id)
+
+    assert payload["progress"] == 0
+    assert payload["display_progress"] == 30
+    assert payload["display_progress_label"] == "30% estimated pipeline progress"
+
+
+@pytest.mark.django_db
 def test_monitoring_api_returns_expected_log_and_status(
     client, user, monkeypatch, company, job
 ):
@@ -188,11 +211,71 @@ def test_monitoring_page_shows_recent_failures(client):
     assert "Monitoring" in content
     assert "Pipeline Step Summary" in content
     assert "Task failed." in content
+    assert "RuntimeError: boom" in content
     assert "<time" in content
     assert "datetime=" in content
     assert timestamp["created_at_display"] in content
     assert timestamp["created_at_title"] in content
     assert "+00:00" not in content
+
+
+@pytest.mark.django_db
+def test_monitoring_page_shows_summary_failure_reason(client):
+    crawl_run = CrawlRun.objects.create(status=CrawlRun.StatusChoices.FAILED)
+    MonitoringService.log_event(
+        step_name="crawl_run",
+        status=PipelineLog.StatusChoices.FAILED,
+        severity=PipelineLog.SeverityChoices.ERROR,
+        message="Crawl run finished.",
+        crawl_run=crawl_run,
+        metadata={
+            "failures": [
+                {
+                    "source_name": "LinkedIn",
+                    "error": "HTTP Error 429: Too Many Requests",
+                }
+            ]
+        },
+    )
+
+    response = client.get(
+        reverse("monitoring-dashboard"),
+        {"crawl_run_id": crawl_run.id},
+    )
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "Reason" in content
+    assert "HTTP Error 429: Too Many Requests" in content
+
+
+@pytest.mark.django_db
+def test_monitoring_page_filters_logs_by_crawl_run(client):
+    first_run = CrawlRun.objects.create(status=CrawlRun.StatusChoices.FAILED)
+    second_run = CrawlRun.objects.create(status=CrawlRun.StatusChoices.SUCCESS)
+    MonitoringService.log_failure(
+        step_name="source_crawl",
+        message="Selected run failed.",
+        crawl_run=first_run,
+        error=RuntimeError("selected"),
+    )
+    MonitoringService.log_success(
+        step_name="source_crawl",
+        message="Other run succeeded.",
+        crawl_run=second_run,
+    )
+
+    response = client.get(
+        reverse("monitoring-dashboard"),
+        {"crawl_run_id": first_run.id},
+    )
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert f"Showing logs for crawl run #{first_run.id}" in content
+    assert "Selected run failed." in content
+    assert "Other run succeeded." not in content
+    assert 'id="recent-pipeline-logs"' in content
 
 
 @pytest.mark.django_db

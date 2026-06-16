@@ -2,7 +2,7 @@ import pytest
 from django.urls import reverse
 
 import apps.imports.views as import_views
-from apps.imports.models import JobSource
+from apps.imports.models import CrawlRun, JobSource, PipelineLog
 
 
 @pytest.mark.django_db
@@ -32,6 +32,10 @@ def test_source_list_view(client):
     assert "LinkedIn" in content
     assert "Run all sources" in content
     assert f'action="{reverse("source-run-all")}"' in content
+    assert "Live Pipeline Status" in content
+    assert "Pipeline Flow" in content
+    assert "globalCrawlStatus" in content
+    assert "jaegeros.activeCrawlRunId" in content
     assert "Run" in content
     assert "Delete" in content
     assert reverse("source-delete", args=[source.id]) in content
@@ -71,31 +75,34 @@ def test_source_delete_view(client):
 
 
 @pytest.mark.django_db
-def test_run_all_sources_button_triggers_enabled_source_crawl(client, monkeypatch):
+def test_run_all_sources_button_queues_enabled_source_crawl(client, monkeypatch):
     called = {}
 
-    def fake_crawl_enabled_sources():
-        called["all"] = True
-        return _crawl_summary(jobs_created=2, jobs_updated=1)
+    def fake_enqueue(crawl_run_id, source_ids=None):
+        called["crawl_run_id"] = crawl_run_id
+        called["source_ids"] = source_ids
+        return ""
 
     monkeypatch.setattr(
-        import_views.CrawlService,
-        "crawl_enabled_sources",
-        staticmethod(fake_crawl_enabled_sources),
+        import_views,
+        "_enqueue_crawl_task",
+        fake_enqueue,
     )
 
     response = client.post(reverse("source-run-all"), follow=True)
 
     assert response.status_code == 200
-    assert called == {"all": True}
+    crawl_run = CrawlRun.objects.get(id=called["crawl_run_id"])
+    assert called["source_ids"] is None
+    assert crawl_run.status == CrawlRun.StatusChoices.PENDING
     content = response.content.decode()
-    assert "All enabled job sources crawl finished." in content
-    assert "Created: 2" in content
-    assert "Updated: 1" in content
+    assert "All enabled job sources crawl started." in content
+    assert f'data-active-run-id="{crawl_run.id}"' in content
+    assert "View monitoring logs" in content
 
 
 @pytest.mark.django_db
-def test_run_single_source_button_triggers_only_that_source(client, monkeypatch):
+def test_run_single_source_button_queues_only_that_source(client, monkeypatch):
     source = JobSource.objects.create(
         name="LinkedIn",
         resource=JobSource.Resource.LINKEDIN,
@@ -103,34 +110,84 @@ def test_run_single_source_button_triggers_only_that_source(client, monkeypatch)
     )
     called = {}
 
-    def fake_crawl_all_sources(sources):
-        called["source_ids"] = [source.id for source in sources]
-        return _crawl_summary(jobs_created=1, filtered=3)
+    def fake_enqueue(crawl_run_id, source_ids=None):
+        called["crawl_run_id"] = crawl_run_id
+        called["source_ids"] = source_ids
+        return ""
 
     monkeypatch.setattr(
-        import_views.CrawlService,
-        "crawl_all_sources",
-        staticmethod(fake_crawl_all_sources),
+        import_views,
+        "_enqueue_crawl_task",
+        fake_enqueue,
     )
 
     response = client.post(reverse("source-run", args=[source.id]), follow=True)
 
     assert response.status_code == 200
-    assert called == {"source_ids": [source.id]}
+    assert called["source_ids"] == [source.id]
+    crawl_run = CrawlRun.objects.get(id=called["crawl_run_id"])
     content = response.content.decode()
-    assert "LinkedIn crawl finished." in content
-    assert "Created: 1" in content
-    assert "Filtered: 3" in content
+    assert "LinkedIn crawl started." in content
+    assert f'data-active-run-id="{crawl_run.id}"' in content
 
 
-def _crawl_summary(jobs_created=0, jobs_updated=0, jobs_closed=0, filtered=0):
-    return {
-        "success": True,
-        "sources_processed": 1,
-        "jobs_created": jobs_created,
-        "jobs_updated": jobs_updated,
-        "jobs_closed": jobs_closed,
-        "skills_attached": 0,
-        "errors": 0,
-        "sources": [{"jobs_filtered": filtered}],
-    }
+@pytest.mark.django_db
+def test_run_single_source_ajax_returns_status_urls(client, monkeypatch):
+    source = JobSource.objects.create(
+        name="LinkedIn",
+        resource=JobSource.Resource.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
+    )
+    called = {}
+
+    def fake_enqueue(crawl_run_id, source_ids=None):
+        called["crawl_run_id"] = crawl_run_id
+        called["source_ids"] = source_ids
+        return ""
+
+    monkeypatch.setattr(
+        import_views,
+        "_enqueue_crawl_task",
+        fake_enqueue,
+    )
+
+    response = client.post(
+        reverse("source-run", args=[source.id]),
+        HTTP_ACCEPT="application/json",
+        HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+    )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["crawl_run_id"] == called["crawl_run_id"]
+    assert payload["status_url"] == reverse(
+        "source-run-status",
+        args=[called["crawl_run_id"]],
+    )
+    assert payload["monitoring_url"].endswith("#recent-pipeline-logs")
+    assert called["source_ids"] == [source.id]
+
+
+@pytest.mark.django_db
+def test_source_run_status_endpoint_returns_pipeline_payload(client):
+    crawl_run = CrawlRun.objects.create(
+        status=CrawlRun.StatusChoices.RUNNING,
+        total_sources=1,
+        current_source="LinkedIn",
+    )
+    PipelineLog.objects.create(
+        crawl_run=crawl_run,
+        step_name="source_detection",
+        status=PipelineLog.StatusChoices.SUCCESS,
+        severity=PipelineLog.SeverityChoices.INFO,
+        message="Detected LinkedIn parser.",
+    )
+
+    response = client.get(reverse("source-run-status", args=[crawl_run.id]))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == CrawlRun.StatusChoices.RUNNING
+    assert payload["current_step"]["step_name"] == "source_crawl"
+    assert payload["recent_logs"][0]["step_name"] == "source_detection"

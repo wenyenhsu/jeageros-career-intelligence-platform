@@ -2,23 +2,31 @@ import logging
 
 from celery import shared_task
 
-from .models import PipelineLog
+from .models import JobSource, PipelineLog
 from .services import CrawlService, MonitoringService
 
 logger = logging.getLogger(__name__)
 
 
 @shared_task(name="apps.imports.tasks.crawl_all_sources")
-def crawl_all_sources(crawl_run_id=None):
+def crawl_all_sources(crawl_run_id=None, source_ids=None):
     MonitoringService.log_event(
         step_name="celery_task",
         status=PipelineLog.StatusChoices.STARTED,
         message="crawl_all_sources task started.",
         service_name="apps.imports.tasks.crawl_all_sources",
         crawl_run_id=crawl_run_id,
+        metadata={"source_ids": source_ids or []},
     )
     try:
-        summary = CrawlService.crawl_enabled_sources(crawl_run_id=crawl_run_id)
+        if source_ids:
+            sources = JobSource.objects.filter(id__in=source_ids)
+            summary = CrawlService.crawl_all_sources(
+                sources,
+                crawl_run_id=crawl_run_id,
+            )
+        else:
+            summary = CrawlService.crawl_enabled_sources(crawl_run_id=crawl_run_id)
         logger.info(
             "Scheduled crawl summary: processed=%s skipped=%s created=%s updated=%s closed=%s errors=%s progress=%.2f%%",
             summary["sources_processed"],
