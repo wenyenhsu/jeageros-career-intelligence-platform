@@ -116,6 +116,31 @@ def test_job_list_does_not_render_manual_ollama_skill_actions(client, company):
 
 
 @pytest.mark.django_db
+def test_job_list_renders_delete_action_next_to_view(client, company):
+    job = JobPost.objects.create(company=company, title="Deletable Job")
+
+    response = client.get(reverse("job-list"))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert reverse("job-detail", args=[job.id]) in content
+    assert f'action="{reverse("job-delete", args=[job.id])}"' in content
+    assert "Delete this job?" in content
+    assert "btn-outline-danger" in content
+
+
+@pytest.mark.django_db
+def test_job_delete_post_from_list_action_deletes_job(client, company):
+    job = JobPost.objects.create(company=company, title="Delete Me")
+
+    response = client.post(reverse("job-delete", args=[job.id]))
+
+    assert response.status_code == 302
+    assert response.url == reverse("job-list")
+    assert not JobPost.objects.filter(id=job.id).exists()
+
+
+@pytest.mark.django_db
 def test_job_detail_title_links_to_source_url_when_present(client, company):
     source_url = "https://example.com/jobs/data-engineer"
     job = JobPost.objects.create(

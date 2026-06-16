@@ -76,6 +76,36 @@ def test_application_list_displays_linked_job_info_and_job_skills(
 
 
 @pytest.mark.django_db
+def test_application_list_renders_delete_action_next_to_view(
+    client,
+    shared_application,
+):
+    response = client.get(reverse("application-list"))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert reverse("application-detail", args=[shared_application.id]) in content
+    assert (
+        f'action="{reverse("application-delete", args=[shared_application.id])}"'
+        in content
+    )
+    assert "Delete this application?" in content
+    assert "btn-outline-danger" in content
+
+
+@pytest.mark.django_db
+def test_application_delete_post_from_list_action_deletes_application(
+    client,
+    shared_application,
+):
+    response = client.post(reverse("application-delete", args=[shared_application.id]))
+
+    assert response.status_code == 302
+    assert response.url == reverse("application-list")
+    assert not Application.objects.filter(id=shared_application.id).exists()
+
+
+@pytest.mark.django_db
 def test_application_detail_displays_linked_job_info_and_application_fields(
     client,
     shared_application,

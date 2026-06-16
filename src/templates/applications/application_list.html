@@ -99,9 +99,21 @@
                             {% endif %}
                         </td>
                         <td class="text-end pe-4">
-                            <a href="{% url 'application-detail' application.pk %}" class="btn btn-outline-secondary btn-sm">
-                                View
-                            </a>
+                            <div class="d-inline-flex gap-1">
+                                <a href="{% url 'application-detail' application.pk %}" class="btn btn-outline-secondary btn-sm">
+                                    View
+                                </a>
+                                <form method="post" action="{% url 'application-delete' application.pk %}" class="d-inline">
+                                    {% csrf_token %}
+                                    <button
+                                        type="submit"
+                                        class="btn btn-outline-danger btn-sm"
+                                        onclick="return confirm('Delete this application?');"
+                                    >
+                                        Delete
+                                    </button>
+                                </form>
+                            </div>
                         </td>
                     </tr>
                     {% empty %}

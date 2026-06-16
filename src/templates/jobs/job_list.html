@@ -92,7 +92,19 @@
                   </time>
                 </td>
                 <td class="text-end">
-                  <a href="{% url 'job-detail' job.id %}" class="btn btn-sm btn-outline-secondary">View</a>
+                  <div class="d-inline-flex gap-1">
+                    <a href="{% url 'job-detail' job.id %}" class="btn btn-sm btn-outline-secondary">View</a>
+                    <form method="post" action="{% url 'job-delete' job.id %}" class="d-inline">
+                      {% csrf_token %}
+                      <button
+                        type="submit"
+                        class="btn btn-sm btn-outline-danger"
+                        onclick="return confirm('Delete this job?');"
+                      >
+                        Delete
+                      </button>
+                    </form>
+                  </div>
                 </td>
               </tr>
             {% endfor %}
