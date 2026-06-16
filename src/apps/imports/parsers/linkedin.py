@@ -97,14 +97,13 @@ class LinkedInParser(BaseParser):
             for key, value in parse_qs(parsed.query, keep_blank_values=False).items()
             if value
         }
-        config = self._merged_config()
+        config = self._crawl_config()
 
         keywords = self._first_config_value(
             config,
             "keywords",
             "keyword",
             "query",
-            "include_keywords",
             "search",
         )
         location = self._first_config_value(config, "location", "locations")
@@ -360,6 +359,11 @@ class LinkedInParser(BaseParser):
         config.update(getattr(self.source, "filter_config", None) or {})
         config.update(getattr(self.source, "crawl_config", None) or {})
         return config
+
+    def _crawl_config(self):
+        if self.source is None or isinstance(self.source, str):
+            return {}
+        return dict(getattr(self.source, "crawl_config", None) or {})
 
     @staticmethod
     def _first_config_value(config, *keys):

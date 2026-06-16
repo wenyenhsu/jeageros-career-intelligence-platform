@@ -8,9 +8,17 @@
     <p class="text-muted mb-0">Configure resources before crawler detection and extraction.</p>
   </div>
 
-  <a href="{% url 'source-create' %}" class="btn btn-primary">
-    <i class="bi bi-plus-lg me-1"></i>Create source
-  </a>
+  <div class="d-flex flex-wrap gap-2">
+    <form method="post" action="{% url 'source-run-all' %}">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-outline-success">
+        <i class="bi bi-play-fill me-1"></i>Run all sources
+      </button>
+    </form>
+    <a href="{% url 'source-create' %}" class="btn btn-primary">
+      <i class="bi bi-plus-lg me-1"></i>Create source
+    </a>
+  </div>
 </div>
 
 <div class="card shadow-sm border-0">
@@ -45,9 +53,14 @@
             </td>
             <td>{{ source.last_crawled_at|date:"Y-m-d H:i"|default:"—" }}</td>
             <td class="text-end">
-              <div class="btn-group">
+              <div class="d-inline-flex gap-1">
+                <form method="post" action="{% url 'source-run' source.pk %}" class="d-inline">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-outline-success btn-sm">Run</button>
+                </form>
                 <a href="{% url 'source-detail' source.pk %}" class="btn btn-outline-primary btn-sm">View</a>
                 <a href="{% url 'source-update' source.pk %}" class="btn btn-outline-secondary btn-sm">Edit</a>
+                <a href="{% url 'source-delete' source.pk %}" class="btn btn-outline-danger btn-sm">Delete</a>
               </div>
             </td>
           </tr>

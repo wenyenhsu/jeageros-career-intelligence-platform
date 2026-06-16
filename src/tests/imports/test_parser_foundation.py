@@ -195,6 +195,41 @@ def test_linkedin_parser_extracts_search_results_through_guest_endpoint(monkeypa
     assert jobs[0]["employmentType"] == "Full-time"
 
 
+def test_linkedin_parser_does_not_apply_filter_keywords_to_search_url(monkeypatch):
+    source = JobSource(
+        name="LinkedIn Location Only",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/?location=United+States",
+        crawl_config={"max_pages": 1},
+        filter_config={
+            "include_keywords": ["backend", "python", "django"],
+            "target_companies": ["OpenAI"],
+        },
+    )
+    parser = LinkedInParser(source=source)
+    monkeypatch.setattr(
+        linkedin_parser_module,
+        "urlopen",
+        _fake_linkedin_urlopen(
+            {
+                "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?location=United+States&start=0": _linkedin_search_html(),
+                "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/5555555555": _linkedin_detail_html(
+                    job_id="5555555555",
+                    title="Backend Engineer",
+                    company="OpenAI",
+                    location="Remote",
+                    employment_type="Full-time",
+                ),
+            }
+        ),
+    )
+
+    jobs = parser.extract_jobs(parser.find_listing_pages()[0])
+
+    assert len(jobs) == 1
+    assert jobs[0]["companyName"] == "OpenAI"
+
+
 def test_linkedin_parser_rejects_placeholder_job_ids():
     parser = LinkedInParser(
         source=JobSource(

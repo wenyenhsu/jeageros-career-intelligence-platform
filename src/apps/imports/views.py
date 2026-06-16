@@ -1,5 +1,8 @@
+from django.contrib import messages
+from django.shortcuts import get_object_or_404, redirect
 from django.shortcuts import render
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
+from django.views.decorators.http import require_POST
 from django.views.generic import (
     CreateView,
     DeleteView,
@@ -10,7 +13,7 @@ from django.views.generic import (
 
 from .forms import JobSourceForm
 from .models import JobSource
-from .services import MonitoringService
+from .services import CrawlService, MonitoringService
 
 
 def job_url_import(request):
@@ -23,6 +26,39 @@ def monitoring_dashboard(request):
         "imports/monitoring_dashboard.html",
         MonitoringService.dashboard_summary(),
     )
+
+
+@require_POST
+def run_all_sources(request):
+    summary = CrawlService.crawl_enabled_sources()
+    _add_crawl_message(request, "All enabled job sources", summary)
+    return redirect(reverse("source-list"))
+
+
+@require_POST
+def run_source(request, pk):
+    source = get_object_or_404(JobSource, pk=pk)
+    summary = CrawlService.crawl_all_sources([source])
+    _add_crawl_message(request, source.name, summary)
+    return redirect(reverse("source-list"))
+
+
+def _add_crawl_message(request, label, summary):
+    filtered_count = sum(source.get("jobs_filtered", 0) for source in summary["sources"])
+    message = (
+        f"{label} crawl finished. "
+        f"Processed: {summary['sources_processed']}, "
+        f"Created: {summary['jobs_created']}, "
+        f"Updated: {summary['jobs_updated']}, "
+        f"Closed: {summary['jobs_closed']}, "
+        f"Filtered: {filtered_count}, "
+        f"Skills attached: {summary.get('skills_attached', 0)}, "
+        f"Errors: {summary['errors']}."
+    )
+    if summary.get("success"):
+        messages.success(request, message)
+    else:
+        messages.warning(request, message)
 
 
 class JobSourceListView(ListView):
