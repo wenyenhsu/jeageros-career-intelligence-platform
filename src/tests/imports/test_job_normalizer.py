@@ -170,6 +170,30 @@ def test_source_config_can_supply_default_job_type_when_missing():
     assert payload.employment_type == "FULL_TIME"
 
 
+def test_source_default_job_type_is_not_used_when_job_type_filter_exists():
+    source = JobSource(
+        name="LinkedIn Data Internship",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
+        crawl_config={"default_job_type": "Internship"},
+        filter_config={"job_types": ["Internship"]},
+    )
+
+    payload = JobNormalizer.normalize(
+        {
+            "jobTitle": "Data Scientist, Product Analytics",
+            "companyName": "Meta",
+            "jobUrl": "https://www.linkedin.com/jobs/view/777",
+            "jobPostingId": "777",
+            "formattedLocation": "Burlingame, CA",
+        },
+        source=source,
+    )
+
+    assert payload.job_type is None
+    assert payload.employment_type is None
+
+
 def test_webpage_job_type_overrides_source_default_job_type():
     source = JobSource(
         name="LinkedIn Data",

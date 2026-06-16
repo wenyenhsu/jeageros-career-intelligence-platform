@@ -3,6 +3,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.shortcuts import render
 from django.urls import reverse, reverse_lazy
+from django.utils import timezone
 from django.utils.html import format_html
 from django.views.decorators.http import require_POST
 from django.views.generic import (
@@ -14,7 +15,7 @@ from django.views.generic import (
 )
 
 from .forms import JobSourceForm
-from .models import CrawlRun, JobSource
+from .models import CrawlRun, JobSource, PipelineLog
 from .services import MonitoringService
 
 
@@ -53,6 +54,56 @@ def crawl_run_status(request, pk):
     except CrawlRun.DoesNotExist:
         return JsonResponse({"detail": "Crawl run not found."}, status=404)
     return JsonResponse(payload)
+
+
+@require_POST
+def abort_crawl_run(request, pk):
+    crawl_run = get_object_or_404(CrawlRun, pk=pk)
+    terminal_statuses = {
+        CrawlRun.StatusChoices.SUCCESS,
+        CrawlRun.StatusChoices.FAILED,
+        CrawlRun.StatusChoices.ABORTED,
+    }
+    changed = crawl_run.status not in terminal_statuses
+    if changed:
+        crawl_run.status = CrawlRun.StatusChoices.ABORTED
+        crawl_run.finished_at = timezone.now()
+        crawl_run.current_source = ""
+        crawl_run.save(
+            update_fields=["status", "finished_at", "current_source"],
+        )
+
+    MonitoringService.log_event(
+        step_name="crawl_run",
+        status=PipelineLog.StatusChoices.FAILED,
+        severity=PipelineLog.SeverityChoices.WARNING,
+        message=(
+            "Crawl run abort requested."
+            if changed
+            else "Crawl run abort requested after it already finished."
+        ),
+        service_name=__name__,
+        crawl_run=crawl_run,
+        metadata={"changed": changed, "status": crawl_run.status},
+    )
+
+    payload = {
+        "success": True,
+        "crawl_run_id": crawl_run.id,
+        "status": crawl_run.status,
+        "message": "Abort requested." if changed else "Crawl run already finished.",
+    }
+    if _wants_json(request):
+        return JsonResponse(payload)
+
+    if changed:
+        messages.warning(request, "Crawl run abort requested.")
+    else:
+        messages.info(request, "Crawl run was already finished.")
+    return redirect(
+        f"{reverse('monitoring-dashboard')}?crawl_run_id={crawl_run.id}"
+        "#recent-pipeline-logs"
+    )
 
 
 def _start_crawl_run(label, total_sources=0):

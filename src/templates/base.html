@@ -83,9 +83,11 @@
     class="position-fixed bottom-0 end-0 m-3 card shadow border-0 d-none"
     style="z-index: 1080; min-width: min(420px, calc(100vw - 2rem));"
     data-status-url-template="{% url 'source-run-status' 0 %}"
+    data-abort-url-template="{% url 'source-run-abort' 0 %}"
     data-monitoring-url="{% url 'monitoring-dashboard' %}"
   >
     <div class="card-body p-3">
+      <span class="d-none">{% csrf_token %}</span>
       <div class="d-flex justify-content-between align-items-start gap-3">
         <div class="flex-grow-1">
           <div class="d-flex align-items-center gap-2 mb-1">
@@ -101,7 +103,10 @@
       </div>
       <div class="d-flex justify-content-between align-items-center gap-2 mt-2">
         <a id="globalCrawlMonitoringLink" class="small" href="{% url 'monitoring-dashboard' %}">Monitoring</a>
-        <a class="small" href="{% url 'source-list' %}">Sources</a>
+        <div class="d-flex align-items-center gap-2">
+          <button id="globalCrawlAbort" type="button" class="btn btn-outline-danger btn-sm py-0 px-2 d-none">Abort</button>
+          <a class="small" href="{% url 'source-list' %}">Sources</a>
+        </div>
       </div>
     </div>
   </div>
@@ -110,29 +115,51 @@
   <script>
     (() => {
       const storageKey = "jaegeros.activeCrawlRunId";
-      const terminalStatuses = new Set(["SUCCESS", "FAILED"]);
+      const terminalStatuses = new Set(["SUCCESS", "FAILED", "ABORTED"]);
       const widget = document.getElementById("globalCrawlStatus");
       if (!widget || !window.localStorage) return;
 
       const statusUrlTemplate = widget.dataset.statusUrlTemplate || "";
+      const abortUrlTemplate = widget.dataset.abortUrlTemplate || "";
       const monitoringUrl = widget.dataset.monitoringUrl || "";
       const badge = document.getElementById("globalCrawlBadge");
       const text = document.getElementById("globalCrawlText");
       const progressBar = document.getElementById("globalCrawlProgress");
       const monitoringLink = document.getElementById("globalCrawlMonitoringLink");
+      const abortButton = document.getElementById("globalCrawlAbort");
       const dismissButton = document.getElementById("globalCrawlDismiss");
       let pollTimer = null;
+      let activeRunId = "";
 
       function statusUrlForRun(runId) {
         return statusUrlTemplate.replace("/0/status/", `/${runId}/status/`);
+      }
+
+      function abortUrlForRun(runId) {
+        return abortUrlTemplate.replace("/0/abort/", `/${runId}/abort/`);
       }
 
       function monitoringUrlForRun(runId) {
         return `${monitoringUrl}?crawl_run_id=${runId}#recent-pipeline-logs`;
       }
 
+      function cookieValue(name) {
+        const pairs = document.cookie ? document.cookie.split(";") : [];
+        for (const pair of pairs) {
+          const [key, ...rest] = pair.trim().split("=");
+          if (key === name) return decodeURIComponent(rest.join("="));
+        }
+        return "";
+      }
+
+      function csrfToken() {
+        const input = widget.querySelector("input[name='csrfmiddlewaretoken']");
+        return input ? input.value : cookieValue("csrftoken");
+      }
+
       function badgeClass(status) {
         if (status === "FAILED") return "badge text-bg-danger";
+        if (status === "ABORTED") return "badge text-bg-warning";
         if (status === "SUCCESS") return "badge text-bg-success";
         if (status === "RUNNING") return "badge text-bg-primary";
         return "badge text-bg-secondary";
@@ -152,10 +179,14 @@
         const current = payload.current_step || {};
 
         widget.classList.remove("d-none");
+        activeRunId = runId;
         badge.className = badgeClass(status);
         badge.textContent = status;
         setProgress(status, progress);
         monitoringLink.href = monitoringUrlForRun(runId);
+        if (abortButton) {
+          abortButton.classList.toggle("d-none", terminalStatuses.has(status) || !runId);
+        }
 
         const step = current.step_name || "queued";
         const source = current.source_name ? ` · ${current.source_name}` : "";
@@ -163,6 +194,7 @@
 
         if (terminalStatuses.has(status)) {
           window.localStorage.removeItem(storageKey);
+          if (abortButton) abortButton.classList.add("d-none");
           if (pollTimer) window.clearInterval(pollTimer);
           pollTimer = null;
         }
@@ -184,6 +216,35 @@
         pollTimer = window.setInterval(() => {
           poll(runId).catch(() => widget.classList.add("d-none"));
         }, 2500);
+      }
+
+      if (abortButton) {
+        abortButton.addEventListener("click", async () => {
+          if (!activeRunId) return;
+          const originalText = abortButton.textContent;
+          abortButton.disabled = true;
+          abortButton.textContent = "Aborting";
+          try {
+            const response = await fetch(abortUrlForRun(activeRunId), {
+              method: "POST",
+              headers: {
+                "Accept": "application/json",
+                "X-Requested-With": "XMLHttpRequest",
+                "X-CSRFToken": csrfToken(),
+              },
+            });
+            const payload = await response.json();
+            if (!response.ok || payload.success === false) {
+              throw new Error(payload.error || payload.message || "Abort request failed.");
+            }
+            await poll(activeRunId);
+          } catch {
+            text.textContent = `Run #${activeRunId} · abort request failed.`;
+          } finally {
+            abortButton.disabled = false;
+            abortButton.textContent = originalText;
+          }
+        });
       }
 
       dismissButton.addEventListener("click", () => {

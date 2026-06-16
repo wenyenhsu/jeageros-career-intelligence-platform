@@ -36,6 +36,8 @@ def test_source_list_view(client):
     assert "Pipeline Flow" in content
     assert "globalCrawlStatus" in content
     assert "jaegeros.activeCrawlRunId" in content
+    assert "Abort" in content
+    assert reverse("source-run-abort", args=[0]) in content
     assert "Run" in content
     assert "Delete" in content
     assert reverse("source-delete", args=[source.id]) in content
@@ -191,3 +193,32 @@ def test_source_run_status_endpoint_returns_pipeline_payload(client):
     assert payload["status"] == CrawlRun.StatusChoices.RUNNING
     assert payload["current_step"]["step_name"] == "source_crawl"
     assert payload["recent_logs"][0]["step_name"] == "source_detection"
+
+
+@pytest.mark.django_db
+def test_source_run_abort_endpoint_marks_run_aborted(client):
+    crawl_run = CrawlRun.objects.create(
+        status=CrawlRun.StatusChoices.RUNNING,
+        total_sources=1,
+        current_source="LinkedIn",
+    )
+
+    response = client.post(
+        reverse("source-run-abort", args=[crawl_run.id]),
+        HTTP_ACCEPT="application/json",
+        HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+    )
+
+    crawl_run.refresh_from_db()
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["status"] == CrawlRun.StatusChoices.ABORTED
+    assert crawl_run.status == CrawlRun.StatusChoices.ABORTED
+    assert crawl_run.finished_at is not None
+    assert crawl_run.current_source == ""
+    assert PipelineLog.objects.filter(
+        crawl_run=crawl_run,
+        step_name="crawl_run",
+        severity=PipelineLog.SeverityChoices.WARNING,
+    ).exists()

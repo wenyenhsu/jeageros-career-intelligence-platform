@@ -255,6 +255,57 @@ def test_scheduled_crawl_filters_jobs_by_job_type(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_scheduled_crawl_dedupes_jobs_before_sync(monkeypatch):
+    source = JobSource.objects.create(
+        name="LinkedIn Duplicate Roles",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
+        enabled=True,
+    )
+    monkeypatch.setattr(
+        crawl_service.ParserRegistry,
+        "get_parser",
+        staticmethod(lambda parser_type, source=None: DuplicateJobParser(source)),
+    )
+
+    summary = CrawlService.crawl_all_sources([source])
+
+    assert summary["success"] is True
+    assert summary["jobs_created"] == 1
+    assert summary["sources"][0]["jobs_found"] == 1
+    assert summary["sources"][0]["jobs_deduped"] == 1
+    assert JobPost.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_aborted_crawl_run_does_not_start_parser(monkeypatch):
+    source = JobSource.objects.create(
+        name="LinkedIn Abort",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
+        enabled=True,
+    )
+    crawl_run = CrawlRun.objects.create(status=CrawlRun.StatusChoices.ABORTED)
+
+    def fail_if_called(parser_type, source=None):
+        raise AssertionError("Aborted runs should not create parsers.")
+
+    monkeypatch.setattr(
+        crawl_service.ParserRegistry,
+        "get_parser",
+        staticmethod(fail_if_called),
+    )
+
+    summary = CrawlService.crawl_all_sources([source], crawl_run_id=crawl_run.id)
+
+    crawl_run.refresh_from_db()
+    assert summary["success"] is False
+    assert summary["aborted"] is True
+    assert crawl_run.status == CrawlRun.StatusChoices.ABORTED
+    assert JobPost.objects.count() == 0
+
+
+@pytest.mark.django_db
 @override_settings(CRAWL_SKILL_PIPELINE_ENABLED=True)
 def test_scheduled_crawl_runs_skill_pipeline_after_sync(monkeypatch):
     source = JobSource.objects.create(
@@ -633,6 +684,30 @@ class JobTypeParser(FakeParser):
                 "location": "San Francisco, CA",
                 "employment_type": "Internship",
                 "description": "Build tools during an internship.",
+            },
+        ]
+
+
+class DuplicateJobParser(FakeParser):
+    def extract_jobs(self, listing_page):
+        return [
+            {
+                "title": "Data Engineer",
+                "company_name": "OpenAI",
+                "source_url": "https://www.linkedin.com/jobs/view/123",
+                "external_id": "linkedin-123",
+                "location": "San Francisco, CA",
+                "employment_type": "Full-time",
+                "description": "Build data systems.",
+            },
+            {
+                "title": " Data Engineer ",
+                "company_name": "OpenAI",
+                "source_url": "https://www.linkedin.com/jobs/view/123",
+                "external_id": "linkedin-123",
+                "location": "San Francisco, CA",
+                "employment_type": "Full-time",
+                "description": "Build data systems.",
             },
         ]
 

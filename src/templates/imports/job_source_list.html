@@ -26,6 +26,7 @@
   class="card shadow-sm border-0 mb-4 d-none"
   data-active-run-id="{{ active_crawl_run_id }}"
   data-status-url-template="{{ crawl_status_url_template }}"
+  data-abort-url-template="{% url 'source-run-abort' 0 %}"
   data-monitoring-url="{% url 'monitoring-dashboard' %}"
 >
   <div class="card-body">
@@ -37,9 +38,14 @@
         </div>
         <div id="crawlRunMeta" class="text-secondary small mt-1">Waiting for crawl run.</div>
       </div>
-      <a id="crawlMonitoringLink" class="btn btn-outline-secondary btn-sm" href="{% url 'monitoring-dashboard' %}">
-        Monitoring
-      </a>
+      <div class="d-flex flex-wrap gap-2">
+        <button id="crawlAbortButton" type="button" class="btn btn-outline-danger btn-sm d-none">
+          Abort
+        </button>
+        <a id="crawlMonitoringLink" class="btn btn-outline-secondary btn-sm" href="{% url 'monitoring-dashboard' %}">
+          Monitoring
+        </a>
+      </div>
     </div>
 
     <div class="progress mb-3" role="progressbar" aria-label="Crawl pipeline progress" aria-valuemin="0" aria-valuemax="100">
@@ -157,6 +163,7 @@
     if (!panel) return;
 
     const statusUrlTemplate = panel.dataset.statusUrlTemplate || "";
+    const abortUrlTemplate = panel.dataset.abortUrlTemplate || "";
     const monitoringUrl = panel.dataset.monitoringUrl || "";
     const runBadge = document.getElementById("crawlRunBadge");
     const runMeta = document.getElementById("crawlRunMeta");
@@ -169,19 +176,30 @@
     const currentStep = document.getElementById("crawlCurrentStep");
     const failureSummary = document.getElementById("crawlFailureSummary");
     const flow = document.getElementById("crawlFlow");
+    const abortButton = document.getElementById("crawlAbortButton");
     const monitoringLink = document.getElementById("crawlMonitoringLink");
-    const terminalStatuses = new Set(["SUCCESS", "FAILED"]);
+    const terminalStatuses = new Set(["SUCCESS", "FAILED", "ABORTED"]);
     const storageKey = "jaegeros.activeCrawlRunId";
     let pollTimer = null;
     let activeStatusUrl = "";
+    let activeRunId = "";
 
     function csrfToken(form) {
       const input = form.querySelector("input[name='csrfmiddlewaretoken']");
       return input ? input.value : "";
     }
 
+    function pageCsrfToken() {
+      const input = document.querySelector("input[name='csrfmiddlewaretoken']");
+      return input ? input.value : "";
+    }
+
     function statusUrlForRun(runId) {
       return statusUrlTemplate.replace("/0/status/", `/${runId}/status/`);
+    }
+
+    function abortUrlForRun(runId) {
+      return abortUrlTemplate.replace("/0/abort/", `/${runId}/abort/`);
     }
 
     function monitoringUrlForRun(runId) {
@@ -199,6 +217,7 @@
 
     function badgeClass(status, severity) {
       if (status === "FAILED" || severity === "ERROR") return "text-bg-danger";
+      if (status === "ABORTED") return "text-bg-warning";
       if (status === "SUCCESS") return "text-bg-success";
       if (status === "STARTED" || status === "RUNNING") return "text-bg-primary";
       if (status === "SKIPPED" || severity === "WARNING") return "text-bg-warning";
@@ -210,6 +229,7 @@
         window.localStorage.setItem(storageKey, runId);
       }
       panel.classList.remove("d-none");
+      activeRunId = runId;
       runBadge.className = "badge text-bg-secondary";
       runBadge.textContent = "QUEUED";
       runMeta.textContent = `Run #${runId} · ${label}`;
@@ -224,6 +244,7 @@
       errorStat.textContent = "0";
       currentStep.className = "alert alert-light border py-2 mb-3";
       currentStep.textContent = "Current step: queued";
+      if (abortButton) abortButton.classList.remove("d-none");
       failureSummary.classList.add("d-none");
       failureSummary.textContent = "";
       flow.innerHTML = '<div class="text-secondary small">Waiting for pipeline events.</div>';
@@ -240,6 +261,7 @@
       const errors = payload.error_summary || {};
 
       panel.classList.remove("d-none");
+      if (runId) activeRunId = runId;
       runBadge.className = `badge ${badgeClass(status)}`;
       runBadge.textContent = status;
       runMeta.textContent = runId
@@ -262,6 +284,9 @@
       const messageText = current.message ? `: ${current.message}` : "";
       currentStep.className = `alert ${status === "FAILED" ? "alert-danger" : "alert-light"} border py-2 mb-3`;
       currentStep.textContent = `Current step: ${stepText}${sourceText}${messageText}`;
+      if (abortButton) {
+        abortButton.classList.toggle("d-none", terminalStatuses.has(status) || !runId);
+      }
 
       const recentFailures = Array.isArray(errors.recent) ? errors.recent : [];
       if (recentFailures.length) {
@@ -316,6 +341,7 @@
         if (window.localStorage) {
           window.localStorage.removeItem(storageKey);
         }
+        if (abortButton) abortButton.classList.add("d-none");
         window.clearInterval(pollTimer);
         pollTimer = null;
       }
@@ -334,6 +360,36 @@
           failureSummary.textContent = error.message;
         });
       }, 1500);
+    }
+
+    if (abortButton) {
+      abortButton.addEventListener("click", async () => {
+        if (!activeRunId) return;
+        const originalText = abortButton.innerHTML;
+        abortButton.disabled = true;
+        abortButton.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Abort';
+        try {
+          const response = await fetch(abortUrlForRun(activeRunId), {
+            method: "POST",
+            headers: {
+              "Accept": "application/json",
+              "X-Requested-With": "XMLHttpRequest",
+              "X-CSRFToken": pageCsrfToken(),
+            },
+          });
+          const payload = await response.json();
+          if (!response.ok || payload.success === false) {
+            throw new Error(payload.error || payload.message || "Abort request failed.");
+          }
+          await pollStatus();
+        } catch (error) {
+          failureSummary.classList.remove("d-none");
+          failureSummary.textContent = error.message;
+        } finally {
+          abortButton.disabled = false;
+          abortButton.innerHTML = originalText;
+        }
+      });
     }
 
     document.querySelectorAll(".js-crawl-run-form").forEach((form) => {

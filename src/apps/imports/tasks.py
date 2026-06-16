@@ -37,13 +37,24 @@ def crawl_all_sources(crawl_run_id=None, source_ids=None):
             summary["errors"],
             summary["progress_percentage"],
         )
-        MonitoringService.log_success(
-            step_name="celery_task",
-            message="crawl_all_sources task finished.",
-            service_name="apps.imports.tasks.crawl_all_sources",
-            crawl_run_id=summary.get("crawl_run_id") or crawl_run_id,
-            metadata=summary,
-        )
+        if summary.get("aborted"):
+            MonitoringService.log_event(
+                step_name="celery_task",
+                status=PipelineLog.StatusChoices.FAILED,
+                severity=PipelineLog.SeverityChoices.WARNING,
+                message="crawl_all_sources task aborted.",
+                service_name="apps.imports.tasks.crawl_all_sources",
+                crawl_run_id=summary.get("crawl_run_id") or crawl_run_id,
+                metadata=summary,
+            )
+        else:
+            MonitoringService.log_success(
+                step_name="celery_task",
+                message="crawl_all_sources task finished.",
+                service_name="apps.imports.tasks.crawl_all_sources",
+                crawl_run_id=summary.get("crawl_run_id") or crawl_run_id,
+                metadata=summary,
+            )
         return summary
     except Exception as exc:
         MonitoringService.log_failure(

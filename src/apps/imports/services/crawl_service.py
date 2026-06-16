@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from apps.imports.models import CrawlRun, JobSource, PipelineLog
 from apps.jobs.models import JobPost
@@ -57,11 +58,19 @@ class CrawlService:
             return summary
 
         for source in sources:
+            if cls._abort_requested(crawl_run):
+                summary["success"] = False
+                summary["aborted"] = True
+                break
             cls._set_current_source(crawl_run, source)
             source_summary = cls.crawl_source(source, crawl_run=crawl_run)
             summary["sources"].append(source_summary)
             if source_summary["status"] == "skipped":
                 summary["sources_skipped"] += 1
+            elif source_summary["status"] == "aborted":
+                summary["success"] = False
+                summary["aborted"] = True
+                break
             elif source_summary["status"] == "failed":
                 summary["success"] = False
                 summary["failures"].append(source_summary)
@@ -83,6 +92,17 @@ class CrawlService:
             summary["progress"] = crawl_run.as_progress_dict()
             cls._emit_progress(crawl_run, progress_callback)
 
+        if summary.get("aborted"):
+            MonitoringService.log_event(
+                step_name="crawl_run",
+                status=PipelineLog.StatusChoices.FAILED,
+                severity=PipelineLog.SeverityChoices.WARNING,
+                message="Crawl run aborted by user.",
+                service_name=cls.__name__,
+                crawl_run=crawl_run,
+                metadata=summary,
+            )
+
         cls._finish_crawl_run(crawl_run, summary)
         summary["progress"] = crawl_run.as_progress_dict()
         cls._emit_progress(crawl_run, progress_callback)
@@ -91,6 +111,11 @@ class CrawlService:
     @classmethod
     def crawl_source(cls, source, crawl_run=None):
         source_summary = cls._empty_source_summary(source)
+        if cls._abort_requested(crawl_run):
+            source_summary["status"] = "aborted"
+            source_summary["error"] = "Abort requested before source crawl."
+            return source_summary
+
         if not source.enabled:
             logger.info("Skipping disabled job source: %s", source.name)
             MonitoringService.log_event(
@@ -102,6 +127,26 @@ class CrawlService:
                 source=source,
             )
             source_summary["status"] = "skipped"
+            return source_summary
+
+        cooldown_until = cls._rate_limited_until(source)
+        if cooldown_until and cooldown_until > timezone.now():
+            message = (
+                "Job source is cooling down after LinkedIn rate limiting until "
+                f"{timezone.localtime(cooldown_until).strftime('%Y-%m-%d %H:%M:%S %Z')}."
+            )
+            source_summary["status"] = "skipped"
+            source_summary["error"] = message
+            MonitoringService.log_event(
+                step_name="source_crawl",
+                status=PipelineLog.StatusChoices.SKIPPED,
+                severity=PipelineLog.SeverityChoices.WARNING,
+                message=message,
+                service_name=cls.__name__,
+                crawl_run=crawl_run,
+                source=source,
+                metadata={"rate_limited_until": cooldown_until.isoformat()},
+            )
             return source_summary
 
         started = time.perf_counter()
@@ -141,6 +186,10 @@ class CrawlService:
             normalized_jobs = []
             jobs_filtered = 0
             for listing_page in listing_pages:
+                if cls._abort_requested(crawl_run):
+                    source_summary["status"] = "aborted"
+                    source_summary["error"] = "Abort requested during listing crawl."
+                    return source_summary
                 raw_jobs = parser.extract_jobs(listing_page)
                 normalized_page_jobs = cls._normalize_jobs(
                     raw_jobs,
@@ -170,8 +219,17 @@ class CrawlService:
                     },
                 )
 
+            normalized_jobs, duplicates_removed = cls._dedupe_normalized_jobs(
+                normalized_jobs,
+                source=source,
+            )
             source_summary["jobs_found"] = len(normalized_jobs)
             source_summary["jobs_filtered"] = jobs_filtered
+            source_summary["jobs_deduped"] = duplicates_removed
+            if cls._abort_requested(crawl_run):
+                source_summary["status"] = "aborted"
+                source_summary["error"] = "Abort requested before sync."
+                return source_summary
             sync_summary = cls._sync_jobs_for_source(source, normalized_jobs)
             source_summary.update(sync_summary)
             source_summary["status"] = "processed"
@@ -242,6 +300,7 @@ class CrawlService:
             jobs_by_company.setdefault(company_name, [])
 
         for company_name, company_jobs in jobs_by_company.items():
+            # Abort is checked by the caller before sync; keep sync itself atomic per company.
             company_result = CompanyUpsertService.upsert(company_name)
             result = JobSyncService.sync_company(
                 company_result.company,
@@ -454,6 +513,72 @@ class CrawlService:
                 },
             )
         return filtered, filtered_out_count
+
+    @classmethod
+    def _dedupe_normalized_jobs(cls, normalized_jobs, source=None):
+        config = cls._merged_source_config(source)
+        use_fingerprint = cls._config_bool(
+            config,
+            ("dedupe_by_fingerprint",),
+            default=True,
+        )
+        deduped = []
+        seen_exact = set()
+        seen_fingerprints = set()
+        duplicates_removed = 0
+
+        for job_data in normalized_jobs:
+            exact_key = cls._normalized_job_exact_key(job_data)
+            fingerprint = cls._normalized_job_fingerprint(job_data)
+            if exact_key and exact_key in seen_exact:
+                duplicates_removed += 1
+                continue
+            if use_fingerprint and fingerprint and fingerprint in seen_fingerprints:
+                duplicates_removed += 1
+                continue
+            if exact_key:
+                seen_exact.add(exact_key)
+            if use_fingerprint and fingerprint:
+                seen_fingerprints.add(fingerprint)
+            deduped.append(job_data)
+
+        if duplicates_removed:
+            MonitoringService.log_event(
+                step_name="job_dedupe",
+                status=PipelineLog.StatusChoices.INFO,
+                message="Removed duplicate jobs before sync.",
+                service_name=cls.__name__,
+                source=source,
+                metadata={
+                    "jobs_before": len(normalized_jobs),
+                    "jobs_after": len(deduped),
+                    "duplicates_removed": duplicates_removed,
+                },
+            )
+        return deduped, duplicates_removed
+
+    @staticmethod
+    def _normalized_job_exact_key(job_data):
+        external_id = str(job_data.get("external_id") or "").strip().casefold()
+        source_url = str(job_data.get("source_url") or "").strip().casefold()
+        if external_id:
+            return ("external_id", external_id)
+        if source_url:
+            return ("source_url", source_url)
+        return None
+
+    @staticmethod
+    def _normalized_job_fingerprint(job_data):
+        parts = [
+            job_data.get("title"),
+            job_data.get("company_name"),
+            job_data.get("location"),
+            job_data.get("job_type") or job_data.get("employment_type"),
+        ]
+        cleaned = [" ".join(str(part or "").casefold().split()) for part in parts]
+        if not cleaned[0] or not cleaned[1]:
+            return None
+        return tuple(cleaned)
 
     @classmethod
     def _job_matches_source_filters(cls, job_data, source):
@@ -729,6 +854,7 @@ class CrawlService:
             "jobs_updated": 0,
             "jobs_closed": 0,
             "jobs_filtered": 0,
+            "jobs_deduped": 0,
             "skill_pipeline_jobs_processed": 0,
             "skill_pipeline_failures": 0,
             "skills_attached": 0,
@@ -739,6 +865,10 @@ class CrawlService:
     def _start_crawl_run(cls, total_sources, crawl_run_id=None):
         if crawl_run_id:
             crawl_run = CrawlRun.objects.get(id=crawl_run_id)
+            if crawl_run.status == CrawlRun.StatusChoices.ABORTED:
+                crawl_run.total_sources = total_sources
+                crawl_run.save(update_fields=["total_sources"])
+                return crawl_run
             crawl_run.total_sources = total_sources
             crawl_run.processed_sources = 0
             crawl_run.success_count = 0
@@ -839,11 +969,16 @@ class CrawlService:
     def _finish_crawl_run(cls, crawl_run, summary):
         crawl_run.finished_at = timezone.now()
         crawl_run.current_source = ""
-        crawl_run.status = (
-            CrawlRun.StatusChoices.SUCCESS
-            if summary["success"]
-            else CrawlRun.StatusChoices.FAILED
-        )
+        aborted = summary.get("aborted") or cls._abort_requested(crawl_run)
+        if aborted:
+            summary["success"] = False
+            crawl_run.status = CrawlRun.StatusChoices.ABORTED
+        else:
+            crawl_run.status = (
+                CrawlRun.StatusChoices.SUCCESS
+                if summary["success"]
+                else CrawlRun.StatusChoices.FAILED
+            )
         crawl_run.jobs_created = summary["jobs_created"]
         crawl_run.jobs_updated = summary["jobs_updated"]
         crawl_run.jobs_closed = summary["jobs_closed"]
@@ -866,16 +1001,22 @@ class CrawlService:
         MonitoringService.log_event(
             step_name="crawl_run",
             status=(
+                PipelineLog.StatusChoices.FAILED
+                if aborted
+                else
                 PipelineLog.StatusChoices.SUCCESS
                 if summary["success"]
                 else PipelineLog.StatusChoices.FAILED
             ),
             severity=(
+                PipelineLog.SeverityChoices.WARNING
+                if aborted
+                else
                 PipelineLog.SeverityChoices.INFO
                 if summary["success"]
                 else PipelineLog.SeverityChoices.ERROR
             ),
-            message="Crawl run finished.",
+            message="Crawl run aborted." if aborted else "Crawl run finished.",
             service_name=cls.__name__,
             crawl_run=crawl_run,
             metadata=summary,
@@ -889,3 +1030,26 @@ class CrawlService:
     @staticmethod
     def _duration_ms(started):
         return int((time.perf_counter() - started) * 1000)
+
+    @staticmethod
+    def _abort_requested(crawl_run):
+        if crawl_run is None:
+            return False
+        crawl_run.refresh_from_db(fields=["status"])
+        return crawl_run.status == CrawlRun.StatusChoices.ABORTED
+
+    @staticmethod
+    def _rate_limited_until(source):
+        config = getattr(source, "crawl_config", None) or {}
+        raw_value = config.get("rate_limited_until")
+        if not raw_value:
+            return None
+        if hasattr(raw_value, "tzinfo"):
+            value = raw_value
+        else:
+            value = parse_datetime(str(raw_value))
+        if value is None:
+            return None
+        if timezone.is_naive(value):
+            value = timezone.make_aware(value, timezone.get_current_timezone())
+        return value

@@ -41,6 +41,11 @@ class MonitoringService:
         ("crawl_run", PipelineLog.StatusChoices.SUCCESS): 100,
         ("crawl_run", PipelineLog.StatusChoices.FAILED): 100,
     }
+    TERMINAL_RUN_STATUSES = {
+        CrawlRun.StatusChoices.SUCCESS,
+        CrawlRun.StatusChoices.FAILED,
+        CrawlRun.StatusChoices.ABORTED,
+    }
 
     @classmethod
     def log_event(
@@ -417,10 +422,7 @@ class MonitoringService:
 
     @classmethod
     def _display_progress_for_run(cls, crawl_run, recent_logs):
-        if crawl_run.status in {
-            CrawlRun.StatusChoices.SUCCESS,
-            CrawlRun.StatusChoices.FAILED,
-        }:
+        if crawl_run.status in cls.TERMINAL_RUN_STATUSES:
             return 100
 
         source_count = crawl_run.total_sources or 1
@@ -444,10 +446,7 @@ class MonitoringService:
     @staticmethod
     def _display_progress_label(crawl_run, display_progress):
         progress_text = MonitoringService._format_percent(display_progress)
-        if crawl_run.status in {
-            CrawlRun.StatusChoices.SUCCESS,
-            CrawlRun.StatusChoices.FAILED,
-        }:
+        if crawl_run.status in MonitoringService.TERMINAL_RUN_STATUSES:
             return f"{progress_text}% complete"
         return f"{progress_text}% estimated pipeline progress"
 

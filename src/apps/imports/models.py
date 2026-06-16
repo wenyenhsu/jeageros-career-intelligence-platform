@@ -40,6 +40,7 @@ class CrawlRun(models.Model):
         RUNNING = "RUNNING", "Running"
         SUCCESS = "SUCCESS", "Success"
         FAILED = "FAILED", "Failed"
+        ABORTED = "ABORTED", "Aborted"
 
     started_at = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(null=True, blank=True)

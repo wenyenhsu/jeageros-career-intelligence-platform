@@ -1,11 +1,13 @@
 import html
 import re
 import time
+from datetime import timedelta
 from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from django.db.models import Q
+from django.utils import timezone
 
 from .base import BaseParser
 
@@ -24,6 +26,7 @@ class LinkedInParser(BaseParser):
     DEFAULT_TIMEOUT_SECONDS = 12
     DEFAULT_MAX_SEARCH_REQUESTS = 10
     DEFAULT_MAX_DETAIL_REQUESTS = 10
+    DEFAULT_RATE_LIMIT_COOLDOWN_MINUTES = 60
     PLACEHOLDER_JOB_IDS = {"1234567890", "0000000000", "1111111111"}
     JOB_TYPE_PATTERNS = (
         ("Full-time", r"\bfull[\s-]?time\b"),
@@ -140,17 +143,15 @@ class LinkedInParser(BaseParser):
             "max_search_requests",
             default=self.DEFAULT_MAX_SEARCH_REQUESTS,
         )
-        urls = []
+        all_urls = []
         for page in range(max_pages):
             for query in query_sets:
                 page_query = dict(query)
                 page_query["start"] = str(page * self.DEFAULT_PAGE_SIZE)
-                urls.append(
+                all_urls.append(
                     f"{self.GUEST_SEARCH_URL}?{urlencode(page_query, doseq=True)}"
                 )
-                if len(urls) >= max_search_requests:
-                    return urls
-        return urls
+        return self._rolling_search_urls(all_urls, max_search_requests)
 
     def _search_query_param_sets(self, base_url):
         parsed = urlparse(base_url or "")
@@ -285,11 +286,12 @@ class LinkedInParser(BaseParser):
                 charset = response.headers.get_content_charset() or "utf-8"
                 return body.decode(charset, errors="replace")
         except HTTPError as exc:
-            if exc.code == 429:
+            if exc.code in {426, 429}:
+                self._mark_rate_limited(exc.code)
                 raise LinkedInRateLimitError(
-                    "HTTP Error 429: Too Many Requests. LinkedIn rate-limited "
-                    "this crawl; reduce max_search_requests/max_detail_requests "
-                    "or wait before retrying."
+                    f"HTTP Error {exc.code}: LinkedIn limited this crawl. "
+                    "The source was put on cooldown; reduce max_search_requests/"
+                    "max_detail_requests or wait before retrying."
                 ) from exc
             raise
 
@@ -622,6 +624,70 @@ class LinkedInParser(BaseParser):
         delay = self._positive_float_config("request_delay_seconds", default=0)
         if self._request_count and delay > 0:
             time.sleep(delay)
+
+    def _rolling_search_urls(self, urls, max_search_requests):
+        if not urls:
+            return []
+        if max_search_requests >= len(urls):
+            return urls
+
+        config = self._merged_config()
+        if not self._config_bool(
+            config,
+            ("rolling_search", "rolling_search_enabled"),
+            default=True,
+        ):
+            return urls[:max_search_requests]
+
+        offset = self._rolling_search_offset(len(urls))
+        selected = (urls[offset:] + urls[:offset])[:max_search_requests]
+        next_offset = (offset + len(selected)) % len(urls)
+        self._save_rolling_search_offset(next_offset, len(urls))
+        return selected
+
+    def _rolling_search_offset(self, total_urls):
+        crawl_config = self._crawl_config()
+        rolling_state = crawl_config.get("rolling_state")
+        if not isinstance(rolling_state, dict):
+            rolling_state = {}
+        try:
+            offset = int(rolling_state.get("linkedin_search_offset", 0))
+        except (TypeError, ValueError):
+            offset = 0
+        return offset % total_urls if total_urls else 0
+
+    def _save_rolling_search_offset(self, next_offset, total_urls):
+        if not getattr(self.source, "pk", None):
+            return
+        crawl_config = self._crawl_config()
+        rolling_state = crawl_config.get("rolling_state")
+        if not isinstance(rolling_state, dict):
+            rolling_state = {}
+        rolling_state.update(
+            {
+                "linkedin_search_offset": next_offset,
+                "linkedin_search_total": total_urls,
+                "updated_at": timezone.now().isoformat(),
+            }
+        )
+        crawl_config["rolling_state"] = rolling_state
+        self.source.crawl_config = crawl_config
+        self.source.save(update_fields=["crawl_config", "updated_at"])
+
+    def _mark_rate_limited(self, status_code):
+        if not getattr(self.source, "pk", None):
+            return
+        cooldown_minutes = self._positive_int_config(
+            "rate_limit_cooldown_minutes",
+            default=self.DEFAULT_RATE_LIMIT_COOLDOWN_MINUTES,
+        )
+        crawl_config = self._crawl_config()
+        crawl_config["rate_limited_until"] = (
+            timezone.now() + timedelta(minutes=cooldown_minutes)
+        ).isoformat()
+        crawl_config["rate_limit_status_code"] = status_code
+        self.source.crawl_config = crawl_config
+        self.source.save(update_fields=["crawl_config", "updated_at"])
 
     def _merged_config(self):
         if self.source is None or isinstance(self.source, str):

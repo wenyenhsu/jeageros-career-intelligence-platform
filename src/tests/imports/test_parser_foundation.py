@@ -464,6 +464,32 @@ def test_linkedin_parser_limits_total_search_requests_across_pages():
     assert "keywords=backend&location=CA" in urls[2]
 
 
+@pytest.mark.django_db
+def test_linkedin_parser_rolls_limited_search_requests_between_runs():
+    source = JobSource.objects.create(
+        name="LinkedIn Rolling Search",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
+        crawl_config={"max_pages": 1, "max_search_requests": 2},
+        filter_config={
+            "include_keywords": ["data engineer", "backend"],
+            "location": ["CA", "TX"],
+        },
+    )
+    parser = LinkedInParser(source=source)
+
+    first_urls = parser._search_urls(source.base_url)
+    second_urls = parser._search_urls(source.base_url)
+
+    source.refresh_from_db()
+    assert len(first_urls) == 2
+    assert len(second_urls) == 2
+    assert first_urls != second_urls
+    assert "keywords=data+engineer&location=CA" in first_urls[0]
+    assert "keywords=backend&location=CA" in second_urls[0]
+    assert source.crawl_config["rolling_state"]["linkedin_search_offset"] == 0
+
+
 def test_linkedin_parser_limits_detail_requests(monkeypatch):
     source = JobSource(
         name="LinkedIn Detail Limited Search",
@@ -502,8 +528,9 @@ def test_linkedin_parser_limits_detail_requests(monkeypatch):
     assert "description" not in jobs[1]
 
 
+@pytest.mark.django_db
 def test_linkedin_parser_raises_helpful_rate_limit_error(monkeypatch):
-    source = JobSource(
+    source = JobSource.objects.create(
         name="LinkedIn Rate Limited Search",
         resource=JobSource.ResourceChoices.LINKEDIN,
         base_url="https://www.linkedin.com/jobs/search/?keywords=python&location=Remote",
@@ -521,6 +548,10 @@ def test_linkedin_parser_raises_helpful_rate_limit_error(monkeypatch):
         match="max_search_requests/max_detail_requests",
     ):
         parser.extract_jobs(parser.find_listing_pages()[0])
+
+    source.refresh_from_db()
+    assert source.crawl_config["rate_limit_status_code"] == 429
+    assert source.crawl_config["rate_limited_until"]
 
 
 def test_linkedin_parser_rejects_placeholder_job_ids():

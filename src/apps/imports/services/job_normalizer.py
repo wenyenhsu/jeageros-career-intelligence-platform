@@ -265,7 +265,6 @@ class JobNormalizer:
 
     @classmethod
     def _infer_job_type(cls, raw, title, description, sections, source):
-        configured_default = cls._default_job_type_from_source(source)
         searchable_text = " ".join(
             str(part or "")
             for part in (
@@ -286,12 +285,30 @@ class JobNormalizer:
             if re.search(pattern, searchable_text):
                 return normalized
 
+        if cls._source_has_job_type_filter(source):
+            return None
+
         raw_metadata = raw.get("metadata") if isinstance(raw.get("metadata"), dict) else {}
         metadata_default = cls.normalize_job_type(
             raw_metadata.get("default_job_type")
             or raw_metadata.get("default_employment_type")
         )
-        return metadata_default or configured_default
+        return metadata_default or cls._default_job_type_from_source(source)
+
+    @classmethod
+    def _source_has_job_type_filter(cls, source):
+        for config in cls._source_configs(source):
+            for key in (
+                "job_types",
+                "job_type",
+                "employment_types",
+                "employment_type",
+                "f_JT",
+            ):
+                value = config.get(key)
+                if value not in (None, "", [], {}, ()):
+                    return True
+        return False
 
     @classmethod
     def _default_job_type_from_source(cls, source):
