@@ -1,11 +1,14 @@
 import logging
 import time
 from collections import defaultdict
+from urllib.parse import urlparse
 
 from django.conf import settings
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.imports.models import CrawlRun, JobSource, PipelineLog
+from apps.jobs.models import JobPost
 
 from .company_upsert_service import CompanyUpsertService
 from .job_normalizer import JobNormalizer
@@ -227,6 +230,7 @@ class CrawlService:
             "skills_attached": 0,
         }
         jobs_by_company = defaultdict(list)
+        processed_skill_job_ids = set()
 
         for job_data in normalized_jobs:
             company_name = (job_data.get("company_name") or "").strip()
@@ -250,6 +254,11 @@ class CrawlService:
                 result.job_results,
                 source=source,
             )
+            processed_skill_job_ids.update(
+                job_result.job.id
+                for job_result in result.job_results
+                if job_result.job is not None
+            )
             totals["skill_pipeline_jobs_processed"] += skill_totals[
                 "skill_pipeline_jobs_processed"
             ]
@@ -257,6 +266,18 @@ class CrawlService:
                 "skill_pipeline_failures"
             ]
             totals["skills_attached"] += skill_totals["skills_attached"]
+
+        existing_skill_totals = cls._run_skill_pipeline_for_existing_source_jobs(
+            source,
+            exclude_job_ids=processed_skill_job_ids,
+        )
+        totals["skill_pipeline_jobs_processed"] += existing_skill_totals[
+            "skill_pipeline_jobs_processed"
+        ]
+        totals["skill_pipeline_failures"] += existing_skill_totals[
+            "skill_pipeline_failures"
+        ]
+        totals["skills_attached"] += existing_skill_totals["skills_attached"]
 
         return totals
 
@@ -273,7 +294,9 @@ class CrawlService:
         service = SkillPipelineService()
         auto_create = cls._skill_auto_create_enabled(source)
         for result in job_results:
-            if not result.canonical_job_payload:
+            if not result.job or not result.canonical_job_payload:
+                continue
+            if cls._job_already_has_skills(result.job):
                 continue
             pipeline_result = service.process_job_post(
                 job_post=result.job,
@@ -286,6 +309,111 @@ class CrawlService:
                 continue
             totals["skills_attached"] += pipeline_result.attached_count
         return totals
+
+    @staticmethod
+    def _job_already_has_skills(job):
+        return job.skill_links.exists()
+
+    @classmethod
+    def _run_skill_pipeline_for_existing_source_jobs(cls, source, exclude_job_ids=None):
+        totals = {
+            "skill_pipeline_jobs_processed": 0,
+            "skill_pipeline_failures": 0,
+            "skills_attached": 0,
+        }
+        if not cls._skill_pipeline_enabled(source):
+            return totals
+
+        jobs = cls._existing_source_jobs_missing_skills(
+            source,
+            exclude_job_ids=exclude_job_ids or set(),
+        )
+        service = SkillPipelineService()
+        auto_create = cls._skill_auto_create_enabled(source)
+        for job in jobs:
+            pipeline_result = service.process_job_post(
+                job_post=job,
+                canonical_job_payload=cls._canonical_payload_from_job(job, source),
+                auto_create=auto_create,
+            )
+            totals["skill_pipeline_jobs_processed"] += 1
+            if not pipeline_result.success:
+                totals["skill_pipeline_failures"] += 1
+                continue
+            totals["skills_attached"] += pipeline_result.attached_count
+        return totals
+
+    @classmethod
+    def _existing_source_jobs_missing_skills(cls, source, exclude_job_ids=None):
+        queryset = (
+            JobPost.objects.select_related("company")
+            .prefetch_related("skill_sets", "skill_sets__keywords")
+            .filter(skill_links__isnull=True)
+            .exclude(status=JobPost.StatusChoices.ARCHIVED)
+            .distinct()
+        )
+        if exclude_job_ids:
+            queryset = queryset.exclude(id__in=exclude_job_ids)
+
+        scope_filter = cls._existing_job_scope_filter(source)
+        if scope_filter is None:
+            return queryset.none()
+        return queryset.filter(scope_filter)
+
+    @classmethod
+    def _existing_job_scope_filter(cls, source):
+        filters = Q()
+        has_filter = False
+
+        hostname = cls._source_hostname(source)
+        if hostname:
+            filters |= Q(source_url__icontains=hostname)
+            if hostname.startswith("www."):
+                filters |= Q(source_url__icontains=hostname[4:])
+            else:
+                filters |= Q(source_url__icontains=f"www.{hostname}")
+            has_filter = True
+
+        company_filter = None
+        for company_name in cls._target_company_names(source):
+            condition = Q(company__name__iexact=company_name)
+            company_filter = (
+                condition if company_filter is None else company_filter | condition
+            )
+        if company_filter is not None:
+            filters |= company_filter
+            has_filter = True
+
+        return filters if has_filter else None
+
+    @staticmethod
+    def _source_hostname(source):
+        base_url = getattr(source, "base_url", "") or ""
+        if not base_url:
+            return ""
+        return (urlparse(base_url).hostname or "").casefold()
+
+    @staticmethod
+    def _canonical_payload_from_job(job, source):
+        return {
+            "source": getattr(source, "resource", "") or "job_source",
+            "source_url": job.source_url or "",
+            "external_id": job.external_id or str(job.pk),
+            "company_name": job.company.name,
+            "title": job.title,
+            "job_type": job.job_type,
+            "employment_type": job.employment_type,
+            "remote_type": job.remote_type,
+            "location": job.location,
+            "description": job.description,
+            "sections": {"description": job.description} if job.description else {},
+            "posted_at": None,
+            "metadata": {
+                "job_post_id": job.pk,
+                "job_source_id": getattr(source, "pk", None),
+                "skill_pipeline_scope": "existing_source_job",
+            },
+        }
 
     @staticmethod
     def _normalize_jobs(raw_jobs, source=None, parser_type=""):

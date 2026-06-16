@@ -127,9 +127,14 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_SKILL_MODEL = os.getenv("OLLAMA_SKILL_MODEL", "llama3.1")
-OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "30"))
+DEFAULT_OLLAMA_BASE_URL = (
+    "http://host.docker.internal:11434"
+    if os.path.exists("/.dockerenv")
+    else "http://localhost:11434"
+)
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL)
+OLLAMA_SKILL_MODEL = os.getenv("OLLAMA_SKILL_MODEL", "qwen2.5-coder:7b")
+OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "120"))
 OLLAMA_MAX_CANDIDATE_SKILLS = int(os.getenv("OLLAMA_MAX_CANDIDATE_SKILLS", "20"))
 OLLAMA_MAX_VERIFIED_SKILLS = int(
     os.getenv("OLLAMA_MAX_VERIFIED_SKILLS", str(OLLAMA_MAX_CANDIDATE_SKILLS))

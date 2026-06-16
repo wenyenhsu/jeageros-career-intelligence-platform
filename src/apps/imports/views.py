@@ -52,7 +52,9 @@ def _add_crawl_message(request, label, summary):
         f"Updated: {summary['jobs_updated']}, "
         f"Closed: {summary['jobs_closed']}, "
         f"Filtered: {filtered_count}, "
+        f"Skill jobs: {summary.get('skill_pipeline_jobs_processed', 0)}, "
         f"Skills attached: {summary.get('skills_attached', 0)}, "
+        f"Skill failures: {summary.get('skill_pipeline_failures', 0)}, "
         f"Errors: {summary['errors']}."
     )
     if summary.get("success"):

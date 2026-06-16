@@ -9,10 +9,12 @@ from django.test import override_settings
 
 import apps.imports.services.crawl_service as crawl_service
 from config.celery import app as celery_app
+from apps.companies.models import Company
 from apps.imports.models import CrawlRun, JobSource
 from apps.imports.services import CrawlService, ListingPage
 from apps.imports.tasks import crawl_all_sources
 from apps.jobs.models import JobPost
+from apps.skills.models import JobPostSkill, SkillSet
 
 
 def test_celery_loads_successfully():
@@ -201,6 +203,100 @@ def test_scheduled_crawl_runs_skill_pipeline_after_sync(monkeypatch):
     assert summary["skill_pipeline_failures"] == 0
     assert summary["skills_attached"] == 2
     assert summary["sources"][0]["skills_attached"] == 2
+
+
+@pytest.mark.django_db
+@override_settings(CRAWL_SKILL_PIPELINE_ENABLED=True)
+def test_scheduled_crawl_runs_skill_pipeline_for_existing_source_jobs(monkeypatch):
+    company = Company.objects.create(name="OpenAI")
+    existing_job = JobPost.objects.create(
+        company=company,
+        title="Backend Engineer",
+        source_url="https://www.linkedin.com/jobs/view/123",
+        external_id="linkedin-123",
+        description="Build Python and Django services.",
+    )
+    source = JobSource.objects.create(
+        name="LinkedIn OpenAI",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
+        enabled=True,
+        filter_config={"target_companies": ["OpenAI"]},
+        crawl_config={"auto_create_skills": True},
+    )
+    monkeypatch.setattr(
+        crawl_service.ParserRegistry,
+        "get_parser",
+        staticmethod(lambda parser_type, source=None: EmptyParser(source)),
+    )
+    processed = []
+
+    class FakeSkillPipelineService:
+        def process_job_post(self, job_post, canonical_job_payload, auto_create=None):
+            processed.append(
+                (job_post.id, canonical_job_payload["external_id"], auto_create)
+            )
+            return SimpleNamespace(success=True, attached_count=2)
+
+    monkeypatch.setattr(
+        crawl_service,
+        "SkillPipelineService",
+        FakeSkillPipelineService,
+    )
+
+    summary = CrawlService.crawl_all_sources([source])
+
+    assert summary["success"] is True
+    assert summary["jobs_created"] == 0
+    assert processed == [(existing_job.id, "linkedin-123", True)]
+    assert summary["skill_pipeline_jobs_processed"] == 1
+    assert summary["skill_pipeline_failures"] == 0
+    assert summary["skills_attached"] == 2
+    assert summary["sources"][0]["jobs_found"] == 0
+    assert summary["sources"][0]["skills_attached"] == 2
+
+
+@pytest.mark.django_db
+@override_settings(CRAWL_SKILL_PIPELINE_ENABLED=True)
+def test_scheduled_crawl_skips_ollama_for_jobs_that_already_have_skills(monkeypatch):
+    source = JobSource.objects.create(
+        name="LinkedIn OpenAI",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
+        enabled=True,
+        crawl_config={"auto_create_skills": True},
+    )
+    company = Company.objects.create(name="OpenAI")
+    existing_job = JobPost.objects.create(
+        company=company,
+        title="Backend Engineer",
+        source_url=f"{source.base_url}/backend-engineer",
+        external_id=f"{source.id}-backend",
+        description="Build services.",
+    )
+    skill_set = SkillSet.objects.create(name="Python")
+    JobPostSkill.objects.create(job_post=existing_job, skill_set=skill_set, score=90)
+    _patch_parser(monkeypatch)
+
+    class FailIfCalledSkillPipelineService:
+        def process_job_post(self, job_post, canonical_job_payload, auto_create=None):
+            raise AssertionError("Jobs with existing skills should not rerun Ollama.")
+
+    monkeypatch.setattr(
+        crawl_service,
+        "SkillPipelineService",
+        FailIfCalledSkillPipelineService,
+    )
+
+    summary = CrawlService.crawl_all_sources([source])
+
+    assert summary["success"] is True
+    assert summary["jobs_created"] == 0
+    assert summary["jobs_updated"] == 1
+    assert summary["skill_pipeline_jobs_processed"] == 0
+    assert summary["skill_pipeline_failures"] == 0
+    assert summary["skills_attached"] == 0
+    assert existing_job.skill_sets.filter(name="Python").exists()
 
 
 @pytest.mark.django_db
@@ -408,3 +504,8 @@ class MixedCompanyParser(FakeParser):
                 "description": "Build Python services.",
             },
         ]
+
+
+class EmptyParser(FakeParser):
+    def extract_jobs(self, listing_page):
+        return []

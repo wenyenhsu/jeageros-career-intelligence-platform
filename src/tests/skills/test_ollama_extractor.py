@@ -95,6 +95,26 @@ def test_skill_names_and_sources_are_normalized():
     assert result.metadata["source_job_identifier"] == "job-123"
 
 
+def test_confidence_labels_are_normalized():
+    extractor = OllamaExtractor(max_skills=5)
+
+    result = extractor.parse_response(
+        {
+            "skills": [
+                {"name": "Python", "confidence": "high"},
+                {"name": "Django", "confidence": "medium"},
+                {"name": "SQL", "confidence": "low"},
+            ]
+        }
+    )
+
+    assert [skill.confidence for skill in result.candidate_skills] == [
+        0.9,
+        0.6,
+        0.3,
+    ]
+
+
 def test_empty_extraction_output_is_handled():
     extractor = OllamaExtractor()
 

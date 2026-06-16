@@ -102,6 +102,20 @@ def test_job_list_renders_created_and_updated_columns(client, company):
 
 
 @pytest.mark.django_db
+def test_job_list_does_not_render_manual_ollama_skill_actions(client, company):
+    job = JobPost.objects.create(company=company, title="Needs Skills")
+
+    response = client.get(reverse("job-list"))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "Run Ollama Skills" not in content
+    assert "job-skills-run" not in content
+    assert "btn-outline-success\">Skills" not in content
+    assert reverse("job-detail", args=[job.id]) in content
+
+
+@pytest.mark.django_db
 def test_job_detail_title_links_to_source_url_when_present(client, company):
     source_url = "https://example.com/jobs/data-engineer"
     job = JobPost.objects.create(

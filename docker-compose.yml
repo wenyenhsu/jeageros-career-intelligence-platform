@@ -7,6 +7,7 @@ services:
       - .env
     environment:
       DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-config.settings.dev}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
 
     volumes:
       - .:/app
@@ -26,6 +27,7 @@ services:
       - .env
     environment:
       DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-config.settings.dev}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
 
     volumes:
       - .:/app
@@ -42,6 +44,7 @@ services:
       - .env
     environment:
       DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-config.settings.dev}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
 
     volumes:
       - .:/app

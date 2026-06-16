@@ -299,6 +299,16 @@ class OllamaExtractor:
     def _normalize_confidence(confidence):
         if confidence is None or confidence == "":
             return None
+        if isinstance(confidence, str):
+            confidence_label = confidence.strip().casefold()
+            confidence_values = {
+                "high": 0.9,
+                "medium": 0.6,
+                "moderate": 0.6,
+                "low": 0.3,
+            }
+            if confidence_label in confidence_values:
+                return confidence_values[confidence_label]
         try:
             value = float(confidence)
         except (TypeError, ValueError) as exc:

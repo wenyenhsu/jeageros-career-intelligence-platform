@@ -1,8 +1,11 @@
 from django.urls import path
-from .views import JobCreateView, JobDetailView, JobListView, JobUpdateView
-
-from django.urls import path
-from .views import JobListView, JobCreateView, JobDetailView, JobUpdateView, JobDeleteView
+from .views import (
+    JobCreateView,
+    JobDeleteView,
+    JobDetailView,
+    JobListView,
+    JobUpdateView,
+)
 
 urlpatterns = [
     path('', JobListView.as_view(), name='job-list'),
