@@ -2,6 +2,7 @@ import pytest
 from django.urls import reverse
 
 import apps.imports.views as import_views
+from apps.imports.forms import JobSourceForm
 from apps.imports.models import CrawlRun, JobSource, PipelineLog
 
 
@@ -60,6 +61,57 @@ def test_source_create_view(client):
 
     assert response.status_code in (302, 303)
     assert JobSource.objects.filter(name="Greenhouse").exists()
+
+
+@pytest.mark.django_db
+def test_source_create_form_exposes_resource_base_url_defaults(client):
+    response = client.get(reverse("source-create"))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "data-default-base-urls" in content
+    assert "data-base-url-target" in content
+    assert "id_base_url" in content
+    assert "https://www.linkedin.com/jobs/search/" in content
+    assert "https://boards.greenhouse.io/" in content
+    assert "https://jobs.lever.co/" in content
+
+
+def test_source_form_fills_default_base_url_when_missing():
+    form = JobSourceForm(
+        data={
+            "name": "LinkedIn data",
+            "resource": JobSource.Resource.LINKEDIN,
+            "base_url": "",
+            "enabled": "on",
+            "crawl_interval_minutes": 1440,
+            "crawl_config": "{}",
+            "filter_config": "{}",
+            "notes": "",
+        }
+    )
+
+    assert form.is_valid(), form.errors
+    assert form.cleaned_data["base_url"] == "https://www.linkedin.com/jobs/search/"
+
+
+def test_source_form_preserves_custom_base_url():
+    custom_url = "https://www.linkedin.com/jobs/search/?keywords=data"
+    form = JobSourceForm(
+        data={
+            "name": "LinkedIn custom",
+            "resource": JobSource.Resource.LINKEDIN,
+            "base_url": custom_url,
+            "enabled": "on",
+            "crawl_interval_minutes": 1440,
+            "crawl_config": "{}",
+            "filter_config": "{}",
+            "notes": "",
+        }
+    )
+
+    assert form.is_valid(), form.errors
+    assert form.cleaned_data["base_url"] == custom_url
 
 
 @pytest.mark.django_db

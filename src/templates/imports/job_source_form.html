@@ -17,4 +17,42 @@
     </div>
   </div>
 </div>
+
+<script>
+  (() => {
+    const resourceSelect = document.getElementById("id_resource");
+    if (!resourceSelect) return;
+
+    const baseUrlInput = document.getElementById(resourceSelect.dataset.baseUrlTarget || "id_base_url");
+    if (!baseUrlInput) return;
+
+    let defaultBaseUrls = {};
+    try {
+      defaultBaseUrls = JSON.parse(resourceSelect.dataset.defaultBaseUrls || "{}");
+    } catch {
+      defaultBaseUrls = {};
+    }
+
+    function selectedDefaultUrl() {
+      return defaultBaseUrls[resourceSelect.value] || "";
+    }
+
+    function syncBaseUrl() {
+      const nextDefault = selectedDefaultUrl();
+      const previousDefault = resourceSelect.dataset.previousDefaultBaseUrl || "";
+      const currentValue = baseUrlInput.value.trim();
+      if (!currentValue || currentValue === previousDefault) {
+        baseUrlInput.value = nextDefault;
+      }
+      resourceSelect.dataset.previousDefaultBaseUrl = nextDefault;
+    }
+
+    resourceSelect.dataset.previousDefaultBaseUrl = selectedDefaultUrl();
+    if (!baseUrlInput.value.trim()) {
+      baseUrlInput.value = selectedDefaultUrl();
+    }
+
+    resourceSelect.addEventListener("change", syncBaseUrl);
+  })();
+</script>
 {% endblock %}
