@@ -108,6 +108,23 @@ class Application(TimeStampedModel):
         return sorted(self.skill_sets.all(), key=lambda skill: skill.name.casefold())
 
     @property
+    def application_only_skill_set_list(self):
+        job_skill_ids = {skill.id for skill in self.job_skill_set_list}
+        return [
+            skill
+            for skill in self.skill_set_list
+            if skill.id not in job_skill_ids
+        ]
+
+    @property
+    def application_only_skill_set_names(self):
+        return [skill.name for skill in self.application_only_skill_set_list]
+
+    @property
+    def application_only_skill_set_display(self):
+        return ", ".join(self.application_only_skill_set_names)
+
+    @property
     def skill_set_names(self):
         return [skill.name for skill in self.skill_set_list]
 

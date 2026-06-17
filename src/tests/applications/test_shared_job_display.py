@@ -76,6 +76,58 @@ def test_application_list_displays_linked_job_info_and_job_skills(
 
 
 @pytest.mark.django_db
+def test_application_list_does_not_duplicate_copied_job_skills(client, user, company):
+    job = JobPost.objects.create(
+        company=company,
+        title="Data Analyst Intern",
+        employment_type="Internship",
+        location="Milpitas, CA",
+    )
+    application = Application.objects.create(user=user, job_post=job)
+    skill = SkillSet.objects.create(name="SQL")
+    JobPostSkill.objects.create(job_post=job, skill_set=skill, score=30)
+    ApplicationSkill.objects.create(application=application, skill_set=skill, score=30)
+
+    response = client.get(reverse("application-list"))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert content.count(">SQL<") == 1
+    assert "Application</div>" not in content
+
+
+@pytest.mark.django_db
+def test_application_detail_only_shows_application_specific_skills(
+    client,
+    user,
+    company,
+):
+    job = JobPost.objects.create(company=company, title="Backend Engineer")
+    application = Application.objects.create(user=user, job_post=job)
+    shared_skill = SkillSet.objects.create(name="Python")
+    application_only_skill = SkillSet.objects.create(name="Interview Prep")
+    JobPostSkill.objects.create(job_post=job, skill_set=shared_skill, score=30)
+    ApplicationSkill.objects.create(
+        application=application,
+        skill_set=shared_skill,
+        score=30,
+    )
+    ApplicationSkill.objects.create(
+        application=application,
+        skill_set=application_only_skill,
+        score=30,
+    )
+
+    response = client.get(reverse("application-detail", args=[application.id]))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    application_section = content.split("Application Skill Sets", maxsplit=1)[1]
+    assert "Interview Prep" in application_section
+    assert "Python" not in application_section
+
+
+@pytest.mark.django_db
 def test_application_list_renders_delete_action_next_to_view(
     client,
     shared_application,

@@ -79,9 +79,9 @@
                             {% empty %}
                                 <span class="text-muted">-</span>
                             {% endfor %}
-                            {% if application.skill_set_list %}
+                            {% if application.application_only_skill_set_list %}
                                 <div class="small text-muted mt-1">Application</div>
-                                {% for skill in application.skill_set_list %}
+                                {% for skill in application.application_only_skill_set_list %}
                                     <span class="badge text-bg-secondary me-1 mb-1">{{ skill.name }}</span>
                                 {% endfor %}
                             {% endif %}

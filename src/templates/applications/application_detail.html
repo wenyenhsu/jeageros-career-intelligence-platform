@@ -127,10 +127,10 @@
                             <tr>
                                 <th>Application Skill Sets</th>
                                 <td>
-                                    {% for skill in application.skill_set_list %}
+                                    {% for skill in application.application_only_skill_set_list %}
                                         <span class="badge text-bg-light border me-1 mb-1">{{ skill.name }}</span>
                                     {% empty %}
-                                        <span class="text-muted">-</span>
+                                        <span class="text-muted">No application-specific skills.</span>
                                     {% endfor %}
                                 </td>
                             </tr>
