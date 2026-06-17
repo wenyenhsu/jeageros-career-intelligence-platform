@@ -47,20 +47,41 @@ def test_source_list_view(client):
 @pytest.mark.django_db
 def test_source_create_view(client):
     payload = {
-        "name": "Greenhouse",
-        "resource": JobSource.Resource.GREENHOUSE,
-        "base_url": "https://boards.greenhouse.io/",
+        "name": "LinkedIn",
+        "resource": JobSource.Resource.LINKEDIN,
+        "base_url": "https://www.linkedin.com/jobs/search/",
         "enabled": True,
         "crawl_interval_minutes": 720,
-        "crawl_config": '{"pages": 2}',
-        "filter_config": '{"include_keywords": ["python"]}',
+        "max_pages": 2,
+        "fetch_details": "new_or_missing",
+        "max_search_requests": 5,
+        "max_detail_requests": 3,
+        "request_delay_seconds": 5,
+        "rolling_search": "on",
+        "rate_limit_cooldown_minutes": 60,
+        "default_job_type": "",
+        "location": "United States, CA",
+        "job_types": "Full-time, Internship",
+        "workplace_types": "Remote, Hybrid, On-site",
+        "search_keywords": "data engineer\nbackend",
+        "include_keywords": "python, django",
+        "exclude_keywords": "senior",
+        "target_companies": "OpenAI, Google",
         "notes": "Test source",
     }
 
     response = client.post(reverse("source-create"), data=payload)
 
     assert response.status_code in (302, 303)
-    assert JobSource.objects.filter(name="Greenhouse").exists()
+    source = JobSource.objects.get(name="LinkedIn")
+    assert source.crawl_config["max_pages"] == 2
+    assert source.crawl_config["fetch_details"] == "new_or_missing"
+    assert source.crawl_config["max_search_requests"] == 5
+    assert source.crawl_config["max_detail_requests"] == 3
+    assert source.filter_config["location"] == ["United States", "CA"]
+    assert source.filter_config["job_types"] == ["Full-time", "Internship"]
+    assert source.filter_config["include_keywords"] == ["python", "django"]
+    assert source.filter_config["target_companies"] == ["OpenAI", "Google"]
 
 
 @pytest.mark.django_db
@@ -73,8 +94,41 @@ def test_source_create_form_exposes_resource_base_url_defaults(client):
     assert "data-base-url-target" in content
     assert "id_base_url" in content
     assert "https://www.linkedin.com/jobs/search/" in content
-    assert "https://boards.greenhouse.io/" in content
-    assert "https://jobs.lever.co/" in content
+    assert "https://app.joinhandshake.com/stu/postings" in content
+    assert "data-default-config-values" in content
+    assert "max_search_requests" in content
+    assert "workplace_types" in content
+    assert "Parameter guide" in content
+    assert reverse("source-help") in content
+
+
+@pytest.mark.django_db
+def test_source_help_view_explains_form_parameters(client):
+    response = client.get(reverse("source-help"))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "Job Source Parameter Guide" in content
+    assert "Resource Defaults" in content
+    assert "Max pages" in content
+    assert "Fetch details" in content
+    assert "Request delay seconds" in content
+    assert "Max search requests" in content
+    assert "Max detail requests" in content
+    assert "Rate limit cooldown minutes" in content
+    assert "Default job type" in content
+    assert "Rolling search" in content
+    assert "Location" in content
+    assert "Job types" in content
+    assert "Workplace types" in content
+    assert "Remote only" in content
+    assert "Search keywords" in content
+    assert "Include keywords" in content
+    assert "Exclude keywords" in content
+    assert "Target companies" in content
+    assert "LinkedIn" in content
+    assert "Handshake" in content
+    assert "Generic HTML" in content
 
 
 def test_source_form_fills_default_base_url_when_missing():
@@ -85,8 +139,14 @@ def test_source_form_fills_default_base_url_when_missing():
             "base_url": "",
             "enabled": "on",
             "crawl_interval_minutes": 1440,
-            "crawl_config": "{}",
-            "filter_config": "{}",
+            "max_pages": 1,
+            "fetch_details": "new_or_missing",
+            "max_search_requests": 5,
+            "max_detail_requests": 5,
+            "request_delay_seconds": 5,
+            "rolling_search": "on",
+            "rate_limit_cooldown_minutes": 60,
+            "default_job_type": "",
             "notes": "",
         }
     )
@@ -104,14 +164,98 @@ def test_source_form_preserves_custom_base_url():
             "base_url": custom_url,
             "enabled": "on",
             "crawl_interval_minutes": 1440,
-            "crawl_config": "{}",
-            "filter_config": "{}",
+            "max_pages": 1,
+            "fetch_details": "new_or_missing",
+            "max_search_requests": 5,
+            "max_detail_requests": 5,
+            "request_delay_seconds": 5,
+            "rolling_search": "on",
+            "rate_limit_cooldown_minutes": 60,
+            "default_job_type": "",
             "notes": "",
         }
     )
 
     assert form.is_valid(), form.errors
     assert form.cleaned_data["base_url"] == custom_url
+
+
+@pytest.mark.django_db
+def test_source_form_standardizes_filter_config_values():
+    form = JobSourceForm(
+        data={
+            "name": "LinkedIn standard config",
+            "resource": JobSource.Resource.LINKEDIN,
+            "base_url": "",
+            "enabled": "on",
+            "crawl_interval_minutes": 1440,
+            "max_pages": 1,
+            "fetch_details": "new_or_missing",
+            "max_search_requests": 5,
+            "max_detail_requests": 5,
+            "request_delay_seconds": 5,
+            "rolling_search": "on",
+            "rate_limit_cooldown_minutes": 60,
+            "default_job_type": "Full-time",
+            "location": "CA\nTX, United States",
+            "job_types": "Internship, internship, Full-time",
+            "workplace_types": "Remote, Hybrid",
+            "remote_only": "",
+            "search_keywords": "data engineer, backend",
+            "include_keywords": "python\nDjango, python",
+            "exclude_keywords": "senior",
+            "target_companies": "",
+            "notes": "",
+        }
+    )
+
+    assert form.is_valid(), form.errors
+    source = form.save()
+    assert source.crawl_config["default_job_type"] == "Full-time"
+    assert source.crawl_config["request_delay_seconds"] == 5.0
+    assert source.filter_config["location"] == ["CA", "TX", "United States"]
+    assert source.filter_config["job_types"] == ["Internship", "Full-time"]
+    assert source.filter_config["include_keywords"] == ["python", "Django"]
+    assert source.filter_config["remote_only"] is False
+
+
+@pytest.mark.django_db
+def test_source_form_preserves_runtime_crawl_config_keys():
+    source = JobSource.objects.create(
+        name="LinkedIn",
+        resource=JobSource.Resource.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
+        crawl_config={
+            "rolling_state": {"linkedin_search_offset": 25},
+            "rate_limited_until": "2026-06-17T12:00:00+00:00",
+            "max_pages": 9,
+        },
+    )
+    form = JobSourceForm(
+        data={
+            "name": "LinkedIn",
+            "resource": JobSource.Resource.LINKEDIN,
+            "base_url": "https://www.linkedin.com/jobs/search/",
+            "enabled": "on",
+            "crawl_interval_minutes": 1440,
+            "max_pages": 2,
+            "fetch_details": "new_or_missing",
+            "max_search_requests": 5,
+            "max_detail_requests": 5,
+            "request_delay_seconds": 5,
+            "rolling_search": "on",
+            "rate_limit_cooldown_minutes": 60,
+            "default_job_type": "",
+            "notes": "",
+        },
+        instance=source,
+    )
+
+    assert form.is_valid(), form.errors
+    updated = form.save()
+    assert updated.crawl_config["max_pages"] == 2
+    assert updated.crawl_config["rolling_state"] == {"linkedin_search_offset": 25}
+    assert updated.crawl_config["rate_limited_until"] == "2026-06-17T12:00:00+00:00"
 
 
 @pytest.mark.django_db

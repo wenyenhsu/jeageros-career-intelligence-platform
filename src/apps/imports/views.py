@@ -11,6 +11,7 @@ from django.views.generic import (
     DeleteView,
     DetailView,
     ListView,
+    TemplateView,
     UpdateView,
 )
 
@@ -266,6 +267,10 @@ class JobSourceDetailView(DetailView):
     model = JobSource
     template_name = "imports/job_source_detail.html"
     context_object_name = "source"
+
+
+class JobSourceHelpView(TemplateView):
+    template_name = "imports/job_source_help.html"
 
 
 class JobSourceCreateView(CreateView):

@@ -4,6 +4,7 @@ from .views import (
     JobSourceCreateView,
     JobSourceDeleteView,
     JobSourceDetailView,
+    JobSourceHelpView,
     JobSourceListView,
     JobSourceUpdateView,
     abort_crawl_run,
@@ -16,6 +17,7 @@ from .views import (
 
 urlpatterns = [
     path("", JobSourceListView.as_view(), name="source-list"),
+    path("help/", JobSourceHelpView.as_view(), name="source-help"),
     path("create/", JobSourceCreateView.as_view(), name="source-create"),
     path("run/", run_all_sources, name="source-run-all"),
     path("runs/<int:pk>/abort/", abort_crawl_run, name="source-run-abort"),

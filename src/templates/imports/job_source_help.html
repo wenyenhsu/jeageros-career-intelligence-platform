@@ -1,0 +1,266 @@
+{% extends 'base.html' %}
+{% block title %}Job Source Parameters · JaegerOS{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+  <div>
+    <h1 class="h2 fw-bold mb-1">Job Source Parameter Guide</h1>
+    <p class="text-muted mb-0">How each source setting affects crawling, filtering, and stored job data.</p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a href="{% url 'source-create' %}" class="btn btn-primary">
+      <i class="bi bi-plus-lg me-1"></i>Create source
+    </a>
+    <a href="{% url 'source-list' %}" class="btn btn-outline-secondary">
+      Sources
+    </a>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-12 col-xl-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h5 fw-bold">Configuration Flow</h2>
+        <p class="text-muted mb-3">The form is a structured editor for the JSON fields stored on each JobSource.</p>
+        <ol class="mb-0">
+          <li>Choose a resource type.</li>
+          <li>The form fills safe defaults for that resource.</li>
+          <li>Edit the crawl and filter parameters.</li>
+          <li>Saving writes normalized values into <code>crawl_config</code> and <code>filter_config</code>.</li>
+          <li>The crawler reads those values during the next source run.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-xl-8">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h5 fw-bold">Resource Defaults</h2>
+        <div class="table-responsive">
+          <table class="table align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Resource</th>
+                <th>Default Base URL</th>
+                <th>Best Use</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="badge text-bg-secondary">LinkedIn</span></td>
+                <td><code>https://www.linkedin.com/jobs/search/</code></td>
+                <td>LinkedIn job search pages. Filters should be configured in the form instead of hardcoded into the URL.</td>
+              </tr>
+              <tr>
+                <td><span class="badge text-bg-secondary">Handshake</span></td>
+                <td><code>https://app.joinhandshake.com/stu/postings</code></td>
+                <td>Handshake postings. Use the same normalized filter fields where possible.</td>
+              </tr>
+              <tr>
+                <td><span class="badge text-bg-secondary">Generic HTML</span></td>
+                <td>Custom URL required</td>
+                <td>Career pages or other HTML pages that do not have a dedicated parser yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mt-4">
+  <div class="card-body">
+    <h2 class="h4 fw-bold mb-3">Source Fields</h2>
+    <div class="table-responsive">
+      <table class="table align-middle">
+        <thead>
+          <tr>
+            <th>Parameter</th>
+            <th>Meaning</th>
+            <th>Example</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Name</code></td>
+            <td>Human-readable label for the source.</td>
+            <td><code>LinkedIn data internship</code></td>
+          </tr>
+          <tr>
+            <td><code>Resource</code></td>
+            <td>Parser family used by source detection and crawling.</td>
+            <td><code>LinkedIn</code></td>
+          </tr>
+          <tr>
+            <td><code>Base URL</code></td>
+            <td>The starting URL for the crawler. For LinkedIn, keep this general and configure filters separately.</td>
+            <td><code>https://www.linkedin.com/jobs/search/</code></td>
+          </tr>
+          <tr>
+            <td><code>Enabled</code></td>
+            <td>Only enabled sources are included in scheduled or "Run all sources" crawls.</td>
+            <td><code>Enabled</code></td>
+          </tr>
+          <tr>
+            <td><code>Crawl interval minutes</code></td>
+            <td>Intended interval between scheduled crawls for this source.</td>
+            <td><code>1440</code> for once per day</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mt-4">
+  <div class="card-body">
+    <h2 class="h4 fw-bold mb-3">Crawl Config</h2>
+    <div class="table-responsive">
+      <table class="table align-middle">
+        <thead>
+          <tr>
+            <th>Parameter</th>
+            <th>Meaning</th>
+            <th>Guidance</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Max pages</code></td>
+            <td>Number of search result pages to scan per run.</td>
+            <td>Keep low for LinkedIn to reduce rate-limit risk.</td>
+          </tr>
+          <tr>
+            <td><code>Fetch details</code></td>
+            <td>Controls whether the crawler opens individual job detail pages.</td>
+            <td><code>New or missing descriptions</code> is the safest default.</td>
+          </tr>
+          <tr>
+            <td><code>Request delay seconds</code></td>
+            <td>Wait time between crawler requests.</td>
+            <td>Use higher values when a site rate-limits aggressively.</td>
+          </tr>
+          <tr>
+            <td><code>Max search requests</code></td>
+            <td>Maximum search/listing requests per run.</td>
+            <td>Lower values reduce 429 risk but crawl fewer combinations.</td>
+          </tr>
+          <tr>
+            <td><code>Max detail requests</code></td>
+            <td>Maximum job-detail requests per run.</td>
+            <td>Use with <code>Fetch details</code> to control request volume.</td>
+          </tr>
+          <tr>
+            <td><code>Rate limit cooldown minutes</code></td>
+            <td>How long the source should cool down after rate limiting.</td>
+            <td><code>60</code> is a conservative starting point.</td>
+          </tr>
+          <tr>
+            <td><code>Default job type</code></td>
+            <td>Fallback job type used only when the page does not expose one clearly.</td>
+            <td>Avoid setting this unless the source is intentionally scoped.</td>
+          </tr>
+          <tr>
+            <td><code>Rolling search</code></td>
+            <td>Rotates through search combinations across runs instead of always starting at the first combination.</td>
+            <td>Recommended when there are many locations, keywords, or job types.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mt-4">
+  <div class="card-body">
+    <h2 class="h4 fw-bold mb-3">Filter Config</h2>
+    <div class="table-responsive">
+      <table class="table align-middle">
+        <thead>
+          <tr>
+            <th>Parameter</th>
+            <th>Meaning</th>
+            <th>Accepted Format</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Location</code></td>
+            <td>Locations used by search URL generation and post-crawl filtering.</td>
+            <td>Comma or newline separated, such as <code>TX, CA, United States</code>.</td>
+          </tr>
+          <tr>
+            <td><code>Job types</code></td>
+            <td>Allowed job types. LinkedIn maps these to its job-type filters.</td>
+            <td><code>Full-time</code>, <code>Internship</code>, <code>Part-time</code>, <code>Contract</code>, <code>Temporary</code>.</td>
+          </tr>
+          <tr>
+            <td><code>Workplace types</code></td>
+            <td>Allowed workplace modes.</td>
+            <td><code>Remote</code>, <code>Hybrid</code>, <code>On-site</code>.</td>
+          </tr>
+          <tr>
+            <td><code>Remote only</code></td>
+            <td>Shortcut that narrows workplace filtering to remote jobs.</td>
+            <td>Use only when remote jobs are the only acceptable result.</td>
+          </tr>
+          <tr>
+            <td><code>Search keywords</code></td>
+            <td>Terms sent to the source search engine.</td>
+            <td><code>data engineer</code>, <code>backend</code>, <code>internship</code>.</td>
+          </tr>
+          <tr>
+            <td><code>Include keywords</code></td>
+            <td>Post-crawl text filter. Matching jobs should contain at least one of these terms.</td>
+            <td><code>python</code>, <code>django</code>, <code>api</code>.</td>
+          </tr>
+          <tr>
+            <td><code>Exclude keywords</code></td>
+            <td>Terms that should disqualify a job after extraction.</td>
+            <td><code>senior</code>, <code>staff</code>, <code>principal</code>.</td>
+          </tr>
+          <tr>
+            <td><code>Target companies</code></td>
+            <td>Optional company allowlist.</td>
+            <td>Leave empty to accept any company that matches the other filters.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mt-4">
+  <div class="card-body">
+    <h2 class="h4 fw-bold mb-3">Practical Defaults</h2>
+    <div class="row g-3">
+      <div class="col-12 col-lg-6">
+        <div class="border rounded-2 p-3 h-100">
+          <h3 class="h6 fw-bold">Low-risk LinkedIn crawl</h3>
+          <p class="text-muted mb-2">Good for avoiding rate limits while still collecting useful jobs.</p>
+          <pre class="mb-0"><code>Max pages: 1
+Max search requests: 5
+Max detail requests: 5
+Request delay seconds: 5-10
+Fetch details: New or missing descriptions
+Rolling search: Enabled</code></pre>
+        </div>
+      </div>
+      <div class="col-12 col-lg-6">
+        <div class="border rounded-2 p-3 h-100">
+          <h3 class="h6 fw-bold">Internship-focused filter</h3>
+          <p class="text-muted mb-2">Good when the source should only collect internship-like roles.</p>
+          <pre class="mb-0"><code>Location: TX, CA, United States
+Job types: Internship
+Workplace types: Remote, Hybrid, On-site
+Search keywords: data engineer, backend, internship
+Target companies: leave empty for no company limit</code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

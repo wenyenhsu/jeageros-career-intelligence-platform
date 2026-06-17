@@ -3,15 +3,79 @@
 
 {% block content %}
 <div class="row justify-content-center">
-  <div class="col-12 col-xl-8">
+  <div class="col-12 col-xl-9">
     <div class="card shadow-sm border-0 rounded-4">
       <div class="card-body p-4 p-lg-5">
-        <h1 class="h3 fw-bold mb-1">Job source form</h1>
-        <p class="text-muted mb-4">Set the resource and crawl rules for a source.</p>
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+          <div>
+            <h1 class="h3 fw-bold mb-1">Job source form</h1>
+            <p class="text-muted mb-0">Set the resource and crawl rules for a source.</p>
+          </div>
+          <a href="{% url 'source-help' %}" class="btn btn-outline-secondary">
+            Parameter guide
+          </a>
+        </div>
 
         <form method="post" novalidate>
           {% csrf_token %}
-          {% include 'shared/bootstrap_form.html' with form=form submit_label='Save source' cancel_url='/imports/' %}
+
+          {% if form.non_field_errors %}
+            <div class="alert alert-danger">
+              {% for error in form.non_field_errors %}{{ error }}{% if not forloop.last %}<br>{% endif %}{% endfor %}
+            </div>
+          {% endif %}
+
+          <section class="mb-4">
+            <h2 class="h5 fw-bold mb-3">Source</h2>
+            <div class="row g-3">
+              {% include 'imports/partials/source_form_field.html' with field=form.name classes='col-12 col-md-6' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.resource classes='col-12 col-md-6' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.base_url classes='col-12' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.enabled classes='col-12 col-md-6' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.crawl_interval_minutes classes='col-12 col-md-6' %}
+            </div>
+          </section>
+
+          <section class="mb-4">
+            <h2 class="h5 fw-bold mb-3">Crawl config</h2>
+            <div class="row g-3">
+              {% include 'imports/partials/source_form_field.html' with field=form.max_pages classes='col-12 col-md-4' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.fetch_details classes='col-12 col-md-4' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.request_delay_seconds classes='col-12 col-md-4' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.max_search_requests classes='col-12 col-md-4' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.max_detail_requests classes='col-12 col-md-4' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.rate_limit_cooldown_minutes classes='col-12 col-md-4' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.default_job_type classes='col-12 col-md-6' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.rolling_search classes='col-12 col-md-6' %}
+            </div>
+          </section>
+
+          <section class="mb-4">
+            <h2 class="h5 fw-bold mb-3">Filter config</h2>
+            <div class="row g-3">
+              {% include 'imports/partials/source_form_field.html' with field=form.location classes='col-12 col-md-6' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.job_types classes='col-12 col-md-6' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.workplace_types classes='col-12 col-md-6' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.remote_only classes='col-12 col-md-6' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.search_keywords classes='col-12 col-md-6' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.include_keywords classes='col-12 col-md-6' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.exclude_keywords classes='col-12 col-md-6' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.target_companies classes='col-12 col-md-6' %}
+            </div>
+          </section>
+
+          <section>
+            <div class="row g-3">
+              {% include 'imports/partials/source_form_field.html' with field=form.notes classes='col-12' %}
+            </div>
+          </section>
+
+          <div class="d-flex gap-2 mt-4">
+            <button class="btn btn-primary px-4" type="submit">
+              <i class="bi bi-check2-circle me-1"></i>Save source
+            </button>
+            <a class="btn btn-outline-secondary" href="/imports/">Cancel</a>
+          </div>
         </form>
       </div>
     </div>
@@ -26,15 +90,71 @@
     const baseUrlInput = document.getElementById(resourceSelect.dataset.baseUrlTarget || "id_base_url");
     if (!baseUrlInput) return;
 
+    const fieldNames = [
+      "max_pages",
+      "fetch_details",
+      "max_search_requests",
+      "max_detail_requests",
+      "request_delay_seconds",
+      "rolling_search",
+      "rate_limit_cooldown_minutes",
+      "default_job_type",
+      "location",
+      "job_types",
+      "workplace_types",
+      "remote_only",
+      "search_keywords",
+      "include_keywords",
+      "exclude_keywords",
+      "target_companies",
+    ];
+
     let defaultBaseUrls = {};
+    let defaultConfigValues = {};
     try {
       defaultBaseUrls = JSON.parse(resourceSelect.dataset.defaultBaseUrls || "{}");
+      defaultConfigValues = JSON.parse(resourceSelect.dataset.defaultConfigValues || "{}");
     } catch {
       defaultBaseUrls = {};
+      defaultConfigValues = {};
     }
 
     function selectedDefaultUrl() {
       return defaultBaseUrls[resourceSelect.value] || "";
+    }
+
+    function selectedConfigDefaults() {
+      return defaultConfigValues[resourceSelect.value] || {};
+    }
+
+    function fieldFor(name) {
+      return document.getElementById(`id_${name}`);
+    }
+
+    function readField(field) {
+      if (!field) return "";
+      if (field.type === "checkbox") return field.checked;
+      return field.value.trim();
+    }
+
+    function writeField(field, value) {
+      if (!field) return;
+      if (field.type === "checkbox") {
+        field.checked = Boolean(value);
+      } else {
+        field.value = value == null ? "" : value;
+      }
+    }
+
+    function isEmptyValue(value) {
+      return value === "" || value === false || value == null;
+    }
+
+    function sameValue(left, right) {
+      if (typeof left === "boolean" || typeof right === "boolean") {
+        return Boolean(left) === Boolean(right);
+      }
+      return String(left ?? "").trim() === String(right ?? "").trim();
     }
 
     function syncBaseUrl() {
@@ -47,12 +167,34 @@
       resourceSelect.dataset.previousDefaultBaseUrl = nextDefault;
     }
 
+    function syncConfigFields() {
+      const nextDefaults = selectedConfigDefaults();
+      const previousDefaults = JSON.parse(resourceSelect.dataset.previousConfigValues || "{}");
+      const hadPreviousResource = Boolean(resourceSelect.dataset.previousResourceValue);
+      fieldNames.forEach((name) => {
+        const field = fieldFor(name);
+        if (!field || !(name in nextDefaults)) return;
+        const currentValue = readField(field);
+        const previousValue = previousDefaults[name];
+        if (!hadPreviousResource || isEmptyValue(currentValue) || sameValue(currentValue, previousValue)) {
+          writeField(field, nextDefaults[name]);
+        }
+      });
+      resourceSelect.dataset.previousConfigValues = JSON.stringify(nextDefaults);
+      resourceSelect.dataset.previousResourceValue = resourceSelect.value;
+    }
+
     resourceSelect.dataset.previousDefaultBaseUrl = selectedDefaultUrl();
+    resourceSelect.dataset.previousConfigValues = JSON.stringify(selectedConfigDefaults());
+    resourceSelect.dataset.previousResourceValue = resourceSelect.value;
     if (!baseUrlInput.value.trim()) {
       baseUrlInput.value = selectedDefaultUrl();
     }
 
-    resourceSelect.addEventListener("change", syncBaseUrl);
+    resourceSelect.addEventListener("change", () => {
+      syncBaseUrl();
+      syncConfigFields();
+    });
   })();
 </script>
 {% endblock %}

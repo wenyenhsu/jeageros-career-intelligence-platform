@@ -3,13 +3,14 @@ from django.db import models
 
 class JobSource(models.Model):
     class ResourceChoices(models.TextChoices):
+        # import resources check
         LINKEDIN = "LINKEDIN", "LinkedIn"
         HANDSHAKE = "HANDSHAKE", "Handshake"
-        GREENHOUSE = "GREENHOUSE", "Greenhouse"
-        LEVER = "LEVER", "Lever"
-        CAREER_SITE = "CAREER_SITE", "Career Site"
-        RSS = "RSS", "RSS"
-        API = "API", "API"
+        # GREENHOUSE = "GREENHOUSE", "Greenhouse"
+        # LEVER = "LEVER", "Lever"
+        # CAREER_SITE = "CAREER_SITE", "Career Site"
+        # RSS = "RSS", "RSS"
+        # API = "API", "API"
         GENERIC_HTML = "GENERIC_HTML", "Generic HTML"
 
     Resource = ResourceChoices
