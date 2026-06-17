@@ -93,6 +93,12 @@
                 </td>
                 <td class="text-end">
                   <div class="d-inline-flex gap-1">
+                    <form method="post" action="{% url 'job-apply' job.id %}" class="d-inline">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-success">
+                        Apply
+                      </button>
+                    </form>
                     <a href="{% url 'job-detail' job.id %}" class="btn btn-sm btn-outline-secondary">View</a>
                     <form method="post" action="{% url 'job-delete' job.id %}" class="d-inline">
                       {% csrf_token %}

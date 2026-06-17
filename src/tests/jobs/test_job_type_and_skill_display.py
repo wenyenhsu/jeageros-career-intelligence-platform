@@ -7,7 +7,7 @@ from django.utils.dateformat import format as date_format
 from django.urls import reverse
 
 from apps.api.serializers import JobPostSerializer
-from apps.applications.models import Application
+from apps.applications.models import Application, StatusHistory
 from apps.jobs.forms import JobPostForm
 from apps.jobs.models import JobPost
 from apps.skills.models import (
@@ -127,6 +127,79 @@ def test_job_list_renders_delete_action_next_to_view(client, company):
     assert f'action="{reverse("job-delete", args=[job.id])}"' in content
     assert "Delete this job?" in content
     assert "btn-outline-danger" in content
+
+
+@pytest.mark.django_db
+def test_job_list_renders_apply_action(client, company):
+    job = JobPost.objects.create(company=company, title="Apply From List")
+
+    response = client.get(reverse("job-list"))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert f'action="{reverse("job-apply", args=[job.id])}"' in content
+    assert "Apply" in content
+    assert "btn-outline-success" in content
+
+
+@pytest.mark.django_db
+def test_job_apply_action_creates_application_and_copies_skills(client, user, company):
+    client.force_login(user)
+    job = JobPost.objects.create(company=company, title="Data Engineer Intern")
+    skill = SkillSet.objects.create(name="SQL")
+    JobPostSkill.objects.create(
+        job_post=job,
+        skill_set=skill,
+        score=91,
+        source_type=SkillAttachmentSource.OLLAMA_PIPELINE,
+        extraction_metadata={"source": "job"},
+    )
+
+    response = client.post(reverse("job-apply", args=[job.id]))
+
+    assert response.status_code == 302
+    assert response.url == reverse("application-list")
+    application = Application.objects.get(user=user, job_post=job)
+    assert application.status == Application.Status.APPLIED
+    assert application.applied_at is not None
+    application_skill = ApplicationSkill.objects.get(
+        application=application,
+        skill_set=skill,
+    )
+    assert application_skill.score == 91
+    assert application_skill.source_type == SkillAttachmentSource.OLLAMA_PIPELINE
+    assert application_skill.extraction_metadata == {"source": "job"}
+
+
+@pytest.mark.django_db
+def test_job_apply_action_reuses_existing_application(client, user, company):
+    client.force_login(user)
+    job = JobPost.objects.create(company=company, title="Existing Application Job")
+    skill = SkillSet.objects.create(name="Python")
+    JobPostSkill.objects.create(job_post=job, skill_set=skill, score=88)
+    application = Application.objects.create(
+        user=user,
+        job_post=job,
+        status=Application.Status.SAVED,
+    )
+
+    response = client.post(reverse("job-apply", args=[job.id]))
+
+    assert response.status_code == 302
+    assert Application.objects.filter(user=user, job_post=job).count() == 1
+    application.refresh_from_db()
+    assert application.status == Application.Status.APPLIED
+    assert application.applied_at is not None
+    assert (
+        ApplicationSkill.objects.filter(application=application, skill_set=skill).count()
+        == 1
+    )
+    assert StatusHistory.objects.filter(
+        application=application,
+        old_status=Application.Status.SAVED,
+        new_status=Application.Status.APPLIED,
+        changed_by=user,
+    ).exists()
 
 
 @pytest.mark.django_db
