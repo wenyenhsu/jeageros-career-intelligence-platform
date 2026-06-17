@@ -4,7 +4,7 @@
       <div>
         <div class="d-flex justify-content-between gap-3 mb-1">
           <span class="fw-medium">{{ skill.name }}</span>
-          <span class="text-secondary small">{{ skill.count }} jobs · avg {{ skill.average_score }}</span>
+          <span class="text-secondary small">{{ skill.count }} job{{ skill.count|pluralize }}</span>
         </div>
         <div class="progress" role="img" aria-label="{{ skill.name }} demand">
           <div class="progress-bar" style="width: {% widthratio skill.count top_skills.0.count 100 %}%"></div>
@@ -13,5 +13,5 @@
     {% endfor %}
   </div>
 {% else %}
-  <p class="text-secondary">No scored skills yet.</p>
+  <p class="text-secondary">No skill data yet.</p>
 {% endif %}

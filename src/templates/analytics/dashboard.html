@@ -41,10 +41,6 @@
       <label class="form-label" for="employment_type">Job Type</label>
       <input class="form-control" id="employment_type" name="employment_type" value="{{ filters.employment_type }}" placeholder="Full-time">
     </div>
-    <div class="col-sm-6 col-lg-1">
-      <label class="form-label" for="score_min">Min</label>
-      <input class="form-control" id="score_min" type="number" min="0" max="100" name="score_min" value="{{ filters.score_min }}" placeholder="80">
-    </div>
     <div class="col-lg-12">
       <button class="btn btn-primary w-100" type="submit">Apply</button>
     </div>
@@ -52,30 +48,32 @@
 </section>
 
 <section class="mb-5">
-  <h2 class="h5 mb-3">Scored Skill Coverage</h2>
+  <h2 class="h5 mb-3">Skill Coverage</h2>
   <div class="row g-3">
-    <div class="col-sm-6 col-xl-3">
-      <div class="border rounded-2 p-3 h-100">
-        <div class="text-secondary small">Jobs with scored skills</div>
-        <div class="fs-4 fw-semibold">{{ coverage.jobs_with_scored_skills }} / {{ coverage.total_jobs }}</div>
+    <div class="col-12 col-xl-6">
+      <div class="signal-card h-100 d-flex align-items-center gap-4">
+        <div class="coverage-ring" style="--value: {{ coverage.coverage_percent }};">
+          <span class="fw-bold">{{ coverage.coverage_percent }}%</span>
+        </div>
+        <div>
+          <div class="text-secondary small">Jobs with skills</div>
+          <div class="fs-4 fw-semibold">{{ coverage.jobs_with_scored_skills }} / {{ coverage.total_jobs }}</div>
+          <div class="small text-secondary">Coverage across the selected job set.</div>
+        </div>
       </div>
     </div>
     <div class="col-sm-6 col-xl-3">
-      <div class="border rounded-2 p-3 h-100">
-        <div class="text-secondary small">Coverage</div>
-        <div class="fs-4 fw-semibold">{{ coverage.coverage_percent }}%</div>
+      <div class="signal-card h-100">
+        <div class="insight-icon mb-3"><i class="bi bi-link-45deg"></i></div>
+        <div class="text-secondary small">Skill links</div>
+        <div class="fs-4 fw-semibold">{{ coverage.total_skill_links }}</div>
       </div>
     </div>
     <div class="col-sm-6 col-xl-3">
-      <div class="border rounded-2 p-3 h-100">
-        <div class="text-secondary small">Average score</div>
-        <div class="fs-4 fw-semibold">{{ coverage.average_score }}</div>
-      </div>
-    </div>
-    <div class="col-sm-6 col-xl-3">
-      <div class="border rounded-2 p-3 h-100">
-        <div class="text-secondary small">High-confidence links</div>
-        <div class="fs-4 fw-semibold">{{ coverage.high_confidence_links }}</div>
+      <div class="signal-card h-100">
+        <div class="insight-icon mb-3"><i class="bi bi-briefcase-fill"></i></div>
+        <div class="text-secondary small">Tracked jobs</div>
+        <div class="fs-4 fw-semibold">{{ coverage.total_jobs }}</div>
       </div>
     </div>
   </div>
@@ -83,17 +81,68 @@
 
 <section class="mb-5">
   <h2 class="h5 mb-3">Top Skill Demand</h2>
-  {% include "analytics/partials/top_skills.html" with top_skills=top_skills %}
+  <div class="card p-4">
+    {% if top_skill_bars %}
+      <div class="row g-3">
+        {% for skill in top_skill_bars %}
+          <div class="col-12 col-lg-6">
+            <div class="d-flex justify-content-between gap-3 mb-2">
+              <span class="fw-semibold">{{ skill.name }}</span>
+              <span class="text-secondary">{{ skill.count }} job{{ skill.count|pluralize }}</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width: {{ skill.share }}%;"></div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="text-secondary">No skill demand data yet.</div>
+    {% endif %}
+  </div>
 </section>
 
 <section class="mb-5">
   <h2 class="h5 mb-3">Skill Demand Trends</h2>
-  {% include "analytics/partials/trends_table.html" with trends=trends %}
+  <div class="card p-4">
+    {% if trend_periods %}
+      <div class="d-flex flex-wrap gap-2 mb-3">
+        {% for period in trend_periods %}
+          <span class="trend-pill"><i class="bi bi-calendar3"></i>{{ period }}</span>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% include "analytics/partials/trends_table.html" with trends=trends %}
+  </div>
 </section>
 
 <section class="mb-5">
   <h2 class="h5 mb-3">Company Skill Breakdown</h2>
-  {% include "analytics/partials/company_breakdown.html" with company_breakdown=company_breakdown %}
+  <div class="row g-3">
+    {% for group in company_skill_groups %}
+      <div class="col-12 col-xl-6">
+        <div class="signal-card h-100">
+          <div class="d-flex justify-content-between gap-3 mb-3">
+            <h3 class="h6 mb-0">{{ group.name }}</h3>
+            <span class="badge text-bg-light border">{{ group.total }} signal{{ group.total|pluralize }}</span>
+          </div>
+          {% for skill in group.items %}
+            <div class="insight-row">
+              <span class="fw-semibold text-truncate">{{ skill.name }}</span>
+              <span class="text-secondary small text-end">{{ skill.count }}</span>
+              <div class="bar-track">
+                <div class="bar-fill bar-fill-success" style="width: {{ skill.share }}%;"></div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% empty %}
+      <div class="col-12">
+        <div class="card p-4 text-secondary">No company skill data yet.</div>
+      </div>
+    {% endfor %}
+  </div>
 </section>
 
 {% if skill_gaps %}
@@ -105,29 +154,30 @@
 
 <section>
   <h2 class="h5 mb-3">Job-Market Signals by Category</h2>
-  <div class="table-responsive">
-    <table class="table table-sm align-middle">
-      <thead>
-        <tr>
-          <th>Category</th>
-          <th>Skill</th>
-          <th class="text-end">Jobs</th>
-          <th class="text-end">Avg Score</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in job_categories %}
-          <tr>
-            <td>{{ row.category }}</td>
-            <td>{{ row.name }}</td>
-            <td class="text-end">{{ row.count }}</td>
-            <td class="text-end">{{ row.average_score }}</td>
-          </tr>
-        {% empty %}
-          <tr><td colspan="4" class="text-secondary">No category data yet.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div class="row g-3">
+    {% for group in job_category_groups %}
+      <div class="col-12 col-xl-6">
+        <div class="signal-card h-100">
+          <div class="d-flex justify-content-between gap-3 mb-3">
+            <h3 class="h6 mb-0">{{ group.name }}</h3>
+            <span class="badge text-bg-light border">{{ group.total }} job signal{{ group.total|pluralize }}</span>
+          </div>
+          {% for skill in group.items %}
+            <div class="insight-row">
+              <span class="fw-semibold text-truncate">{{ skill.name }}</span>
+              <span class="text-secondary small text-end">{{ skill.count }}</span>
+              <div class="bar-track">
+                <div class="bar-fill bar-fill-warning" style="width: {{ skill.share }}%;"></div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% empty %}
+      <div class="col-12">
+        <div class="card p-4 text-secondary">No category data yet.</div>
+      </div>
+    {% endfor %}
   </div>
 </section>
 {% endblock %}

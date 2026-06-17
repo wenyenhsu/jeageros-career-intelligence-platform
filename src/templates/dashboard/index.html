@@ -58,6 +58,105 @@
   </div>
 </div>
 
+<div class="row g-4 mb-4">
+  <div class="col-12 col-xl-4">
+    <div class="card p-4 h-100">
+      <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+        <div>
+          <h2 class="h5 mb-1">Skill Coverage Snapshot</h2>
+          <p class="text-secondary small mb-0">How many stored jobs already have skill data.</p>
+        </div>
+        <span class="insight-icon"><i class="bi bi-pie-chart-fill"></i></span>
+      </div>
+      <div class="d-flex align-items-center gap-4">
+        <div class="coverage-ring" style="--value: {{ skill_coverage.coverage_percent }};">
+          <span class="fw-bold">{{ skill_coverage.coverage_percent }}%</span>
+        </div>
+        <div class="flex-grow-1">
+          <div class="d-flex justify-content-between py-1">
+            <span class="text-secondary">Jobs with skills</span>
+            <span class="fw-semibold">{{ skill_coverage.jobs_with_skills }} / {{ skill_coverage.total_jobs }}</span>
+          </div>
+          <div class="d-flex justify-content-between py-1">
+            <span class="text-secondary">Skill links</span>
+            <span class="fw-semibold">{{ skill_coverage.total_skill_links }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-xl-4">
+    <div class="card p-4 h-100">
+      <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+        <div>
+          <h2 class="h5 mb-1">Required Skill Snapshot</h2>
+          <p class="text-secondary small mb-0">Most common skill signals from crawled jobs.</p>
+        </div>
+        <span class="insight-icon"><i class="bi bi-stars"></i></span>
+      </div>
+      {% if skill_snapshot %}
+        {% for skill in skill_snapshot %}
+          <div class="insight-row">
+            <span class="fw-semibold text-truncate">{{ skill.name }}</span>
+            <span class="text-secondary small text-end">{{ skill.total }} job{{ skill.total|pluralize }}</span>
+            <div class="bar-track">
+              <div class="bar-fill" style="width: {{ skill.share }}%;"></div>
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="text-secondary">No skill data yet.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="col-12 col-xl-4">
+    <div class="card p-4 h-100">
+      <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+        <div>
+          <h2 class="h5 mb-1">Job Mix</h2>
+          <p class="text-secondary small mb-0">Fast read on job type, source, and location spread.</p>
+        </div>
+        <span class="insight-icon"><i class="bi bi-bar-chart-fill"></i></span>
+      </div>
+      <div class="mb-3">
+        <div class="text-secondary small mb-2">Job types</div>
+        {% for row in job_type_breakdown %}
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="fw-semibold flex-shrink-0" style="width: 6.5rem;">{{ row.label }}</span>
+            <div class="bar-track flex-grow-1"><div class="bar-fill bar-fill-success" style="width: {{ row.share }}%;"></div></div>
+            <span class="small text-secondary">{{ row.total }}</span>
+          </div>
+        {% empty %}
+          <div class="text-secondary small">No job type data yet.</div>
+        {% endfor %}
+      </div>
+      <div class="d-flex flex-wrap gap-2 mb-3">
+        {% for row in source_breakdown %}
+          <span class="skill-chip">{{ row.label }} <span class="text-secondary ms-1">{{ row.total }}</span></span>
+        {% empty %}
+          <span class="text-secondary small">No source data yet.</span>
+        {% endfor %}
+      </div>
+      <div class="d-flex flex-wrap gap-2 mb-3">
+        {% for row in job_status_breakdown %}
+          <span class="badge text-bg-light border">{{ row.label }} · {{ row.total }}</span>
+        {% empty %}
+          <span class="text-secondary small">No status data yet.</span>
+        {% endfor %}
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        {% for row in location_snapshot %}
+          <span class="badge text-bg-light border">{{ row.label }} · {{ row.total }}</span>
+        {% empty %}
+          <span class="text-secondary small">No location data yet.</span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="row g-4">
   <div class="col-12 col-xl-6">
     <div class="card p-4 h-100">
