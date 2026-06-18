@@ -8,8 +8,8 @@ from .models import JobSource
 class JobSourceForm(forms.ModelForm):
     DEFAULT_BASE_URLS = {
         JobSource.ResourceChoices.LINKEDIN: "https://www.linkedin.com/jobs/search/",
-        JobSource.ResourceChoices.HANDSHAKE: "https://app.joinhandshake.com/stu/postings",
-        JobSource.ResourceChoices.GENERIC_HTML: "",
+        # JobSource.ResourceChoices.HANDSHAKE: "https://app.joinhandshake.com/stu/postings",
+        # JobSource.ResourceChoices.GENERIC_HTML: "",
     }
 
     DEFAULT_CRAWL_CONFIGS = {
@@ -21,28 +21,30 @@ class JobSourceForm(forms.ModelForm):
             "request_delay_seconds": 5,
             "rolling_search": True,
             "rate_limit_cooldown_minutes": 60,
+            "sort_by": "DD",
+            "date_posted": "r604800",
             "default_job_type": "",
         },
-        JobSource.ResourceChoices.HANDSHAKE: {
-            "max_pages": 1,
-            "fetch_details": "new_or_missing",
-            "max_search_requests": 5,
-            "max_detail_requests": 5,
-            "request_delay_seconds": 2,
-            "rolling_search": True,
-            "rate_limit_cooldown_minutes": 60,
-            "default_job_type": "",
-        },
-        JobSource.ResourceChoices.GENERIC_HTML: {
-            "max_pages": 1,
-            "fetch_details": "all",
-            "max_search_requests": 3,
-            "max_detail_requests": 3,
-            "request_delay_seconds": 1,
-            "rolling_search": True,
-            "rate_limit_cooldown_minutes": 60,
-            "default_job_type": "",
-        },
+        # JobSource.ResourceChoices.HANDSHAKE: {
+        #     "max_pages": 1,
+        #     "fetch_details": "new_or_missing",
+        #     "max_search_requests": 5,
+        #     "max_detail_requests": 5,
+        #     "request_delay_seconds": 2,
+        #     "rolling_search": True,
+        #     "rate_limit_cooldown_minutes": 60,
+        #     "default_job_type": "",
+        # },
+        # JobSource.ResourceChoices.GENERIC_HTML: {
+        #     "max_pages": 1,
+        #     "fetch_details": "all",
+        #     "max_search_requests": 3,
+        #     "max_detail_requests": 3,
+        #     "request_delay_seconds": 1,
+        #     "rolling_search": True,
+        #     "rate_limit_cooldown_minutes": 60,
+        #     "default_job_type": "",
+        # },
     }
 
     DEFAULT_FILTER_CONFIGS = {
@@ -56,26 +58,26 @@ class JobSourceForm(forms.ModelForm):
             "exclude_keywords": [],
             "target_companies": [],
         },
-        JobSource.ResourceChoices.HANDSHAKE: {
-            "location": [],
-            "remote_only": False,
-            "workplace_types": ["Remote", "Hybrid", "On-site"],
-            "job_types": [],
-            "search_keywords": [],
-            "include_keywords": [],
-            "exclude_keywords": [],
-            "target_companies": [],
-        },
-        JobSource.ResourceChoices.GENERIC_HTML: {
-            "location": [],
-            "remote_only": False,
-            "workplace_types": [],
-            "job_types": [],
-            "search_keywords": [],
-            "include_keywords": [],
-            "exclude_keywords": [],
-            "target_companies": [],
-        },
+        # JobSource.ResourceChoices.HANDSHAKE: {
+        #     "location": [],
+        #     "remote_only": False,
+        #     "workplace_types": ["Remote", "Hybrid", "On-site"],
+        #     "job_types": [],
+        #     "search_keywords": [],
+        #     "include_keywords": [],
+        #     "exclude_keywords": [],
+        #     "target_companies": [],
+        # },
+        # JobSource.ResourceChoices.GENERIC_HTML: {
+        #     "location": [],
+        #     "remote_only": False,
+        #     "workplace_types": [],
+        #     "job_types": [],
+        #     "search_keywords": [],
+        #     "include_keywords": [],
+        #     "exclude_keywords": [],
+        #     "target_companies": [],
+        # },
     }
 
     MANAGED_CRAWL_CONFIG_KEYS = {
@@ -86,6 +88,8 @@ class JobSourceForm(forms.ModelForm):
         "request_delay_seconds",
         "rolling_search",
         "rate_limit_cooldown_minutes",
+        "sort_by",
+        "date_posted",
         "default_job_type",
     }
     MANAGED_FILTER_CONFIG_KEYS = {
@@ -113,6 +117,16 @@ class JobSourceForm(forms.ModelForm):
         ("Internship", "Internship"),
         ("Contract", "Contract"),
         ("Temporary", "Temporary"),
+    )
+    SORT_BY_CHOICES = (
+        ("DD", "Newest first"),
+        ("R", "Most relevant"),
+    )
+    DATE_POSTED_CHOICES = (
+        ("", "Any time"),
+        ("r86400", "Past 24 hours"),
+        ("r604800", "Past week"),
+        ("r2592000", "Past month"),
     )
 
     max_pages = forms.IntegerField(
@@ -159,6 +173,18 @@ class JobSourceForm(forms.ModelForm):
         required=False,
         label="Rate limit cooldown minutes",
         widget=forms.NumberInput(attrs={"class": "form-control", "min": 1}),
+    )
+    sort_by = forms.ChoiceField(
+        choices=SORT_BY_CHOICES,
+        required=False,
+        label="Sort order",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    date_posted = forms.ChoiceField(
+        choices=DATE_POSTED_CHOICES,
+        required=False,
+        label="Date posted",
+        widget=forms.Select(attrs={"class": "form-select"}),
     )
     default_job_type = forms.ChoiceField(
         choices=JOB_TYPE_CHOICES,

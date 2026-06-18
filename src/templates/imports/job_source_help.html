@@ -24,8 +24,8 @@
         <h2 class="h5 fw-bold">Configuration Flow</h2>
         <p class="text-muted mb-3">The form is a structured editor for the JSON fields stored on each JobSource.</p>
         <ol class="mb-0">
-          <li>Choose a resource type.</li>
-          <li>The form fills safe defaults for that resource.</li>
+          <li>Use the LinkedIn resource type.</li>
+          <li>The form fills safe LinkedIn defaults.</li>
           <li>Edit the crawl and filter parameters.</li>
           <li>Saving writes normalized values into <code>crawl_config</code> and <code>filter_config</code>.</li>
           <li>The crawler reads those values during the next source run.</li>
@@ -38,6 +38,7 @@
     <div class="card border-0 shadow-sm h-100">
       <div class="card-body">
         <h2 class="h5 fw-bold">Resource Defaults</h2>
+        <p class="text-muted">Only LinkedIn is user-selectable right now. Other parser families remain internal extension points until their crawlers are production-ready.</p>
         <div class="table-responsive">
           <table class="table align-middle mb-0">
             <thead>
@@ -52,16 +53,6 @@
                 <td><span class="badge text-bg-secondary">LinkedIn</span></td>
                 <td><code>https://www.linkedin.com/jobs/search/</code></td>
                 <td>LinkedIn job search pages. Filters should be configured in the form instead of hardcoded into the URL.</td>
-              </tr>
-              <tr>
-                <td><span class="badge text-bg-secondary">Handshake</span></td>
-                <td><code>https://app.joinhandshake.com/stu/postings</code></td>
-                <td>Handshake postings. Use the same normalized filter fields where possible.</td>
-              </tr>
-              <tr>
-                <td><span class="badge text-bg-secondary">Generic HTML</span></td>
-                <td>Custom URL required</td>
-                <td>Career pages or other HTML pages that do not have a dedicated parser yet.</td>
               </tr>
             </tbody>
           </table>
@@ -159,6 +150,16 @@
             <td><code>60</code> is a conservative starting point.</td>
           </tr>
           <tr>
+            <td><code>Sort order</code></td>
+            <td>LinkedIn search sort mode.</td>
+            <td><code>Newest first</code> sends <code>sortBy=DD</code> so search results are ordered by posting date.</td>
+          </tr>
+          <tr>
+            <td><code>Date posted</code></td>
+            <td>LinkedIn date window for search results.</td>
+            <td><code>Past week</code> sends <code>f_TPR=r604800</code>. Use <code>Past 24 hours</code> for stricter freshness.</td>
+          </tr>
+          <tr>
             <td><code>Default job type</code></td>
             <td>Fallback job type used only when the page does not expose one clearly.</td>
             <td>Avoid setting this unless the source is intentionally scoped.</td>
@@ -246,6 +247,8 @@ Max search requests: 5
 Max detail requests: 5
 Request delay seconds: 5-10
 Fetch details: New or missing descriptions
+Sort order: Newest first
+Date posted: Past week
 Rolling search: Enabled</code></pre>
         </div>
       </div>

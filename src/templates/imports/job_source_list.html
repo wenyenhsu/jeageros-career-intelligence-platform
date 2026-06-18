@@ -224,6 +224,16 @@
       return "text-bg-secondary";
     }
 
+    function durationBadge(log) {
+      if (!log.flow_duration_display) return "";
+      const label = log.flow_duration_label ? ` · ${log.flow_duration_label}` : "";
+      return `
+        <span class="text-secondary small">
+          ${escapeHtml(log.flow_duration_display)}${escapeHtml(label)}
+        </span>
+      `;
+    }
+
     function showQueuedState(runId, label) {
       if (window.localStorage) {
         window.localStorage.setItem(storageKey, runId);
@@ -303,7 +313,7 @@
         return;
       }
 
-      flow.innerHTML = logs.map((log) => {
+      const logHtml = logs.map((log) => {
         const reason = log.error_reason
           ? `<div class="small text-danger mt-1">${escapeHtml(log.error_reason)}</div>`
           : "";
@@ -318,15 +328,19 @@
                 <span class="fw-semibold ms-2">${escapeHtml(log.step_name)}</span>
                 ${source}
               </div>
-              <time class="text-secondary small" datetime="${escapeHtml(log.created_at_datetime)}" title="${escapeHtml(log.created_at_title)}">
-                ${escapeHtml(log.created_at_display)}
-              </time>
+              <div class="d-flex flex-wrap gap-2">
+                ${durationBadge(log)}
+                <time class="text-secondary small" datetime="${escapeHtml(log.created_at_datetime)}" title="${escapeHtml(log.created_at_title)}">
+                  ${escapeHtml(log.created_at_display)}
+                </time>
+              </div>
             </div>
             <div class="small mt-1">${escapeHtml(log.message)}</div>
             ${reason}
           </div>
         `;
       }).join("");
+      flow.innerHTML = logHtml;
     }
 
     async function pollStatus() {

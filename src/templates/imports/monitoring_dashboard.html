@@ -22,29 +22,48 @@
 <section class="mb-5">
   <h2 class="h5 mb-3">Latest Crawl Run</h2>
   {% if latest_run %}
-    <div class="row g-3">
-      <div class="col-sm-6 col-lg-3">
-        <div class="border rounded p-3">
-          <div class="text-secondary small">Status</div>
-          <div class="fw-semibold">{{ latest_run.status }}</div>
-        </div>
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+      <span class="badge {% if latest_run.status == 'FAILED' %}text-bg-danger{% elif latest_run.status == 'SUCCESS' %}text-bg-success{% elif latest_run.status == 'RUNNING' %}text-bg-primary{% elif latest_run.status == 'ABORTED' %}text-bg-warning{% else %}text-bg-secondary{% endif %}">
+        {{ latest_run.status }}
+      </span>
+      <span class="text-secondary small">
+        {{ latest_run.processed_sources }} of {{ latest_run.total_sources }} sources · {{ latest_run.progress_percentage }}%
+      </span>
+    </div>
+    <div class="progress mb-3" role="progressbar" aria-label="Latest crawl run progress" aria-valuemin="0" aria-valuemax="100">
+      <div class="progress-bar" style="width: {{ latest_run.progress_percentage }}%">
+        {{ latest_run.progress_percentage }}%
       </div>
-      <div class="col-sm-6 col-lg-3">
-        <div class="border rounded p-3">
-          <div class="text-secondary small">Progress</div>
-          <div class="fw-semibold">{{ latest_run.progress_percentage }}%</div>
-        </div>
-      </div>
-      <div class="col-sm-6 col-lg-3">
-        <div class="border rounded p-3">
+    </div>
+    <div class="row g-3 mb-3">
+      <div class="col-6 col-lg">
+        <div class="border rounded-2 p-3 h-100">
           <div class="text-secondary small">Processed</div>
-          <div class="fw-semibold">{{ latest_run.processed_sources }} / {{ latest_run.total_sources }}</div>
+          <div class="fw-bold">{{ latest_run.processed_sources }} / {{ latest_run.total_sources }}</div>
         </div>
       </div>
-      <div class="col-sm-6 col-lg-3">
-        <div class="border rounded p-3">
+      <div class="col-6 col-lg">
+        <div class="border rounded-2 p-3 h-100">
+          <div class="text-secondary small">Created</div>
+          <div class="fw-bold">{{ latest_run.jobs_created }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg">
+        <div class="border rounded-2 p-3 h-100">
+          <div class="text-secondary small">Updated</div>
+          <div class="fw-bold">{{ latest_run.jobs_updated }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg">
+        <div class="border rounded-2 p-3 h-100">
+          <div class="text-secondary small">Closed</div>
+          <div class="fw-bold">{{ latest_run.jobs_closed }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg">
+        <div class="border rounded-2 p-3 h-100">
           <div class="text-secondary small">Errors</div>
-          <div class="fw-semibold">{{ latest_run.errors }}</div>
+          <div class="fw-bold">{{ latest_run.errors }}</div>
         </div>
       </div>
     </div>
@@ -120,48 +139,16 @@
   </div>
 </section>
 
-<section class="mb-5">
-  <h2 class="h5 mb-3">Pipeline Step Summary</h2>
-  <div class="table-responsive">
-    <table class="table table-sm align-middle">
-      <thead>
-        <tr>
-          <th>Step</th>
-          <th>Status</th>
-          <th>Severity</th>
-          <th class="text-end">Events</th>
-          <th class="text-end">Avg Duration</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in step_summary %}
-          <tr>
-            <td>{{ row.step_name }}</td>
-            <td>{{ row.status }}</td>
-            <td>{{ row.severity }}</td>
-            <td class="text-end">{{ row.total }}</td>
-            <td class="text-end">
-              {% if row.average_duration_ms is not None %}{{ row.average_duration_ms }} ms{% else %}-{% endif %}
-            </td>
-          </tr>
-        {% empty %}
-          <tr><td colspan="5" class="text-secondary">No step summary yet.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</section>
-
 <section id="recent-pipeline-logs">
-  <h2 class="h5 mb-3">Recent Pipeline Logs</h2>
+  <h2 class="h5 mb-3">Pipeline Flow</h2>
   <div class="table-responsive">
     <table class="table table-sm align-middle">
       <thead>
         <tr>
           <th>Time</th>
-          <th>Severity</th>
-          <th>Status</th>
           <th>Step</th>
+          <th>Status</th>
+          <th>Duration</th>
           <th>Message</th>
           <th>Reason</th>
         </tr>
@@ -177,9 +164,22 @@
                 {{ log.created_at_display }}
               </time>
             </td>
-            <td>{{ log.severity }}</td>
-            <td>{{ log.status }}</td>
             <td>{{ log.step_name }}</td>
+            <td>
+              <span class="badge {% if log.status == 'FAILED' or log.severity == 'ERROR' %}text-bg-danger{% elif log.status == 'SUCCESS' %}text-bg-success{% elif log.status == 'STARTED' %}text-bg-primary{% elif log.status == 'SKIPPED' %}text-bg-warning{% else %}text-bg-secondary{% endif %}">
+                {{ log.status }}
+              </span>
+            </td>
+            <td class="text-nowrap">
+              {% if log.flow_duration_display %}
+                {{ log.flow_duration_display }}
+                {% if log.flow_duration_label %}
+                  <span class="text-secondary small">({{ log.flow_duration_label }})</span>
+                {% endif %}
+              {% else %}
+                <span class="text-secondary">-</span>
+              {% endif %}
+            </td>
             <td>{{ log.message }}</td>
             <td>
               {% if log.error_reason %}

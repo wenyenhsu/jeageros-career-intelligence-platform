@@ -54,7 +54,7 @@ def test_dashboard_page_renders_operational_overview(client, user):
     content = response.content.decode()
     assert "Operational status, recent work, and crawl health." in content
     assert "Total Jobs" in content
-    assert "Active Jobs" in content
+    assert "Active Jobs" not in content
     assert "Applications" in content
     assert "Applied Today" in content
     assert "Recent Jobs" in content
@@ -63,6 +63,11 @@ def test_dashboard_page_renders_operational_overview(client, user):
     assert "Skill Coverage Snapshot" in content
     assert "Required Skill Snapshot" in content
     assert "Job Mix" in content
+    assert "Fast read on job type and location spread." in content
+    assert "Fast read on job type, source, and location spread." not in content
+    assert "URL" not in content
+    assert "Active ·" not in content
+    assert "Closed ·" not in content
     assert "Python" in content
     assert "Full Time" in content
     assert "Crawl / Sync Health" in content

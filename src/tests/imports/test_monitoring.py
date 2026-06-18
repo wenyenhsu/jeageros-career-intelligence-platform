@@ -48,14 +48,14 @@ def test_log_entry_is_created_for_failures(source_factory):
 def test_status_updates_are_persisted_for_crawl_run(monkeypatch):
     first = JobSource.objects.create(
         name="Greenhouse",
-        resource=JobSource.ResourceChoices.GREENHOUSE,
-        base_url="https://boards.greenhouse.io/openai",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
         enabled=True,
     )
     second = JobSource.objects.create(
         name="Lever",
-        resource=JobSource.ResourceChoices.LEVER,
-        base_url="https://jobs.lever.co/openai",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
         enabled=True,
     )
     _patch_parser(monkeypatch)
@@ -90,8 +90,8 @@ def test_status_updates_are_persisted_for_crawl_run(monkeypatch):
 def test_monitoring_service_returns_run_status(monkeypatch):
     source = JobSource.objects.create(
         name="Greenhouse",
-        resource=JobSource.ResourceChoices.GREENHOUSE,
-        base_url="https://boards.greenhouse.io/openai",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
         enabled=True,
     )
     _patch_parser(monkeypatch)
@@ -138,8 +138,8 @@ def test_monitoring_api_returns_expected_log_and_status(
     client.force_login(user)
     JobSource.objects.create(
         name="Greenhouse",
-        resource=JobSource.ResourceChoices.GREENHOUSE,
-        base_url="https://boards.greenhouse.io/openai",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
         enabled=True,
     )
     MonitoringService.log_success(
@@ -209,7 +209,10 @@ def test_monitoring_page_shows_recent_failures(client):
     assert response.status_code == 200
     content = response.content.decode()
     assert "Monitoring" in content
-    assert "Pipeline Step Summary" in content
+    assert "Pipeline Flow" in content
+    assert "Pipeline Step Summary" not in content
+    assert "Pipeline step summary" not in content
+    assert "<th>Counts</th>" not in content
     assert "Task failed." in content
     assert "RuntimeError: boom" in content
     assert "<time" in content
@@ -217,6 +220,33 @@ def test_monitoring_page_shows_recent_failures(client):
     assert timestamp["created_at_display"] in content
     assert timestamp["created_at_title"] in content
     assert "+00:00" not in content
+
+
+@pytest.mark.django_db
+def test_monitoring_page_shows_crawl_run_counts(client):
+    CrawlRun.objects.create(
+        status=CrawlRun.StatusChoices.SUCCESS,
+        total_sources=1,
+        processed_sources=1,
+        jobs_created=2,
+        jobs_updated=3,
+        jobs_closed=4,
+        errors=5,
+    )
+
+    response = client.get(reverse("monitoring-dashboard"))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "Created" in content
+    assert "Updated" in content
+    assert "Closed" in content
+    assert "Processed" in content
+    assert "Latest crawl run progress" in content
+    assert ">2<" in content
+    assert ">3<" in content
+    assert ">4<" in content
+    assert ">5<" in content
 
 
 @pytest.mark.django_db
@@ -320,6 +350,11 @@ def test_monitoring_service_returns_step_and_error_summaries(source_factory):
         "total": 1,
         "average_duration_ms": 12.0,
     }.items() <= detection_row.items()
+    assert detection_row["average_duration_display"] == "0:00"
+    failure_log = next(
+        log for log in status["recent_logs"] if log["step_name"] == "job_extraction"
+    )
+    assert failure_log["flow_duration_display"] == "0:00"
     assert status["error_summary"]["count"] == 1
     assert errors["by_step"] == [{"step_name": "job_extraction", "total": 1}]
     assert errors["by_source"] == [
@@ -332,12 +367,54 @@ def test_monitoring_service_returns_step_and_error_summaries(source_factory):
 
 
 @pytest.mark.django_db
+def test_monitoring_service_formats_flow_counts_and_duration():
+    crawl_run = CrawlRun.objects.create(
+        status=CrawlRun.StatusChoices.SUCCESS,
+        total_sources=1,
+        processed_sources=1,
+        jobs_created=2,
+        jobs_updated=3,
+        jobs_closed=4,
+        errors=1,
+    )
+    MonitoringService.log_success(
+        step_name="source_crawl",
+        message="Finished crawling LinkedIn.",
+        crawl_run=crawl_run,
+        metadata={
+            "jobs_created": 2,
+            "jobs_updated": 3,
+            "jobs_closed": 4,
+            "errors": 1,
+        },
+        duration_ms=65_000,
+    )
+
+    payload = MonitoringService.run_status(crawl_run.id)
+    log = payload["recent_logs"][0]
+    summary = payload["step_summary"][0]
+
+    assert log["duration_display"] == "1:05"
+    assert log["flow_duration_display"] == "1:05"
+    assert log["metric_summary_text"] == (
+        "Created: 2, Updated: 3, Closed: 4, Errors: 1"
+    )
+    assert [metric["label"] for metric in log["metric_summary"][:4]] == [
+        "Created",
+        "Updated",
+        "Closed",
+        "Errors",
+    ]
+    assert summary["average_duration_display"] == "1:05"
+
+
+@pytest.mark.django_db
 def test_long_running_flow_updates_progress_logs(monkeypatch):
     for index in range(3):
         JobSource.objects.create(
             name=f"Source {index}",
-            resource=JobSource.ResourceChoices.GREENHOUSE,
-            base_url=f"https://boards.greenhouse.io/source-{index}",
+            resource=JobSource.ResourceChoices.LINKEDIN,
+            base_url="https://www.linkedin.com/jobs/search/",
             enabled=True,
         )
     _patch_parser(monkeypatch)
@@ -363,8 +440,8 @@ def source_factory(db):
     def create_source(**kwargs):
         defaults = {
             "name": "Greenhouse",
-            "resource": JobSource.ResourceChoices.GREENHOUSE,
-            "base_url": "https://boards.greenhouse.io/openai",
+            "resource": JobSource.ResourceChoices.LINKEDIN,
+            "base_url": "https://www.linkedin.com/jobs/search/",
             "enabled": True,
         }
         defaults.update(kwargs)

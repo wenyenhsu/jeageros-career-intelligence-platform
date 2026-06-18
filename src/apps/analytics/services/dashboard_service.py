@@ -28,8 +28,6 @@ class DashboardService:
             "skill_snapshot": self._skill_snapshot(),
             "skill_coverage": self._skill_coverage(),
             "job_type_breakdown": self._job_type_breakdown(),
-            "job_status_breakdown": self._job_status_breakdown(),
-            "source_breakdown": self._source_breakdown(),
             "location_snapshot": self._location_snapshot(),
             "pipeline": {
                 "recent_failures": recent_failures,
@@ -45,9 +43,6 @@ class DashboardService:
     def _kpis(self, today):
         return {
             "total_jobs": JobPost.objects.count(),
-            "active_jobs": JobPost.objects.filter(
-                status=JobPost.StatusChoices.ACTIVE,
-            ).count(),
             "total_applications": Application.objects.count(),
             "applications_today": Application.objects.filter(
                 applied_at__date=today,
@@ -142,24 +137,6 @@ class DashboardService:
             JobPost.objects.exclude(job_type="").values("job_type"),
             value_key="job_type",
             label_map=JobPost.JOB_TYPE_LABELS,
-            limit=limit,
-        )
-
-    @staticmethod
-    def _job_status_breakdown():
-        return DashboardService._breakdown(
-            JobPost.objects.values("status"),
-            value_key="status",
-            label_map=dict(JobPost.StatusChoices.choices),
-            limit=5,
-        )
-
-    @staticmethod
-    def _source_breakdown(limit=5):
-        return DashboardService._breakdown(
-            JobPost.objects.exclude(source_type="").values("source_type"),
-            value_key="source_type",
-            label_map=dict(JobPost.SourceType.choices),
             limit=limit,
         )
 

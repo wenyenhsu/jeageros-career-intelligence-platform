@@ -2,7 +2,7 @@ import html
 import re
 import time
 from datetime import timedelta
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
@@ -13,6 +13,10 @@ from .base import BaseParser
 
 
 class LinkedInRateLimitError(RuntimeError):
+    pass
+
+
+class LinkedInNetworkError(RuntimeError):
     pass
 
 
@@ -27,6 +31,8 @@ class LinkedInParser(BaseParser):
     DEFAULT_MAX_SEARCH_REQUESTS = 10
     DEFAULT_MAX_DETAIL_REQUESTS = 10
     DEFAULT_RATE_LIMIT_COOLDOWN_MINUTES = 60
+    DEFAULT_SORT_BY = "DD"
+    DEFAULT_DATE_POSTED = "r604800"
     PLACEHOLDER_JOB_IDS = {"1234567890", "0000000000", "1111111111"}
     JOB_TYPE_PATTERNS = (
         ("Full-time", r"\bfull[\s-]?time\b"),
@@ -176,10 +182,16 @@ class LinkedInParser(BaseParser):
         )
         workplace_values = self._workplace_query_values(base_query, config)
         job_type_values = self._job_type_query_values(base_query, config)
+        date_posted = self._date_posted_query_value(base_query, config)
+        sort_by = self._sort_by_query_value(base_query, config)
 
-        for key in ("geoId", "f_TPR", "f_WT", "f_E"):
+        for key in ("geoId", "f_WT", "f_E"):
             if key in config and key not in base_query:
                 base_query[key] = self._coerce_query_value(config[key])
+        if date_posted and "f_TPR" not in base_query:
+            base_query["f_TPR"] = date_posted
+        if sort_by and "sortBy" not in base_query:
+            base_query["sortBy"] = sort_by
 
         base_query.pop("currentJobId", None)
         query_sets = []
@@ -261,6 +273,27 @@ class LinkedInParser(BaseParser):
         mapped.discard("")
         return sorted(mapped) or [""]
 
+    def _date_posted_query_value(self, base_query, config):
+        if "f_TPR" in base_query:
+            return self._coerce_query_value(base_query["f_TPR"])
+        if "f_TPR" in config:
+            return self._coerce_query_value(config.get("f_TPR"))
+        return self._date_posted_to_linkedin_filter(
+            self._first_config_value(
+                config,
+                "date_posted",
+                "date_posted_filter",
+                "posted_within",
+            )
+            or self.DEFAULT_DATE_POSTED
+        )
+
+    def _sort_by_query_value(self, base_query, config):
+        if "sortBy" in base_query:
+            return self._coerce_query_value(base_query["sortBy"])
+        value = self._first_config_value(config, "sortBy", "sort_by", "sort")
+        return self._normalize_sort_by(value or self.DEFAULT_SORT_BY)
+
     def _fetch_job_detail(self, job_id):
         self._reject_placeholder_job({"jobPostingId": job_id})
         self._detail_requests_made += 1
@@ -294,6 +327,10 @@ class LinkedInParser(BaseParser):
                     "max_detail_requests or wait before retrying."
                 ) from exc
             raise
+        except (URLError, TimeoutError, OSError) as exc:
+            raise LinkedInNetworkError(
+                self._network_error_message(url, exc)
+            ) from exc
 
     def _parse_search_cards(self, content):
         if not content:
@@ -413,6 +450,54 @@ class LinkedInParser(BaseParser):
                 if matched_id:
                     return f"https://www.linkedin.com/jobs/view/{matched_id}/"
         return f"https://www.linkedin.com/jobs/view/{job_id}/"
+
+    @classmethod
+    def _date_posted_to_linkedin_filter(cls, value):
+        key = " ".join(str(value or "").casefold().replace("_", " ").split())
+        if not key:
+            return ""
+        mapping = {
+            "r86400": "r86400",
+            "24h": "r86400",
+            "24 hours": "r86400",
+            "past 24 hours": "r86400",
+            "last 24 hours": "r86400",
+            "day": "r86400",
+            "today": "r86400",
+            "r604800": "r604800",
+            "week": "r604800",
+            "past week": "r604800",
+            "last week": "r604800",
+            "7 days": "r604800",
+            "r2592000": "r2592000",
+            "month": "r2592000",
+            "past month": "r2592000",
+            "last month": "r2592000",
+            "30 days": "r2592000",
+            "any": "",
+            "any time": "",
+            "all": "",
+        }
+        return mapping.get(key, str(value).strip())
+
+    @staticmethod
+    def _normalize_sort_by(value):
+        key = " ".join(str(value or "").casefold().replace("_", " ").split())
+        if key in {"dd", "date", "date posted", "newest", "newest first", "latest"}:
+            return "DD"
+        if key in {"r", "relevance", "relevant", "most relevant"}:
+            return "R"
+        text = str(value or "").strip().upper()
+        return text if text in {"DD", "R"} else ""
+
+    @classmethod
+    def _network_error_message(cls, url, exc):
+        host = urlparse(str(url or "")).netloc or "LinkedIn"
+        reason = getattr(exc, "reason", exc)
+        return (
+            f"LinkedIn network request failed for {host}: {reason}. "
+            "Check Docker/celery outbound network, DNS, VPN, and internet access."
+        )
 
     @classmethod
     def _job_id_from_url(cls, url):

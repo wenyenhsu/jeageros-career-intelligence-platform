@@ -20,37 +20,31 @@
 </div>
 
 <div class="row g-3 mb-4">
-  <div class="col-6 col-lg-2">
+  <div class="col-6 col-lg">
     <div class="card p-3 h-100">
       <div class="stat-label text-secondary">Total Jobs</div>
       <div class="h2 fw-bold mb-0">{{ kpis.total_jobs }}</div>
     </div>
   </div>
-  <div class="col-6 col-lg-2">
-    <div class="card p-3 h-100">
-      <div class="stat-label text-secondary">Active Jobs</div>
-      <div class="h2 fw-bold mb-0">{{ kpis.active_jobs }}</div>
-    </div>
-  </div>
-  <div class="col-6 col-lg-2">
+  <div class="col-6 col-lg">
     <div class="card p-3 h-100">
       <div class="stat-label text-secondary">Applications</div>
       <div class="h2 fw-bold mb-0">{{ kpis.total_applications }}</div>
     </div>
   </div>
-  <div class="col-6 col-lg-2">
+  <div class="col-6 col-lg">
     <div class="card p-3 h-100">
       <div class="stat-label text-secondary">Applied Today</div>
       <div class="h2 fw-bold mb-0">{{ kpis.applications_today }}</div>
     </div>
   </div>
-  <div class="col-6 col-lg-2">
+  <div class="col-6 col-lg">
     <div class="card p-3 h-100">
       <div class="stat-label text-secondary">Companies</div>
       <div class="h2 fw-bold mb-0">{{ kpis.active_companies }}</div>
     </div>
   </div>
-  <div class="col-6 col-lg-2">
+  <div class="col-6 col-lg">
     <div class="card p-3 h-100">
       <div class="stat-label text-secondary">Enabled Sources</div>
       <div class="h2 fw-bold mb-0">{{ kpis.enabled_sources }}</div>
@@ -116,7 +110,7 @@
       <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
         <div>
           <h2 class="h5 mb-1">Job Mix</h2>
-          <p class="text-secondary small mb-0">Fast read on job type, source, and location spread.</p>
+          <p class="text-secondary small mb-0">Fast read on job type and location spread.</p>
         </div>
         <span class="insight-icon"><i class="bi bi-bar-chart-fill"></i></span>
       </div>
@@ -130,20 +124,6 @@
           </div>
         {% empty %}
           <div class="text-secondary small">No job type data yet.</div>
-        {% endfor %}
-      </div>
-      <div class="d-flex flex-wrap gap-2 mb-3">
-        {% for row in source_breakdown %}
-          <span class="skill-chip">{{ row.label }} <span class="text-secondary ms-1">{{ row.total }}</span></span>
-        {% empty %}
-          <span class="text-secondary small">No source data yet.</span>
-        {% endfor %}
-      </div>
-      <div class="d-flex flex-wrap gap-2 mb-3">
-        {% for row in job_status_breakdown %}
-          <span class="badge text-bg-light border">{{ row.label }} · {{ row.total }}</span>
-        {% empty %}
-          <span class="text-secondary small">No status data yet.</span>
         {% endfor %}
       </div>
       <div class="d-flex flex-wrap gap-2">
@@ -170,7 +150,6 @@
             <tr>
               <th>Title</th>
               <th>Company</th>
-              <th>Status</th>
               <th>Synced</th>
             </tr>
           </thead>
@@ -185,7 +164,6 @@
                   {% endif %}
                 </td>
                 <td>{{ job.company.name }}</td>
-                <td><span class="badge text-bg-light border">{{ job.get_status_display }}</span></td>
                 <td class="text-secondary">
                   {% if job.last_synced_at %}
                     {{ job.last_synced_at|date:"m/d H:i" }}
@@ -195,7 +173,7 @@
                 </td>
               </tr>
             {% empty %}
-              <tr><td colspan="4" class="text-secondary py-3">No jobs yet.</td></tr>
+              <tr><td colspan="3" class="text-secondary py-3">No jobs yet.</td></tr>
             {% endfor %}
           </tbody>
         </table>

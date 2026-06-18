@@ -14,6 +14,17 @@ logger = logging.getLogger(__name__)
 
 
 class MonitoringService:
+    FLOW_METRIC_KEYS = (
+        ("jobs_created", "Created"),
+        ("jobs_updated", "Updated"),
+        ("jobs_closed", "Closed"),
+        ("errors", "Errors"),
+        ("jobs_filtered", "Filtered"),
+        ("jobs_deduped", "Deduped"),
+        ("skill_pipeline_jobs_processed", "Skill jobs"),
+        ("skills_attached", "Skills attached"),
+        ("skill_pipeline_failures", "Skill failures"),
+    )
     PIPELINE_STAGE_PROGRESS = {
         ("crawl_run", PipelineLog.StatusChoices.INFO): 3,
         ("celery_task", PipelineLog.StatusChoices.STARTED): 5,
@@ -171,7 +182,7 @@ class MonitoringService:
             qs = qs.filter(job_id=job_id)
         if company_id:
             qs = qs.filter(company_id=company_id)
-        return [cls.log_to_dict(log) for log in qs[:limit]]
+        return cls._logs_to_dicts(list(qs[:limit]))
 
     @classmethod
     def run_status(cls, crawl_run_id, recent_limit=20):
@@ -224,7 +235,7 @@ class MonitoringService:
                 limit=recent_limit,
                 crawl_run_id=selected_run.id if selected_run else None,
             ),
-            "recent_failures": [cls.log_to_dict(log) for log in recent_failures],
+            "recent_failures": cls._logs_to_dicts(list(recent_failures)),
             "top_error_sources": [
                 {
                     "source_id": row["source_id"],
@@ -261,7 +272,13 @@ class MonitoringService:
                 "last_seen_at": (
                     row["last_seen_at"].isoformat() if row["last_seen_at"] else None
                 ),
+                "last_seen_display": cls._display_timestamp(
+                    row["last_seen_at"]
+                )["display"],
                 "average_duration_ms": cls._round_duration(row["average_duration_ms"]),
+                "average_duration_display": cls._format_duration(
+                    row["average_duration_ms"]
+                ),
             }
             for row in rows
         ]
@@ -303,13 +320,15 @@ class MonitoringService:
                 .annotate(total=Count("id"))
                 .order_by("-total", "source__name")
             ],
-            "recent": [cls.log_to_dict(log) for log in qs[:recent_limit]],
+            "recent": cls._logs_to_dicts(list(qs[:recent_limit])),
         }
 
     @staticmethod
     def log_to_dict(log):
         created_at = MonitoringService._display_timestamp(log.created_at)
         error_reason = MonitoringService._error_reason(log)
+        duration_display = MonitoringService._format_duration(log.duration_ms)
+        metric_summary = MonitoringService._metric_summary(log)
         return {
             "id": log.id,
             "created_at": log.created_at.isoformat() if log.created_at else None,
@@ -331,7 +350,27 @@ class MonitoringService:
             "error_text": log.error_text,
             "error_reason": error_reason,
             "duration_ms": log.duration_ms,
+            "duration_display": duration_display,
+            "flow_duration_ms": log.duration_ms,
+            "flow_duration_display": duration_display,
+            "flow_duration_label": "Duration" if duration_display else "",
+            "metric_summary": metric_summary,
+            "metric_summary_text": MonitoringService._metric_summary_text(
+                metric_summary
+            ),
         }
+
+    @classmethod
+    def _logs_to_dicts(cls, logs):
+        flow_durations = cls._flow_durations_for_logs(logs)
+        rows = []
+        for log in logs:
+            row = cls.log_to_dict(log)
+            flow_duration = flow_durations.get(log.id)
+            if flow_duration:
+                row.update(flow_duration)
+            rows.append(row)
+        return rows
 
     @staticmethod
     def _error_text(error):
@@ -351,6 +390,77 @@ class MonitoringService:
     @staticmethod
     def _round_duration(value):
         return round(float(value), 2) if value is not None else None
+
+    @classmethod
+    def _flow_durations_for_logs(cls, logs):
+        flow_durations = {}
+        previous_log = None
+        for log in reversed(logs):
+            if log.duration_ms is not None:
+                duration_ms = log.duration_ms
+                label = "Duration"
+            elif (
+                previous_log
+                and log.created_at
+                and previous_log.created_at
+                and log.crawl_run_id
+                and log.crawl_run_id == previous_log.crawl_run_id
+            ):
+                duration_ms = int(
+                    (log.created_at - previous_log.created_at).total_seconds() * 1000
+                )
+                label = "Since previous"
+            else:
+                duration_ms = 0 if log.created_at else None
+                label = "Since previous" if log.created_at else ""
+
+            flow_durations[log.id] = {
+                "flow_duration_ms": duration_ms,
+                "flow_duration_display": cls._format_duration(duration_ms),
+                "flow_duration_label": label,
+            }
+            previous_log = log
+        return flow_durations
+
+    @classmethod
+    def _metric_summary(cls, log):
+        metadata = log.metadata if isinstance(log.metadata, dict) else {}
+        has_run_metrics = any(key in metadata for key, _label in cls.FLOW_METRIC_KEYS)
+        if log.status == PipelineLog.StatusChoices.FAILED and "errors" not in metadata:
+            has_run_metrics = True
+
+        if not has_run_metrics:
+            return []
+
+        metrics = []
+        for key, label in cls.FLOW_METRIC_KEYS:
+            value = metadata.get(key)
+            if key == "errors" and value is None:
+                value = 1 if log.status == PipelineLog.StatusChoices.FAILED else 0
+            if value is None:
+                if key in {"jobs_created", "jobs_updated", "jobs_closed", "errors"}:
+                    value = 0
+                else:
+                    continue
+            metrics.append({"key": key, "label": label, "value": value})
+        return metrics
+
+    @staticmethod
+    def _metric_summary_text(metrics):
+        return ", ".join(
+            f"{metric['label']}: {metric['value']}" for metric in metrics
+        )
+
+    @staticmethod
+    def _format_duration(value_ms):
+        if value_ms is None:
+            return ""
+        try:
+            total_seconds = max(0, int(round(float(value_ms) / 1000)))
+        except (TypeError, ValueError):
+            return ""
+        minutes, seconds = divmod(total_seconds, 60)
+        return f"{minutes}:{seconds:02d}"
 
     @staticmethod
     def _error_reason(log):

@@ -1,5 +1,6 @@
 import pytest
-from urllib.error import HTTPError
+from types import SimpleNamespace
+from urllib.error import HTTPError, URLError
 
 from apps.companies.models import Company
 import apps.imports.parsers.linkedin as linkedin_parser_module
@@ -44,15 +45,14 @@ def test_source_detector_uses_generic_career_site_for_unknown_urls():
 
 
 def test_source_detector_falls_back_to_job_source_resource_without_url():
-    source = JobSource(name="Lever", resource=JobSource.ResourceChoices.LEVER)
+    source = SimpleNamespace(resource=SourceDetector.LEVER, base_url="")
 
     assert SourceDetector.detect_parser_type(source) == SourceDetector.LEVER
 
 
 def test_source_detector_preserves_explicit_resource_for_unknown_source_url():
-    source = JobSource(
-        name="Custom Lever Feed",
-        resource=JobSource.ResourceChoices.LEVER,
+    source = SimpleNamespace(
+        resource=SourceDetector.LEVER,
         base_url="https://careers.example.com/jobs",
     )
 
@@ -177,7 +177,7 @@ def test_linkedin_parser_extracts_search_results_through_guest_endpoint(monkeypa
         "urlopen",
         _fake_linkedin_urlopen(
             {
-                "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=python&location=Remote&start=0": _linkedin_search_html(),
+                "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=python&location=Remote&f_TPR=r604800&sortBy=DD&start=0": _linkedin_search_html(),
                 "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/5555555555": _linkedin_detail_html(
                     job_id="5555555555",
                     title="Backend Engineer",
@@ -213,7 +213,7 @@ def test_linkedin_parser_extracts_job_type_from_search_card_without_detail(monke
         "urlopen",
         _fake_linkedin_urlopen(
             {
-                "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=data&location=CA&start=0": _linkedin_search_html(
+                "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=data&location=CA&f_TPR=r604800&sortBy=DD&start=0": _linkedin_search_html(
                     job_id="7777777777",
                     title="Data Scientist, Product Analytics",
                     company="Meta",
@@ -286,7 +286,7 @@ def test_linkedin_parser_skips_detail_fetch_for_existing_described_job(monkeypat
         "urlopen",
         _fake_linkedin_urlopen(
             {
-                "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=python&location=Remote&start=0": _linkedin_search_html(),
+                "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=python&location=Remote&f_TPR=r604800&sortBy=DD&start=0": _linkedin_search_html(),
             }
         ),
     )
@@ -324,7 +324,7 @@ def test_linkedin_parser_fetches_detail_for_existing_job_missing_description(
         "urlopen",
         _fake_linkedin_urlopen(
             {
-                "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=python&location=Remote&start=0": _linkedin_search_html(),
+                "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=python&location=Remote&f_TPR=r604800&sortBy=DD&start=0": _linkedin_search_html(),
                 "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/5555555555": _linkedin_detail_html(
                     job_id="5555555555",
                     title="Backend Engineer",
@@ -357,7 +357,7 @@ def test_linkedin_parser_fetches_detail_for_new_job_when_new_or_missing(monkeypa
         "urlopen",
         _fake_linkedin_urlopen(
             {
-                "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=python&location=Remote&start=0": _linkedin_search_html(),
+                "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=python&location=Remote&f_TPR=r604800&sortBy=DD&start=0": _linkedin_search_html(),
                 "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/5555555555": _linkedin_detail_html(
                     job_id="5555555555",
                     title="Backend Engineer",
@@ -393,10 +393,10 @@ def test_linkedin_parser_expands_filter_config_into_search_urls():
     urls = parser._search_urls(source.base_url)
 
     assert urls == [
-        "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=data+engineer&location=CA&start=0",
-        "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=data+engineer&location=TX&start=0",
-        "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=backend&location=CA&start=0",
-        "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=backend&location=TX&start=0",
+        "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?f_TPR=r604800&sortBy=DD&keywords=data+engineer&location=CA&start=0",
+        "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?f_TPR=r604800&sortBy=DD&keywords=data+engineer&location=TX&start=0",
+        "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?f_TPR=r604800&sortBy=DD&keywords=backend&location=CA&start=0",
+        "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?f_TPR=r604800&sortBy=DD&keywords=backend&location=TX&start=0",
     ]
 
 
@@ -437,8 +437,32 @@ def test_linkedin_parser_maps_job_type_config_to_linkedin_filter():
     urls = parser._search_urls(source.base_url)
 
     assert urls == [
-        "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=data+engineer&location=CA&f_JT=F&start=0",
-        "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=data+engineer&location=CA&f_JT=I&start=0",
+        "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?f_TPR=r604800&sortBy=DD&keywords=data+engineer&location=CA&f_JT=F&start=0",
+        "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?f_TPR=r604800&sortBy=DD&keywords=data+engineer&location=CA&f_JT=I&start=0",
+    ]
+
+
+def test_linkedin_parser_applies_newest_sort_and_date_window():
+    source = JobSource(
+        name="LinkedIn Latest Search",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
+        crawl_config={
+            "max_pages": 1,
+            "sort_by": "newest first",
+            "date_posted": "past 24 hours",
+        },
+        filter_config={
+            "search_keywords": ["data engineer"],
+            "location": ["CA"],
+        },
+    )
+    parser = LinkedInParser(source=source)
+
+    urls = parser._search_urls(source.base_url)
+
+    assert urls == [
+        "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?f_TPR=r86400&sortBy=DD&keywords=data+engineer&location=CA&start=0",
     ]
 
 
@@ -503,7 +527,7 @@ def test_linkedin_parser_limits_detail_requests(monkeypatch):
         "urlopen",
         _fake_linkedin_urlopen(
             {
-                "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=python&location=Remote&start=0": (
+                "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=python&location=Remote&f_TPR=r604800&sortBy=DD&start=0": (
                     _linkedin_search_html(job_id="5555555555")
                     + _linkedin_search_html(
                         job_id="6666666666",
@@ -552,6 +576,27 @@ def test_linkedin_parser_raises_helpful_rate_limit_error(monkeypatch):
     source.refresh_from_db()
     assert source.crawl_config["rate_limit_status_code"] == 429
     assert source.crawl_config["rate_limited_until"]
+
+
+def test_linkedin_parser_raises_helpful_network_error(monkeypatch):
+    source = JobSource(
+        name="LinkedIn Network Failure",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/?keywords=python&location=Remote",
+        crawl_config={"max_pages": 1},
+    )
+    parser = LinkedInParser(source=source)
+
+    def fake_urlopen(request, timeout=None):
+        raise URLError("[Errno -2] Name or service not known")
+
+    monkeypatch.setattr(linkedin_parser_module, "urlopen", fake_urlopen)
+
+    with pytest.raises(
+        linkedin_parser_module.LinkedInNetworkError,
+        match="Docker/celery outbound network",
+    ):
+        parser.extract_jobs(parser.find_listing_pages()[0])
 
 
 def test_linkedin_parser_rejects_placeholder_job_ids():

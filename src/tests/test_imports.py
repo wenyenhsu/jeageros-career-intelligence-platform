@@ -59,6 +59,8 @@ def test_source_create_view(client):
         "request_delay_seconds": 5,
         "rolling_search": "on",
         "rate_limit_cooldown_minutes": 60,
+        "sort_by": "DD",
+        "date_posted": "r604800",
         "default_job_type": "",
         "location": "United States, CA",
         "job_types": "Full-time, Internship",
@@ -78,6 +80,8 @@ def test_source_create_view(client):
     assert source.crawl_config["fetch_details"] == "new_or_missing"
     assert source.crawl_config["max_search_requests"] == 5
     assert source.crawl_config["max_detail_requests"] == 3
+    assert source.crawl_config["sort_by"] == "DD"
+    assert source.crawl_config["date_posted"] == "r604800"
     assert source.filter_config["location"] == ["United States", "CA"]
     assert source.filter_config["job_types"] == ["Full-time", "Internship"]
     assert source.filter_config["include_keywords"] == ["python", "django"]
@@ -94,10 +98,12 @@ def test_source_create_form_exposes_resource_base_url_defaults(client):
     assert "data-base-url-target" in content
     assert "id_base_url" in content
     assert "https://www.linkedin.com/jobs/search/" in content
-    assert "https://app.joinhandshake.com/stu/postings" in content
+    assert "https://app.joinhandshake.com/stu/postings" not in content
     assert "data-default-config-values" in content
     assert "max_search_requests" in content
     assert "workplace_types" in content
+    assert "sort_by" in content
+    assert "date_posted" in content
     assert "Parameter guide" in content
     assert reverse("source-help") in content
 
@@ -116,6 +122,8 @@ def test_source_help_view_explains_form_parameters(client):
     assert "Max search requests" in content
     assert "Max detail requests" in content
     assert "Rate limit cooldown minutes" in content
+    assert "Sort order" in content
+    assert "Date posted" in content
     assert "Default job type" in content
     assert "Rolling search" in content
     assert "Location" in content
@@ -127,8 +135,8 @@ def test_source_help_view_explains_form_parameters(client):
     assert "Exclude keywords" in content
     assert "Target companies" in content
     assert "LinkedIn" in content
-    assert "Handshake" in content
-    assert "Generic HTML" in content
+    assert "Handshake" not in content
+    assert "Generic HTML" not in content
 
 
 def test_source_form_fills_default_base_url_when_missing():
@@ -146,6 +154,8 @@ def test_source_form_fills_default_base_url_when_missing():
             "request_delay_seconds": 5,
             "rolling_search": "on",
             "rate_limit_cooldown_minutes": 60,
+            "sort_by": "DD",
+            "date_posted": "r604800",
             "default_job_type": "",
             "notes": "",
         }
@@ -171,6 +181,8 @@ def test_source_form_preserves_custom_base_url():
             "request_delay_seconds": 5,
             "rolling_search": "on",
             "rate_limit_cooldown_minutes": 60,
+            "sort_by": "DD",
+            "date_posted": "r604800",
             "default_job_type": "",
             "notes": "",
         }
@@ -196,6 +208,8 @@ def test_source_form_standardizes_filter_config_values():
             "request_delay_seconds": 5,
             "rolling_search": "on",
             "rate_limit_cooldown_minutes": 60,
+            "sort_by": "DD",
+            "date_posted": "r604800",
             "default_job_type": "Full-time",
             "location": "CA\nTX, United States",
             "job_types": "Internship, internship, Full-time",
@@ -213,6 +227,8 @@ def test_source_form_standardizes_filter_config_values():
     source = form.save()
     assert source.crawl_config["default_job_type"] == "Full-time"
     assert source.crawl_config["request_delay_seconds"] == 5.0
+    assert source.crawl_config["sort_by"] == "DD"
+    assert source.crawl_config["date_posted"] == "r604800"
     assert source.filter_config["location"] == ["CA", "TX", "United States"]
     assert source.filter_config["job_types"] == ["Internship", "Full-time"]
     assert source.filter_config["include_keywords"] == ["python", "Django"]

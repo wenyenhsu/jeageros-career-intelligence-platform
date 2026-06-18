@@ -45,6 +45,8 @@
               {% include 'imports/partials/source_form_field.html' with field=form.max_search_requests classes='col-12 col-md-4' %}
               {% include 'imports/partials/source_form_field.html' with field=form.max_detail_requests classes='col-12 col-md-4' %}
               {% include 'imports/partials/source_form_field.html' with field=form.rate_limit_cooldown_minutes classes='col-12 col-md-4' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.sort_by classes='col-12 col-md-4' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.date_posted classes='col-12 col-md-4' %}
               {% include 'imports/partials/source_form_field.html' with field=form.default_job_type classes='col-12 col-md-6' %}
               {% include 'imports/partials/source_form_field.html' with field=form.rolling_search classes='col-12 col-md-6' %}
             </div>
@@ -98,6 +100,8 @@
       "request_delay_seconds",
       "rolling_search",
       "rate_limit_cooldown_minutes",
+      "sort_by",
+      "date_posted",
       "default_job_type",
       "location",
       "job_types",
