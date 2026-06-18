@@ -84,6 +84,33 @@ def test_dashboard_page_renders_operational_overview(client, user):
 
 
 @pytest.mark.django_db
+def test_dashboard_skill_coverage_shows_active_closed_status_mix(client):
+    company = Company.objects.create(name="OpenAI")
+    active_job = JobPost.objects.create(
+        company=company,
+        title="Platform Engineer",
+        status=JobPost.StatusChoices.ACTIVE,
+    )
+    JobPost.objects.create(
+        company=company,
+        title="Closed Engineer",
+        status=JobPost.StatusChoices.CLOSED,
+    )
+    skill = SkillSet.objects.create(name="Python")
+    JobPostSkill.objects.create(job_post=active_job, skill_set=skill, score=90)
+
+    response = client.get(reverse("dashboard"))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "Skill Coverage Snapshot" in content
+    assert "Job status" in content
+    assert "Active 1" in content
+    assert "Closed 1" in content
+    assert 'aria-label="Active and closed job status mix"' in content
+
+
+@pytest.mark.django_db
 def test_dashboard_does_not_contain_analytics_only_sections(client):
     response = client.get(reverse("dashboard"))
 

@@ -141,12 +141,22 @@ class DashboardService:
         jobs_with_skills = (
             JobPostSkill.objects.values("job_post_id").distinct().count()
         )
+        active_jobs = JobPost.objects.filter(
+            status=JobPost.StatusChoices.ACTIVE,
+        ).count()
+        closed_jobs = JobPost.objects.filter(
+            status=JobPost.StatusChoices.CLOSED,
+        ).count()
         total_skill_links = JobPostSkill.objects.count()
         average_score = JobPostSkill.objects.aggregate(score=Avg("score"))["score"]
         return {
             "total_jobs": total_jobs,
             "jobs_with_skills": jobs_with_skills,
             "jobs_without_skills": max(total_jobs - jobs_with_skills, 0),
+            "active_jobs": active_jobs,
+            "closed_jobs": closed_jobs,
+            "active_percent": DashboardService._percentage(active_jobs, total_jobs),
+            "closed_percent": DashboardService._percentage(closed_jobs, total_jobs),
             "coverage_percent": DashboardService._percentage(
                 jobs_with_skills,
                 total_jobs,

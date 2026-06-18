@@ -150,6 +150,49 @@ body {
   background: #dc3545;
 }
 
+.status-stack {
+  display: flex;
+  overflow: hidden;
+  height: 0.75rem;
+  border-radius: 999px;
+  background: #e5e7eb;
+}
+
+.status-segment {
+  height: 100%;
+  min-width: 0;
+}
+
+.status-segment-active {
+  background: #198754;
+}
+
+.status-segment-closed {
+  background: #dc3545;
+}
+
+.status-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #6c757d;
+  font-size: 0.85rem;
+}
+
+.status-dot {
+  width: 0.65rem;
+  aspect-ratio: 1;
+  border-radius: 50%;
+}
+
+.status-dot-active {
+  background: #198754;
+}
+
+.status-dot-closed {
+  background: #dc3545;
+}
+
 .insight-row {
   display: grid;
   grid-template-columns: minmax(7rem, 1fr) 4rem minmax(8rem, 2fr);

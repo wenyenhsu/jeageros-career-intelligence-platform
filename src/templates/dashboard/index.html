@@ -77,6 +77,34 @@
           </div>
         </div>
       </div>
+      <div class="mt-4 pt-3 border-top">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="text-secondary small">Job status</span>
+          <span class="small text-secondary">{{ skill_coverage.total_jobs }} total</span>
+        </div>
+        <div class="status-stack" aria-label="Active and closed job status mix">
+          <div
+            class="status-segment status-segment-active"
+            style="width: {{ skill_coverage.active_percent }}%;"
+            title="Active jobs: {{ skill_coverage.active_jobs }}"
+          ></div>
+          <div
+            class="status-segment status-segment-closed"
+            style="width: {{ skill_coverage.closed_percent }}%;"
+            title="Closed jobs: {{ skill_coverage.closed_jobs }}"
+          ></div>
+        </div>
+        <div class="d-flex flex-wrap gap-3 mt-2">
+          <span class="status-legend-item">
+            <span class="status-dot status-dot-active"></span>
+            Active {{ skill_coverage.active_jobs }}
+          </span>
+          <span class="status-legend-item">
+            <span class="status-dot status-dot-closed"></span>
+            Closed {{ skill_coverage.closed_jobs }}
+          </span>
+        </div>
+      </div>
     </div>
   </div>
 
