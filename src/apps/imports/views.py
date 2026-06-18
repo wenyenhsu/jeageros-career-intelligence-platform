@@ -28,10 +28,16 @@ def job_url_import(request):
 
 def monitoring_dashboard(request):
     crawl_run_id = request.GET.get("crawl_run_id") or request.GET.get("run")
+    resume_run_id = request.GET.get("resume_run_id") or request.session.get(
+        "resume_analysis_run_id"
+    )
     return render(
         request,
         "imports/monitoring_dashboard.html",
-        MonitoringService.dashboard_summary(crawl_run_id=crawl_run_id),
+        MonitoringService.dashboard_summary(
+            crawl_run_id=crawl_run_id,
+            resume_run_id=resume_run_id,
+        ),
     )
 
 

@@ -183,3 +183,5 @@ def test_dashboard_and_analytics_navbar_links_resolve(client):
     assert f'href="{reverse("analytics-dashboard")}"' in dashboard_content
     assert f'href="{reverse("dashboard")}"' in analytics_content
     assert f'href="{reverse("analytics-dashboard")}"' in analytics_content
+    assert 'id="globalResumeStatus"' in dashboard_content
+    assert 'id="globalResumeStatus"' in analytics_content

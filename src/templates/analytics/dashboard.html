@@ -57,7 +57,16 @@
   <div class="row g-3">
     <div class="col-12 col-xl-5">
       <div class="card p-4 h-100">
-        <form id="resumeAnalysisForm" method="post" enctype="multipart/form-data">
+        <form
+          id="resumeAnalysisForm"
+          action="{% url 'analytics-dashboard' %}"
+          method="post"
+          enctype="multipart/form-data"
+          data-status-url="{% url 'resume-analysis-status' %}"
+          data-dashboard-url="{% url 'dashboard' %}#resume-analysis-results"
+          data-active-run-id="{{ resume_analysis_status.run_id|default:'' }}"
+          data-active-status="{{ resume_analysis_status.status|default:'' }}"
+        >
           {% csrf_token %}
           <input type="hidden" name="action" value="resume_analysis">
           <label class="form-label" for="resume_file">Resume attachment</label>
@@ -72,13 +81,20 @@
           <div class="form-text">Upload a PDF, DOCX, TXT, or Markdown resume. The attachment is analyzed for this request only and is not stored.</div>
           <button id="resumeAnalyzeButton" class="btn btn-primary w-100 mt-3" type="submit">Analyze Resume</button>
         </form>
-        <div id="resumeAnalysisProgress" class="mt-4 d-none" aria-live="polite">
+        <div id="resumeAnalysisProgress" class="mt-4 {% if resume_analysis_status.status == 'STARTED' %}{% else %}d-none{% endif %}" aria-live="polite">
           <div class="d-flex justify-content-between align-items-center gap-3 mb-2">
-            <span id="resumeAnalysisStep" class="small fw-semibold text-secondary">Preparing resume analysis</span>
-            <span id="resumeAnalysisPercent" class="small text-secondary">0%</span>
+            <span id="resumeAnalysisStep" class="small fw-semibold text-secondary">
+              {% if resume_analysis_status.status == 'STARTED' %}Resume analysis is running{% else %}Preparing resume analysis{% endif %}
+            </span>
+            <span id="resumeAnalysisPercent" class="small text-secondary">
+              {% if resume_analysis_status.status == 'STARTED' %}0%{% else %}0%{% endif %}
+            </span>
           </div>
           <div class="progress" role="progressbar" aria-label="Resume analysis progress" aria-valuemin="0" aria-valuemax="100" style="height: 10px;">
             <div id="resumeAnalysisProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%"></div>
+          </div>
+          <div id="resumeAnalysisProgressDetail" class="small text-secondary mt-2">
+            You can leave this page. Analysis will continue in the background.
           </div>
         </div>
       </div>
@@ -203,43 +219,132 @@
     const form = document.getElementById("resumeAnalysisForm");
     if (!form) return;
 
+    const storageKey = "jaegeros.activeResumeAnalysisRunId";
+    const terminalStatuses = new Set(["SUCCESS", "FAILED"]);
     const button = document.getElementById("resumeAnalyzeButton");
     const panel = document.getElementById("resumeAnalysisProgress");
     const bar = document.getElementById("resumeAnalysisProgressBar");
     const stepLabel = document.getElementById("resumeAnalysisStep");
     const percentLabel = document.getElementById("resumeAnalysisPercent");
-    const steps = [
-      { progress: 12, label: "Uploading attachment" },
-      { progress: 28, label: "Extracting resume text" },
-      { progress: 46, label: "Running Ollama skill extraction" },
-      { progress: 62, label: "Verifying extracted skills" },
-      { progress: 76, label: "Mapping to SkillSet catalog" },
-      { progress: 88, label: "Comparing jobs and market demand" },
-      { progress: 94, label: "Preparing analysis results" },
-    ];
+    const detail = document.getElementById("resumeAnalysisProgressDetail");
+    let pollTimer = null;
 
-    form.addEventListener("submit", () => {
-      if (!form.checkValidity()) return;
-
+    function showProgress(progress, label, status = "STARTED") {
+      const value = Math.max(0, Math.min(100, Number(progress || 0)));
       panel.classList.remove("d-none");
+      bar.style.width = `${value}%`;
+      bar.setAttribute("aria-valuenow", value);
+      bar.className = `progress-bar ${terminalStatuses.has(status) ? "" : "progress-bar-striped progress-bar-animated"} ${status === "FAILED" ? "bg-danger" : ""}`;
+      stepLabel.textContent = label || "Resume analysis is running";
+      percentLabel.textContent = `${value}%`;
+    }
+
+    function setButtonRunning(isRunning) {
       if (button) {
-        button.disabled = true;
-        button.textContent = "Analyzing...";
+        button.disabled = isRunning;
+        button.textContent = isRunning ? "Analyzing..." : "Analyze Resume";
+      }
+    }
+
+    function statusUrl(runId) {
+      const base = form.dataset.statusUrl || "";
+      const separator = base.includes("?") ? "&" : "?";
+      return `${base}${separator}resume_run_id=${encodeURIComponent(runId)}`;
+    }
+
+    function submitUrl() {
+      return form.getAttribute("action") || window.location.href;
+    }
+
+    async function jsonResponse(response) {
+      const text = await response.text();
+      if (!text) return {};
+      try {
+        return JSON.parse(text);
+      } catch {
+        const titleMatch = text.match(/<title>(.*?)<\/title>/i);
+        const title = titleMatch ? titleMatch[1].replace(/\s+/g, " ").trim() : "";
+        const fallback = `Server returned ${response.status} ${response.statusText || "non-JSON response"}`;
+        throw new Error(title || fallback);
+      }
+    }
+
+    function renderStatus(payload) {
+      const status = payload.status || "STARTED";
+      const current = payload.current_step || {};
+      const label = current.label
+        ? `${current.label}: ${current.message || "running"}`
+        : "Resume analysis is running";
+      showProgress(payload.progress || 0, label, status);
+      if (detail) {
+        if (status === "SUCCESS") {
+          const dashboardUrl = payload.dashboard_url || form.dataset.dashboardUrl;
+          detail.innerHTML = `<a href="${dashboardUrl}">View results on Dashboard</a>`;
+        } else if (status === "FAILED") {
+          detail.textContent = payload.error || "Resume analysis failed.";
+        } else {
+          detail.textContent = "You can leave this page. Analysis will continue in the background.";
+        }
+      }
+      if (terminalStatuses.has(status)) {
+        setButtonRunning(false);
+        window.localStorage.removeItem(storageKey);
+        if (pollTimer) window.clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }
+
+    async function poll(runId) {
+      const response = await fetch(statusUrl(runId), {
+        headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" },
+      });
+      if (!response.ok) throw new Error(`Resume analysis status failed: ${response.status}`);
+      renderStatus(await jsonResponse(response));
+    }
+
+    function startPolling(runId) {
+      if (!runId) return;
+      window.localStorage.setItem(storageKey, runId);
+      setButtonRunning(true);
+      if (pollTimer) window.clearInterval(pollTimer);
+      poll(runId).catch(() => {});
+      pollTimer = window.setInterval(() => {
+        poll(runId).catch(() => {});
+      }, 2500);
+    }
+
+    form.addEventListener("submit", async (event) => {
+      if (!form.checkValidity()) return;
+      event.preventDefault();
+
+      showProgress(12, "Uploading attachment");
+      setButtonRunning(true);
+      if (detail) {
+        detail.textContent = "Starting background resume analysis.";
       }
 
-      let index = 0;
-      const render = (step) => {
-        bar.style.width = `${step.progress}%`;
-        bar.setAttribute("aria-valuenow", step.progress);
-        stepLabel.textContent = step.label;
-        percentLabel.textContent = `${step.progress}%`;
-      };
-      render(steps[index]);
-      window.setInterval(() => {
-        index = Math.min(index + 1, steps.length - 1);
-        render(steps[index]);
-      }, 1400);
+      try {
+        const response = await fetch(submitUrl(), {
+          method: "POST",
+          body: new FormData(form),
+          headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" },
+        });
+        const payload = await jsonResponse(response);
+        if (!response.ok || payload.success === false) {
+          throw new Error(payload.error || payload.detail || "Resume analysis could not start.");
+        }
+        showProgress(18, "Resume analysis queued");
+        startPolling(payload.resume_run_id);
+      } catch (error) {
+        setButtonRunning(false);
+        showProgress(100, error.message, "FAILED");
+        if (detail) detail.textContent = error.message;
+      }
     });
+
+    if (form.dataset.activeRunId && !terminalStatuses.has(form.dataset.activeStatus)) {
+      startPolling(form.dataset.activeRunId);
+    }
   })();
 </script>
 

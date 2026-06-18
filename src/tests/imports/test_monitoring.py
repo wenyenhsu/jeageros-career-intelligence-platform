@@ -224,8 +224,77 @@ def test_monitoring_page_shows_recent_failures(client):
     assert timestamp["created_at_title"] in content
     assert "+00:00" not in content
     assert content.index("Latest Crawl Run") < content.index("Pipeline Flow")
-    assert content.index("Pipeline Flow") < content.index("Top Error Sources")
+    assert content.index("Pipeline Flow") < content.index("Analysis Pipeline")
+    assert content.index("Analysis Pipeline") < content.index("Top Error Sources")
     assert content.index("Top Error Sources") < content.index("Recent Failures")
+
+
+@pytest.mark.django_db
+def test_monitoring_page_shows_resume_analysis_pipeline(client):
+    resume_run_id = "resume-run-1"
+    MonitoringService.log_event(
+        step_name="resume_text_extraction",
+        status=PipelineLog.StatusChoices.SUCCESS,
+        message="Resume text prepared for analysis.",
+        metadata={
+            "pipeline_kind": "resume_analysis",
+            "resume_run_id": resume_run_id,
+            "pipeline_step_key": "text_extraction",
+            "pipeline_step_label": "Text extraction",
+            "count": 1200,
+        },
+        duration_ms=250,
+    )
+    MonitoringService.log_event(
+        step_name="resume_ollama_extract",
+        status=PipelineLog.StatusChoices.SUCCESS,
+        message="Candidate resume skills extracted.",
+        metadata={
+            "pipeline_kind": "resume_analysis",
+            "resume_run_id": resume_run_id,
+            "pipeline_step_key": "ollama_extract",
+            "pipeline_step_label": "Ollama Extract",
+            "count": 8,
+        },
+        duration_ms=1500,
+    )
+    MonitoringService.log_event(
+        step_name="resume_analysis",
+        status=PipelineLog.StatusChoices.SUCCESS,
+        message="Resume analysis completed.",
+        metadata={
+            "pipeline_kind": "resume_analysis",
+            "resume_run_id": resume_run_id,
+            "candidate_count": 8,
+            "verified_count": 6,
+            "mapped_count": 5,
+            "unmapped_count": 1,
+            "job_match_count": 4,
+            "market_fit_percent": 50,
+        },
+    )
+
+    payload = MonitoringService.dashboard_summary(resume_run_id=resume_run_id)
+    response = client.get(
+        reverse("monitoring-dashboard"),
+        {"resume_run_id": resume_run_id},
+    )
+
+    assert payload["analysis_pipeline"]["status"] == PipelineLog.StatusChoices.SUCCESS
+    assert payload["analysis_pipeline"]["summary"]["candidate_count"] == 8
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "Analysis Pipeline" in content
+    assert "Resume run resume-r" in content
+    assert "Candidates" in content
+    assert "Verified" in content
+    assert "Mapped" in content
+    assert "Market fit" in content
+    assert "Text extraction" in content
+    assert "Ollama Extract" in content
+    assert "Candidate resume skills extracted." in content
+    assert content.index("Pipeline Flow") < content.index("Analysis Pipeline")
+    assert content.index("Analysis Pipeline") < content.index("Top Error Sources")
 
 
 @pytest.mark.django_db

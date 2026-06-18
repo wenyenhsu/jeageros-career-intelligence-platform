@@ -163,6 +163,106 @@
   </div>
 </section>
 
+<section id="analysis-pipeline" class="mb-5">
+  <h2 class="h5 mb-3">Analysis Pipeline</h2>
+  {% if analysis_pipeline.run_id %}
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+      <span class="badge {% if analysis_pipeline.status == 'FAILED' %}text-bg-danger{% elif analysis_pipeline.status == 'SUCCESS' %}text-bg-success{% elif analysis_pipeline.status == 'STARTED' %}text-bg-primary{% else %}text-bg-secondary{% endif %}">
+        {{ analysis_pipeline.status }}
+      </span>
+      <span class="text-secondary small">
+        Resume run {{ analysis_pipeline.run_id|slice:":8" }} · {{ analysis_pipeline.progress }}%
+      </span>
+    </div>
+    <div class="row g-3 mb-3">
+      <div class="col-12 col-md-6">
+        <div class="border rounded-2 p-3 h-100">
+          <div class="text-secondary small">Started</div>
+          <div class="fw-bold">
+            <time datetime="{{ analysis_pipeline.started_at_datetime }}" title="{{ analysis_pipeline.started_at_title }}">
+              {{ analysis_pipeline.started_at_display }}
+            </time>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-md-6">
+        <div class="border rounded-2 p-3 h-100">
+          <div class="text-secondary small">Finished</div>
+          <div class="fw-bold">
+            {% if analysis_pipeline.finished_at_datetime %}
+              <time datetime="{{ analysis_pipeline.finished_at_datetime }}" title="{{ analysis_pipeline.finished_at_title }}">
+                {{ analysis_pipeline.finished_at_display }}
+              </time>
+            {% else %}
+              -
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="progress mb-3" role="progressbar" aria-label="Resume analysis progress" aria-valuemin="0" aria-valuemax="100">
+      <div class="progress-bar" style="width: {{ analysis_pipeline.progress }}%">
+        {{ analysis_pipeline.progress }}%
+      </div>
+    </div>
+    <div class="row g-3 mb-3">
+      <div class="col-6 col-lg">
+        <div class="border rounded-2 p-3 h-100">
+          <div class="text-secondary small">Candidates</div>
+          <div class="fw-bold">{{ analysis_pipeline.summary.candidate_count }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg">
+        <div class="border rounded-2 p-3 h-100">
+          <div class="text-secondary small">Verified</div>
+          <div class="fw-bold">{{ analysis_pipeline.summary.verified_count }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg">
+        <div class="border rounded-2 p-3 h-100">
+          <div class="text-secondary small">Mapped</div>
+          <div class="fw-bold">{{ analysis_pipeline.summary.mapped_count }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg">
+        <div class="border rounded-2 p-3 h-100">
+          <div class="text-secondary small">Job matches</div>
+          <div class="fw-bold">{{ analysis_pipeline.summary.job_match_count }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg">
+        <div class="border rounded-2 p-3 h-100">
+          <div class="text-secondary small">Market fit</div>
+          <div class="fw-bold">{{ analysis_pipeline.summary.market_fit_percent }}%</div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-3">
+      {% for step in analysis_pipeline.steps %}
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="border rounded-2 p-3 h-100">
+            <div class="d-flex justify-content-between gap-2 align-items-start">
+              <div class="fw-semibold">{{ step.label }}</div>
+              <span class="badge {% if step.status == 'FAILED' %}text-bg-danger{% elif step.status == 'SUCCESS' %}text-bg-success{% elif step.status == 'STARTED' %}text-bg-primary{% else %}text-bg-secondary{% endif %}">
+                {{ step.status }}
+              </span>
+            </div>
+            <div class="small text-secondary mt-1">
+              {% if step.duration_display %}{{ step.duration_display }}{% else %}-{% endif %}
+            </div>
+            <div class="small mt-2">{{ step.message }}</div>
+            {% if step.count is not None %}
+              <div class="small text-secondary mt-2">Items: {{ step.count }}</div>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="text-secondary">No resume analysis pipeline has been recorded yet.</p>
+  {% endif %}
+</section>
+
 <section class="mb-5">
   <h2 class="h5 mb-3">Top Error Sources</h2>
   <div class="table-responsive">

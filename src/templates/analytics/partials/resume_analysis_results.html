@@ -1,4 +1,4 @@
-{% if resume_error or resume_analysis %}
+{% if resume_error or resume_analysis or resume_analysis_status.status == "STARTED" %}
 <section class="mb-4" id="resume-analysis-results">
   <div class="card p-4">
     <div class="d-flex flex-column flex-lg-row justify-content-between gap-2 align-items-lg-start mb-3">
@@ -6,10 +6,19 @@
         <h2 class="h5 mb-1">Resume Analysis Results</h2>
         <p class="text-secondary mb-0">Latest resume-to-jobs and market-fit analysis.</p>
       </div>
-      <a class="btn btn-sm btn-outline-secondary" href="{% url 'analytics-dashboard' %}#resume-analysis">Analyze another resume</a>
+      <div class="d-flex flex-wrap gap-2">
+        {% if resume_analysis_run_id %}
+          <a class="btn btn-sm btn-outline-secondary" href="{% url 'monitoring-dashboard' %}?resume_run_id={{ resume_analysis_run_id }}#analysis-pipeline">View pipeline</a>
+        {% endif %}
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'analytics-dashboard' %}#resume-analysis">Analyze another resume</a>
+      </div>
     </div>
 
-    {% if resume_error %}
+    {% if resume_analysis_status.status == "STARTED" and not resume_analysis and not resume_error %}
+      <div class="alert alert-info mb-0">
+        Resume analysis is running in the background. You can leave this page and check the pipeline in Monitoring.
+      </div>
+    {% elif resume_error %}
       <div class="alert alert-warning mb-0">{{ resume_error }}</div>
     {% elif resume_analysis %}
       {% if resume_analysis.metadata.attachment_name %}
@@ -38,31 +47,6 @@
           </div>
         </div>
       </div>
-
-      {% if resume_analysis.pipeline_steps %}
-        <div class="mb-4">
-          <div class="fw-semibold mb-2">Analysis Pipeline</div>
-          <div class="row g-2">
-            {% for step in resume_analysis.pipeline_steps %}
-              <div class="col-12 col-md-6 col-xl-4">
-                <div class="border rounded-2 p-3 h-100">
-                  <div class="d-flex justify-content-between gap-2 align-items-start">
-                    <div class="fw-semibold">{{ step.label }}</div>
-                    <span class="badge {% if step.status == 'success' %}text-bg-success{% elif step.status == 'failed' %}text-bg-danger{% else %}text-bg-secondary{% endif %}">
-                      {{ step.status|title }}
-                    </span>
-                  </div>
-                  <div class="small text-secondary mt-1">{{ step.duration_display }}</div>
-                  <div class="small mt-2">{{ step.message }}</div>
-                  {% if step.count is not None %}
-                    <div class="small text-secondary mt-2">Items: {{ step.count }}</div>
-                  {% endif %}
-                </div>
-              </div>
-            {% endfor %}
-          </div>
-        </div>
-      {% endif %}
 
       <div class="mb-4">
         <div class="fw-semibold mb-2">Resume Keywords</div>

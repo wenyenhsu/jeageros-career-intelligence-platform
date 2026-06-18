@@ -1,5 +1,8 @@
+from pathlib import Path
+
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 from django.urls import reverse
 
 from apps.analytics.services import ResumeAnalyticsService
@@ -181,7 +184,8 @@ def test_resume_analysis_rejects_unsupported_attachment_type():
 
 
 @pytest.mark.django_db
-def test_analytics_resume_form_redirects_results_to_dashboard(
+@override_settings(RESUME_ANALYSIS_RUN_INLINE=True)
+def test_analytics_resume_form_runs_in_background_and_results_reach_dashboard(
     client,
     user,
     monkeypatch,
@@ -192,13 +196,13 @@ def test_analytics_resume_form_redirects_results_to_dashboard(
         def __init__(self, skill_service=None):
             pass
 
-        def analyze_resume_attachment(self, uploaded_file, filters=None):
-            return self._result(uploaded_file.name)
+        def analyze_resume_attachment(self, uploaded_file, filters=None, run_id=None):
+            return self._result(uploaded_file.name, run_id)
 
-        def analyze_resume(self, resume_text, filters=None):
-            return self._result("")
+        def analyze_resume(self, resume_text, filters=None, run_id=None):
+            return self._result("", run_id)
 
-        def _result(self, attachment_name):
+        def _result(self, attachment_name, run_id):
             return {
                 "candidate_keywords": [{"name": "Python", "source": "resume"}],
                 "verified_keywords": [
@@ -258,6 +262,7 @@ def test_analytics_resume_form_redirects_results_to_dashboard(
                     "unmapped_count": 0,
                     "job_match_count": 1,
                     "attachment_name": attachment_name,
+                    "resume_run_id": run_id,
                 },
             }
 
@@ -276,26 +281,66 @@ def test_analytics_resume_form_redirects_results_to_dashboard(
                 content_type="text/plain",
             ),
         },
-        follow=True,
+        HTTP_ACCEPT="application/json",
+        HTTP_X_REQUESTED_WITH="XMLHttpRequest",
     )
 
-    content = response.content.decode()
-    assert response.status_code == 200
-    assert response.redirect_chain == [(reverse("dashboard"), 302)]
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["status_url"].startswith(reverse("resume-analysis-status"))
+    assert payload["dashboard_url"] == f"{reverse('dashboard')}#resume-analysis-results"
+
+    status_response = client.get(payload["status_url"])
+    status_payload = status_response.json()
+    assert status_response.status_code == 200
+    assert status_payload["status"] == "SUCCESS"
+    assert status_payload["progress"] == 100
+    assert status_payload["analysis_ready"] is True
+    assert status_payload["pipeline"]["run_id"] == payload["resume_run_id"]
+
+    analytics_response = client.get(reverse("analytics-dashboard"))
+    analytics_content = analytics_response.content.decode()
+    assert analytics_response.status_code == 200
+    assert "Resume Analysis" in analytics_content
+    assert "resumeAnalysisProgress" in analytics_content
+
+    dashboard_response = client.get(reverse("dashboard"))
+    content = dashboard_response.content.decode()
+    assert dashboard_response.status_code == 200
     assert "Dashboard" in content
     assert "Resume Analysis Results" in content
     assert "Resume attachment" not in content
     assert "Analyze Resume" not in content
     assert "Analyzed attachment: resume.txt" in content
     assert "Python" in content
-    assert "Analysis Pipeline" in content
-    assert "Ollama Extract" in content
+    assert "Analysis Pipeline" not in content
     assert "Verified by Ollama" in content
     assert "Rejected by Ollama" in content
     assert "Not in SkillSet catalog" in content
     assert "PowerShell" in content
     assert "Backend Engineer" in content
     assert "Market Direction Fit" in content
+
+
+@pytest.mark.django_db
+def test_resume_analysis_form_uses_explicit_submit_url(client):
+    response = client.get(reverse("analytics-dashboard"))
+    content = response.content.decode()
+    template_path = (
+        Path(__file__).resolve().parents[2]
+        / "templates"
+        / "analytics"
+        / "dashboard.html"
+    )
+    template_source = template_path.read_text()
+
+    assert response.status_code == 200
+    assert 'id="resumeAnalysisForm"' in content
+    assert f'action="{reverse("analytics-dashboard")}"' in content
+    assert 'name="action" value="resume_analysis"' in content
+    assert "fetch(form.action" not in template_source
+    assert 'form.getAttribute("action")' in template_source
 
 
 @pytest.mark.django_db

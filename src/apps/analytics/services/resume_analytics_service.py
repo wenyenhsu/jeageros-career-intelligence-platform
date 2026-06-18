@@ -40,10 +40,12 @@ class ResumeAnalyticsService:
         filters=None,
         job_limit=None,
         market_limit=None,
+        run_id=None,
     ):
         started = time.perf_counter()
         pipeline_steps = []
         current_stage = None
+        self._analysis_run_id = run_id
 
         job_limit = job_limit or self.default_job_limit
         market_limit = market_limit or self.default_market_limit
@@ -54,6 +56,10 @@ class ResumeAnalyticsService:
                 "label": "Text extraction",
                 "started": stage_started,
             }
+            self._log_pipeline_step_started(
+                current_stage,
+                "Preparing resume text for analysis.",
+            )
             resume_text = self._clean_text(resume_text)
             if not resume_text:
                 raise ResumeAnalysisError("Resume text is required.")
@@ -76,6 +82,10 @@ class ResumeAnalyticsService:
                 "label": "Ollama Extract",
                 "started": stage_started,
             }
+            self._log_pipeline_step_started(
+                current_stage,
+                "Extracting candidate resume skills with Ollama.",
+            )
             extraction_result = self.extractor.extract(
                 title="Resume",
                 description=resume_text,
@@ -103,6 +113,10 @@ class ResumeAnalyticsService:
                 "label": "Ollama Verify",
                 "started": stage_started,
             }
+            self._log_pipeline_step_started(
+                current_stage,
+                "Verifying candidate resume skills with Ollama.",
+            )
             verification_result = self.verifier.verify(
                 title="Resume",
                 description=resume_text,
@@ -133,6 +147,10 @@ class ResumeAnalyticsService:
                 "label": "SkillSet mapping",
                 "started": stage_started,
             }
+            self._log_pipeline_step_started(
+                current_stage,
+                "Mapping verified resume skills to SkillSet.",
+            )
             mapping_result = self.mapper.map_verified_skills(
                 verified_keywords,
                 auto_create=False,
@@ -160,6 +178,10 @@ class ResumeAnalyticsService:
                 "label": "Job match",
                 "started": stage_started,
             }
+            self._log_pipeline_step_started(
+                current_stage,
+                "Comparing mapped resume skills with tracked jobs.",
+            )
             job_matches = self._job_matches(
                 resume_skill_ids=resume_skill_ids,
                 filters=filters,
@@ -182,6 +204,10 @@ class ResumeAnalyticsService:
                 "label": "Market fit",
                 "started": stage_started,
             }
+            self._log_pipeline_step_started(
+                current_stage,
+                "Comparing mapped resume skills with market demand.",
+            )
             market_fit = self._market_fit(
                 resume_skill_ids=resume_skill_ids,
                 filters=filters,
@@ -214,6 +240,8 @@ class ResumeAnalyticsService:
                     "mapped_count": len(mapped_skills),
                     "unmapped_count": len(unmapped_keywords),
                     "job_match_count": len(job_matches),
+                    "market_fit_percent": market_fit.get("fit_percent", 0),
+                    "resume_run_id": run_id,
                 },
             }
         except Exception as exc:
@@ -231,7 +259,10 @@ class ResumeAnalyticsService:
                 status=PipelineLog.StatusChoices.FAILED,
                 severity=PipelineLog.SeverityChoices.ERROR,
                 message="Resume analysis failed.",
-                metadata={"pipeline_steps": pipeline_steps},
+                metadata={
+                    "pipeline_steps": pipeline_steps,
+                    "resume_run_id": run_id,
+                },
                 duration_ms=duration_ms,
             )
             raise
@@ -241,7 +272,7 @@ class ResumeAnalyticsService:
             status=PipelineLog.StatusChoices.SUCCESS,
             severity=PipelineLog.SeverityChoices.INFO,
             message="Resume analysis completed.",
-            metadata=result["metadata"],
+            metadata={**result["metadata"], "pipeline_steps": pipeline_steps},
             duration_ms=duration_ms,
         )
         return result
@@ -252,6 +283,7 @@ class ResumeAnalyticsService:
         filters=None,
         job_limit=None,
         market_limit=None,
+        run_id=None,
     ):
         attachment_name, resume_text = self.extract_attachment_text(uploaded_file)
         result = self.analyze_resume(
@@ -259,6 +291,7 @@ class ResumeAnalyticsService:
             filters=filters,
             job_limit=job_limit,
             market_limit=market_limit,
+            run_id=run_id,
         )
         result["metadata"]["attachment_name"] = attachment_name
         return result
@@ -525,8 +558,8 @@ class ResumeAnalyticsService:
             if text
         ]
 
-    @staticmethod
     def _append_pipeline_step(
+        self,
         pipeline_steps,
         key,
         label,
@@ -537,20 +570,73 @@ class ResumeAnalyticsService:
         metadata=None,
     ):
         duration_ms = int((time.perf_counter() - started) * 1000)
-        pipeline_steps.append(
-            {
-                "key": key,
-                "label": label,
-                "status": status,
-                "message": message,
-                "duration_ms": duration_ms,
-                "duration_display": ResumeAnalyticsService._duration_display(
-                    duration_ms
-                ),
-                "count": count,
-                "metadata": metadata or {},
-            }
+        step = {
+            "key": key,
+            "label": label,
+            "status": status,
+            "message": message,
+            "duration_ms": duration_ms,
+            "duration_display": ResumeAnalyticsService._duration_display(
+                duration_ms
+            ),
+            "count": count,
+            "metadata": metadata or {},
+        }
+        pipeline_steps.append(step)
+        self._log_pipeline_step_finished(step)
+        return step
+
+    def _log_pipeline_step_started(self, stage, message):
+        run_id = getattr(self, "_analysis_run_id", None)
+        if not run_id:
+            return
+        MonitoringService.log_event(
+            step_name=f"resume_{stage['key']}",
+            status=PipelineLog.StatusChoices.STARTED,
+            severity=PipelineLog.SeverityChoices.INFO,
+            message=message,
+            service_name="ResumeAnalyticsService",
+            metadata={
+                "pipeline_kind": "resume_analysis",
+                "resume_run_id": run_id,
+                "pipeline_step_key": stage["key"],
+                "pipeline_step_label": stage["label"],
+            },
         )
+
+    def _log_pipeline_step_finished(self, step):
+        run_id = getattr(self, "_analysis_run_id", None)
+        if not run_id:
+            return
+        metadata = {
+            **(step.get("metadata") or {}),
+            "pipeline_kind": "resume_analysis",
+            "resume_run_id": run_id,
+            "pipeline_step_key": step["key"],
+            "pipeline_step_label": step["label"],
+            "count": step.get("count"),
+        }
+        MonitoringService.log_event(
+            step_name=f"resume_{step['key']}",
+            status=self._pipeline_log_status(step["status"]),
+            severity=(
+                PipelineLog.SeverityChoices.ERROR
+                if step["status"] == "failed"
+                else PipelineLog.SeverityChoices.INFO
+            ),
+            message=step["message"],
+            service_name="ResumeAnalyticsService",
+            metadata=metadata,
+            duration_ms=step.get("duration_ms"),
+        )
+
+    @staticmethod
+    def _pipeline_log_status(status):
+        if status == "success":
+            return PipelineLog.StatusChoices.SUCCESS
+        if status == "failed":
+            return PipelineLog.StatusChoices.FAILED
+        return PipelineLog.StatusChoices.INFO
 
     @staticmethod
     def _duration_display(duration_ms):
@@ -698,8 +784,13 @@ class ResumeAnalyticsService:
                 text_nodes.append(node.text)
         return "\n".join(text_nodes)
 
-    @staticmethod
-    def _log_analysis(status, severity, message, metadata, duration_ms):
+    def _log_analysis(self, status, severity, message, metadata, duration_ms):
+        run_id = getattr(self, "_analysis_run_id", None)
+        metadata = {
+            **(metadata or {}),
+            "pipeline_kind": "resume_analysis",
+            "resume_run_id": run_id,
+        }
         logger.info("%s metadata=%s", message, metadata)
         MonitoringService.log_event(
             step_name="resume_analysis",

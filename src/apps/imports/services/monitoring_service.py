@@ -14,6 +14,14 @@ logger = logging.getLogger(__name__)
 
 
 class MonitoringService:
+    RESUME_PIPELINE_STEPS = (
+        ("text_extraction", "Text extraction"),
+        ("ollama_extract", "Ollama Extract"),
+        ("ollama_verify", "Ollama Verify"),
+        ("skillset_mapping", "SkillSet mapping"),
+        ("job_match", "Job match"),
+        ("market_fit", "Market fit"),
+    )
     FLOW_METRIC_KEYS = (
         ("jobs_created", "Created"),
         ("jobs_updated", "Updated"),
@@ -208,7 +216,7 @@ class MonitoringService:
         }
 
     @classmethod
-    def dashboard_summary(cls, recent_limit=20, crawl_run_id=None):
+    def dashboard_summary(cls, recent_limit=20, crawl_run_id=None, resume_run_id=None):
         selected_run = cls._crawl_run_for_filter(crawl_run_id)
         latest_run = selected_run or CrawlRun.objects.first()
         log_filters = {}
@@ -235,6 +243,7 @@ class MonitoringService:
                 limit=recent_limit,
                 crawl_run_id=selected_run.id if selected_run else None,
             ),
+            "analysis_pipeline": cls.analysis_pipeline(resume_run_id=resume_run_id),
             "recent_failures": cls._logs_to_dicts(list(recent_failures)),
             "top_error_sources": [
                 {
@@ -246,6 +255,143 @@ class MonitoringService:
             ],
             "selected_crawl_run_id": selected_run.id if selected_run else None,
             "invalid_crawl_run_id": bool(crawl_run_id and not selected_run),
+        }
+
+    @classmethod
+    def analysis_pipeline(cls, resume_run_id=None):
+        qs = PipelineLog.objects.filter(metadata__pipeline_kind="resume_analysis")
+        if resume_run_id:
+            qs = qs.filter(metadata__resume_run_id=resume_run_id)
+            latest_log = qs.first()
+        else:
+            latest_log = next(
+                (
+                    log
+                    for log in qs[:50]
+                    if isinstance(log.metadata, dict)
+                    and log.metadata.get("resume_run_id")
+                ),
+                None,
+            )
+        if not latest_log:
+            return {}
+
+        run_id = resume_run_id or (latest_log.metadata or {}).get("resume_run_id")
+        if not run_id:
+            return {}
+
+        logs = list(
+            PipelineLog.objects.filter(
+                metadata__pipeline_kind="resume_analysis",
+                metadata__resume_run_id=run_id,
+            ).order_by("created_at")
+        )
+        if not logs:
+            return {}
+
+        step_logs = {}
+        terminal_log = None
+        for log in logs:
+            metadata = log.metadata if isinstance(log.metadata, dict) else {}
+            step_key = metadata.get("pipeline_step_key")
+            if step_key:
+                step_logs[step_key] = log
+            if log.step_name == "resume_analysis" and log.status in {
+                PipelineLog.StatusChoices.SUCCESS,
+                PipelineLog.StatusChoices.FAILED,
+            }:
+                terminal_log = log
+
+        metadata_source = terminal_log or logs[-1]
+        metadata = (
+            metadata_source.metadata if isinstance(metadata_source.metadata, dict) else {}
+        )
+        fallback_steps = {
+            step.get("key"): step
+            for step in metadata.get("pipeline_steps", [])
+            if isinstance(step, dict) and step.get("key")
+        }
+        steps = []
+        finished_count = 0
+        for key, label in cls.RESUME_PIPELINE_STEPS:
+            log = step_logs.get(key)
+            fallback = fallback_steps.get(key)
+            if log:
+                row = cls.log_to_dict(log)
+                step_metadata = row.get("metadata") or {}
+                status = row["status"]
+                duration_display = row["duration_display"]
+                message = row["message"]
+                count = step_metadata.get("count")
+            elif fallback:
+                status = cls._resume_pipeline_step_status(fallback.get("status"))
+                duration_display = fallback.get("duration_display", "")
+                message = fallback.get("message", "")
+                count = fallback.get("count")
+            else:
+                status = "PENDING"
+                duration_display = ""
+                message = "Waiting for this step."
+                count = None
+
+            if status in {
+                PipelineLog.StatusChoices.SUCCESS,
+                PipelineLog.StatusChoices.FAILED,
+            }:
+                finished_count += 1
+
+            steps.append(
+                {
+                    "key": key,
+                    "label": label,
+                    "status": status,
+                    "duration_display": duration_display,
+                    "message": message,
+                    "count": count,
+                }
+            )
+
+        status = PipelineLog.StatusChoices.STARTED
+        if terminal_log:
+            status = terminal_log.status
+        elif any(step["status"] == PipelineLog.StatusChoices.FAILED for step in steps):
+            status = PipelineLog.StatusChoices.FAILED
+
+        started_at = cls._display_timestamp(logs[0].created_at)
+        finished_at = cls._display_timestamp(
+            terminal_log.created_at if terminal_log else None
+        )
+        total_steps = len(cls.RESUME_PIPELINE_STEPS) or 1
+        progress = (
+            100 if terminal_log else round((finished_count / total_steps) * 100, 2)
+        )
+        market_fit = metadata.get("market_fit_percent")
+        if market_fit is None:
+            market_fit = (
+                metadata.get("market_fit", {}).get("fit_percent", 0)
+                if isinstance(metadata.get("market_fit"), dict)
+                else 0
+            )
+
+        return {
+            "run_id": run_id,
+            "status": status,
+            "progress": progress,
+            "started_at_datetime": started_at["datetime"],
+            "started_at_display": started_at["display"],
+            "started_at_title": started_at["title"],
+            "finished_at_datetime": finished_at["datetime"],
+            "finished_at_display": finished_at["display"],
+            "finished_at_title": finished_at["title"],
+            "steps": steps,
+            "summary": {
+                "candidate_count": metadata.get("candidate_count", 0),
+                "verified_count": metadata.get("verified_count", 0),
+                "mapped_count": metadata.get("mapped_count", 0),
+                "unmapped_count": metadata.get("unmapped_count", 0),
+                "job_match_count": metadata.get("job_match_count", 0),
+                "market_fit_percent": market_fit,
+            },
         }
 
     @classmethod
@@ -586,3 +732,11 @@ class MonitoringService:
         if value.is_integer():
             return str(int(value))
         return str(round(value, 2))
+
+    @staticmethod
+    def _resume_pipeline_step_status(status):
+        if status == "success":
+            return PipelineLog.StatusChoices.SUCCESS
+        if status == "failed":
+            return PipelineLog.StatusChoices.FAILED
+        return PipelineLog.StatusChoices.INFO
