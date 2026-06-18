@@ -1,15 +1,40 @@
 from django.db.models import Q
 
+from apps.common.search import (
+    annotate_datetime_search_fields,
+    build_datetime_search_filter,
+    clean_search_query,
+    combine_token_filters,
+    search_tokens,
+)
 from apps.jobs.models import JobPost
-from apps.jobs.search import clean_search_query
 from apps.skills.models import SkillKeyword
+
+
+APPLICATION_DATETIME_SEARCH_FIELDS = {
+    "application_created_at_search": "created_at",
+    "application_updated_at_search": "updated_at",
+    "application_last_updated_at_search": "last_updated_at",
+    "application_applied_at_search": "applied_at",
+    "application_job_created_at_search": "job_post__created_at",
+    "application_job_updated_at_search": "job_post__updated_at",
+    "application_job_last_synced_at_search": "job_post__last_synced_at",
+}
 
 
 def filter_applications_for_search(queryset, query):
     query = clean_search_query(query)
     if not query:
         return queryset
-    return queryset.filter(build_application_search_filter(query)).distinct()
+    queryset = annotate_datetime_search_fields(
+        queryset,
+        APPLICATION_DATETIME_SEARCH_FIELDS,
+    )
+    filters = combine_token_filters(
+        search_tokens(query),
+        build_application_search_filter,
+    )
+    return queryset.filter(filters).distinct()
 
 
 def build_application_search_filter(query):
@@ -24,6 +49,19 @@ def build_application_search_filter(query):
         | Q(job_post__remote_type__icontains=query)
         | Q(job_post__employment_type__icontains=query)
         | Q(status__icontains=query)
+        | build_datetime_search_filter(
+            query,
+            field_names=(
+                "created_at",
+                "updated_at",
+                "last_updated_at",
+                "applied_at",
+                "job_post__created_at",
+                "job_post__updated_at",
+                "job_post__last_synced_at",
+            ),
+            annotation_names=APPLICATION_DATETIME_SEARCH_FIELDS.keys(),
+        )
     )
 
     if normalized_job_type and normalized_job_type != query:

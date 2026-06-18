@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 from django.urls import reverse
 
@@ -44,6 +46,16 @@ def test_job_search_by_title_works(client, searchable_jobs):
 
 
 @pytest.mark.django_db
+def test_job_search_form_supports_auto_search(client, searchable_jobs):
+    response = client.get(reverse("job-list"))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "data-auto-search-form" in content
+    assert "data-auto-search-input" in content
+
+
+@pytest.mark.django_db
 def test_job_search_by_company_works(client, searchable_jobs):
     response = client.get(reverse("job-list"), {"q": "Anthropic"})
 
@@ -84,6 +96,16 @@ def test_job_search_by_job_type_works(client, searchable_jobs):
 
 
 @pytest.mark.django_db
+def test_job_search_by_partial_job_type_works(client, searchable_jobs):
+    response = client.get(reverse("job-list"), {"q": "intern"})
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "Research Assistant" in content
+    assert "Backend Engineer" not in content
+
+
+@pytest.mark.django_db
 def test_job_search_by_display_job_type_works(client, searchable_jobs):
     response = client.get(reverse("job-list"), {"q": "Full Time"})
 
@@ -96,6 +118,25 @@ def test_job_search_by_display_job_type_works(client, searchable_jobs):
 @pytest.mark.django_db
 def test_job_search_by_location_works(client, searchable_jobs):
     response = client.get(reverse("job-list"), {"q": "Remote"})
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "Research Assistant" in content
+    assert "Backend Engineer" not in content
+
+
+@pytest.mark.django_db
+def test_job_search_by_created_date_works(client, searchable_jobs):
+    JobPost.objects.filter(pk=searchable_jobs["backend"].pk).update(
+        created_at=datetime(2026, 5, 10, 8, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 5, 10, 8, 5, tzinfo=UTC),
+    )
+    JobPost.objects.filter(pk=searchable_jobs["intern"].pk).update(
+        created_at=datetime(2026, 6, 18, 9, 23, tzinfo=UTC),
+        updated_at=datetime(2026, 6, 18, 9, 25, tzinfo=UTC),
+    )
+
+    response = client.get(reverse("job-list"), {"q": "2026-06-18"})
 
     assert response.status_code == 200
     content = response.content.decode()

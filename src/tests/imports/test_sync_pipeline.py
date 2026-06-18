@@ -214,7 +214,7 @@ def test_job_sync_prevents_duplicate_jobs_by_source_url():
 
 
 @pytest.mark.django_db
-def test_company_sync_marks_missing_source_jobs_closed(company):
+def test_company_sync_leaves_missing_source_jobs_active_without_source_signal(company):
     found_job = JobPost.objects.create(
         company=company,
         title="Backend Engineer",
@@ -254,15 +254,15 @@ def test_company_sync_marks_missing_source_jobs_closed(company):
     manual_job.refresh_from_db()
     assert result.jobs_created == 0
     assert result.jobs_updated == 1
-    assert result.jobs_closed == 1
+    assert result.jobs_closed == 0
     assert found_job.status == JobPost.StatusChoices.ACTIVE
-    assert missing_job.status == JobPost.StatusChoices.CLOSED
-    assert missing_job.last_synced_at is not None
+    assert missing_job.status == JobPost.StatusChoices.ACTIVE
+    assert missing_job.last_synced_at is None
     assert manual_job.status == JobPost.StatusChoices.ACTIVE
 
 
 @pytest.mark.django_db
-def test_company_sync_closes_missing_jobs_within_same_source_scope(company):
+def test_company_sync_does_not_close_missing_jobs_within_same_source_scope(company):
     found_linkedin_job = JobPost.objects.create(
         company=company,
         title="Backend Engineer",
@@ -304,10 +304,185 @@ def test_company_sync_closes_missing_jobs_within_same_source_scope(company):
     found_linkedin_job.refresh_from_db()
     missing_linkedin_job.refresh_from_db()
     lever_job.refresh_from_db()
-    assert result.jobs_closed == 1
+    assert result.jobs_closed == 0
     assert found_linkedin_job.status == JobPost.StatusChoices.ACTIVE
-    assert missing_linkedin_job.status == JobPost.StatusChoices.CLOSED
+    assert missing_linkedin_job.status == JobPost.StatusChoices.ACTIVE
     assert lever_job.status == JobPost.StatusChoices.ACTIVE
+
+
+@pytest.mark.django_db
+def test_company_sync_closes_job_when_source_reports_not_accepting(company):
+    job = JobPost.objects.create(
+        company=company,
+        title="Data Engineer",
+        source_type=JobPost.SourceType.URL,
+        source_url="https://www.linkedin.com/jobs/view/200",
+        external_id="linkedin-200",
+        status=JobPost.StatusChoices.ACTIVE,
+    )
+
+    result = JobSyncService.sync_company(
+        company,
+        [
+            {
+                "source": "linkedin",
+                "title": "Data Engineer",
+                "company_name": company.name,
+                "source_url": job.source_url,
+                "external_id": job.external_id,
+                "location": "Remote",
+                "employment_type": "FULL_TIME",
+                "description": "This role is no longer accepting applications.",
+                "metadata": {"no_longer_accepting_applications": True},
+            }
+        ],
+    )
+
+    job.refresh_from_db()
+    assert result.jobs_created == 0
+    assert result.jobs_updated == 1
+    assert result.jobs_closed == 1
+    assert job.status == JobPost.StatusChoices.CLOSED
+
+
+@pytest.mark.django_db
+def test_company_sync_closes_job_when_source_url_is_invalid(company):
+    job = JobPost.objects.create(
+        company=company,
+        title="Backend Engineer",
+        source_type=JobPost.SourceType.URL,
+        source_url="https://www.linkedin.com/jobs/view/404",
+        external_id="linkedin-404",
+        status=JobPost.StatusChoices.ACTIVE,
+    )
+
+    result = JobSyncService.sync_company(
+        company,
+        [
+            {
+                "source": "linkedin",
+                "title": "Backend Engineer",
+                "company_name": company.name,
+                "source_url": job.source_url,
+                "external_id": job.external_id,
+                "location": "Remote",
+                "employment_type": "FULL_TIME",
+                "description": "Stored payload from link checker.",
+                "metadata": {"link_status": "invalid"},
+            }
+        ],
+    )
+
+    job.refresh_from_db()
+    assert result.jobs_closed == 1
+    assert job.status == JobPost.StatusChoices.CLOSED
+
+
+@pytest.mark.django_db
+def test_company_sync_does_not_close_on_nested_raw_payload_status(company):
+    job = JobPost.objects.create(
+        company=company,
+        title="Backend Engineer",
+        source_type=JobPost.SourceType.URL,
+        source_url="https://www.linkedin.com/jobs/view/405",
+        external_id="linkedin-405",
+        status=JobPost.StatusChoices.ACTIVE,
+    )
+
+    result = JobSyncService.sync_company(
+        company,
+        [
+            {
+                "source": "linkedin",
+                "title": "Backend Engineer",
+                "company_name": company.name,
+                "source_url": job.source_url,
+                "external_id": job.external_id,
+                "location": "Remote",
+                "employment_type": "FULL_TIME",
+                "description": "Still listed, but the raw source had a noisy status.",
+                "metadata": {
+                    "raw_payload": {
+                        "status": "unavailable",
+                        "link_status": "not found",
+                    }
+                },
+            }
+        ],
+    )
+
+    job.refresh_from_db()
+    assert result.jobs_closed == 0
+    assert job.status == JobPost.StatusChoices.ACTIVE
+
+
+@pytest.mark.django_db
+def test_company_sync_does_not_close_on_transient_source_unavailable(company):
+    job = JobPost.objects.create(
+        company=company,
+        title="Backend Engineer",
+        source_type=JobPost.SourceType.URL,
+        source_url="https://www.linkedin.com/jobs/view/406",
+        external_id="linkedin-406",
+        status=JobPost.StatusChoices.ACTIVE,
+    )
+
+    result = JobSyncService.sync_company(
+        company,
+        [
+            {
+                "source": "linkedin",
+                "title": "Backend Engineer",
+                "company_name": company.name,
+                "source_url": job.source_url,
+                "external_id": job.external_id,
+                "location": "Remote",
+                "employment_type": "FULL_TIME",
+                "description": "A temporary source error should not close this role.",
+                "metadata": {
+                    "source_status": "unavailable",
+                    "error": "HTTP Error 429: Too Many Requests",
+                },
+            }
+        ],
+    )
+
+    job.refresh_from_db()
+    assert result.jobs_closed == 0
+    assert job.status == JobPost.StatusChoices.ACTIVE
+
+
+@pytest.mark.django_db
+def test_company_sync_reopens_closed_job_when_source_reports_active(company):
+    job = JobPost.objects.create(
+        company=company,
+        title="Backend Engineer",
+        source_type=JobPost.SourceType.URL,
+        source_url="https://www.linkedin.com/jobs/view/300",
+        external_id="linkedin-300",
+        status=JobPost.StatusChoices.CLOSED,
+    )
+
+    result = JobSyncService.sync_company(
+        company,
+        [
+            {
+                "source": "linkedin",
+                "title": "Backend Engineer",
+                "company_name": company.name,
+                "source_url": job.source_url,
+                "external_id": job.external_id,
+                "location": "Remote",
+                "employment_type": "FULL_TIME",
+                "description": "This role is still listed.",
+                "metadata": {"status": "active"},
+            }
+        ],
+    )
+
+    job.refresh_from_db()
+    assert result.jobs_closed == 0
+    assert job.status == JobPost.StatusChoices.ACTIVE
 
 
 @pytest.mark.django_db

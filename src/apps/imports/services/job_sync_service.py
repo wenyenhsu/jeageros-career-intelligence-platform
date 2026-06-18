@@ -12,6 +12,58 @@ from .sync_result import JobUpsertResult, SyncResult
 
 
 class JobSyncService:
+    CLOSED_METADATA_BOOLEAN_KEYS = {
+        "closed_by_source",
+        "is_closed",
+        "job_closed",
+        "job_removed",
+        "job_expired",
+        "job_url_invalid",
+        "link_invalid",
+        "no_longer_accepting",
+        "no_longer_accepting_applications",
+        "no_longer_recruiting",
+        "not_accepting_applications",
+        "posting_removed",
+        "source_confirms_closed",
+        "source_reports_closed",
+        "source_url_invalid",
+        "url_invalid",
+    }
+    CLOSED_POSTING_STATUS_KEYS = {
+        "availability",
+        "job_status",
+        "posting_status",
+        "status",
+    }
+    CLOSED_POSTING_STATUS_VALUES = {
+        "closed",
+        "expired",
+        "inactive",
+        "no longer accepting",
+        "no longer accepting applications",
+        "no longer recruiting",
+        "not accepting",
+        "not accepting applications",
+        "posting removed",
+        "removed",
+    }
+    CLOSED_LINK_STATUS_KEYS = {
+        "job_url_status",
+        "link_status",
+        "source_url_status",
+        "url_status",
+    }
+    CLOSED_LINK_STATUS_VALUES = {
+        "404",
+        "410",
+        "gone",
+        "invalid",
+        "link invalid",
+        "not found",
+        "removed",
+        "url invalid",
+    }
     CANONICAL_KEYS = {
         "source",
         "source_url",
@@ -64,6 +116,7 @@ class JobSyncService:
                 canonical_job_payload=data,
             )
 
+        previous_status = job.status
         fields = cls._preserve_existing_values(fields, job)
         changed_fields = []
         for field_name, value in fields.items():
@@ -88,7 +141,16 @@ class JobSyncService:
                 "updated_fields": changed_fields,
             },
         )
-        return JobUpsertResult(job=job, created=False, canonical_job_payload=data)
+        closed = (
+            previous_status != JobPost.StatusChoices.CLOSED
+            and job.status == JobPost.StatusChoices.CLOSED
+        )
+        return JobUpsertResult(
+            job=job,
+            created=False,
+            canonical_job_payload=data,
+            closed=closed,
+        )
 
     @classmethod
     def sync_company(cls, company, canonical_jobs=None, source=None):
@@ -97,6 +159,7 @@ class JobSyncService:
 
         jobs_created = 0
         jobs_updated = 0
+        jobs_closed = 0
         job_results = []
         seen_job_ids = set()
         source_scope = cls._source_scope(source)
@@ -112,11 +175,17 @@ class JobSyncService:
                 jobs_created += 1
             else:
                 jobs_updated += 1
+                if result.closed:
+                    jobs_closed += 1
             job_results.append(result)
             if result.job.company_id == company.id:
                 seen_job_ids.add(result.job.id)
 
-        jobs_closed = cls._close_missing_jobs(company, seen_job_ids, source_scope)
+        jobs_closed += cls._record_missing_jobs_without_closing(
+            company,
+            seen_job_ids,
+            source_scope,
+        )
 
         result = SyncResult(
             jobs_created=jobs_created,
@@ -153,40 +222,43 @@ class JobSyncService:
         return JobPost.objects.filter(filters).select_related("company").first()
 
     @classmethod
-    def _close_missing_jobs(cls, company, seen_job_ids, source_scope=None):
+    def _record_missing_jobs_without_closing(
+        cls,
+        company,
+        seen_job_ids,
+        source_scope=None,
+    ):
         source_scope = source_scope or set()
         queryset = (
             company.job_posts.filter(status=JobPost.StatusChoices.ACTIVE)
             .exclude(external_id="", source_url="")
             .exclude(id__in=seen_job_ids)
         )
-        closed_count = 0
-        synced_at = timezone.now()
 
         for job in queryset:
             if source_scope and not cls._job_matches_source_scope(job, source_scope):
                 continue
-            job.status = JobPost.StatusChoices.CLOSED
-            job.last_synced_at = synced_at
-            job.save(update_fields=["status", "last_synced_at", "updated_at"])
-            closed_count += 1
             MonitoringService.log_event(
                 step_name="job_close_detection",
-                status=PipelineLog.StatusChoices.SUCCESS,
-                message="Marked missing job as closed.",
+                status=PipelineLog.StatusChoices.INFO,
+                message=(
+                    "Missing job left active; close requires an explicit source signal."
+                ),
                 service_name=cls.__name__,
                 job=job,
                 company=company,
                 metadata={
                     "external_id": job.external_id,
                     "source_url": job.source_url,
+                    "reason": "missing_from_latest_crawl",
+                    "close_policy": "explicit_source_signal_required",
                 },
             )
 
-        return closed_count
+        return 0
 
-    @staticmethod
-    def _job_fields(data, company, synced_at):
+    @classmethod
+    def _job_fields(cls, data, company, synced_at):
         job_type = JobPost.normalize_job_type(
             data.get("employment_type") or data.get("job_type") or ""
         )
@@ -196,7 +268,7 @@ class JobSyncService:
             "source_url": data.get("source_url") or "",
             "external_id": data.get("external_id") or "",
             "source_type": JobPost.SourceType.URL,
-            "status": JobPost.StatusChoices.ACTIVE,
+            "status": cls._job_status_from_data(data),
             "location": data.get("location") or "",
             "remote_type": data.get("remote_type") or "",
             "job_type": job_type,
@@ -255,6 +327,51 @@ class JobSyncService:
         }
         CanonicalJobPayload(**data).validate()
         return data
+
+    @classmethod
+    def _job_status_from_data(cls, data):
+        metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+        if cls._metadata_indicates_closed(metadata):
+            return JobPost.StatusChoices.CLOSED
+        return JobPost.StatusChoices.ACTIVE
+
+    @classmethod
+    def _metadata_indicates_closed(cls, metadata):
+        if not isinstance(metadata, dict):
+            return False
+
+        for key, value in metadata.items():
+            normalized_key = cls._normalize_metadata_key(key)
+            if normalized_key in cls.CLOSED_METADATA_BOOLEAN_KEYS and cls._is_truthy(
+                value
+            ):
+                return True
+            if normalized_key in cls.CLOSED_POSTING_STATUS_KEYS:
+                normalized_value = cls._normalize_metadata_value(value)
+                if normalized_value in cls.CLOSED_POSTING_STATUS_VALUES:
+                    return True
+            if normalized_key in cls.CLOSED_LINK_STATUS_KEYS:
+                normalized_value = cls._normalize_metadata_value(value)
+                if normalized_value in cls.CLOSED_LINK_STATUS_VALUES:
+                    return True
+
+        return False
+
+    @staticmethod
+    def _normalize_metadata_key(value):
+        return str(value).strip().casefold().replace("-", "_").replace(" ", "_")
+
+    @staticmethod
+    def _normalize_metadata_value(value):
+        return " ".join(str(value).strip().casefold().replace("_", " ").split())
+
+    @staticmethod
+    def _is_truthy(value):
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().casefold() in {"1", "true", "yes", "y"}
+        return bool(value)
 
     @staticmethod
     def _validate_job_data(data):

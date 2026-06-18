@@ -14,7 +14,7 @@
 
     <div class="card shadow-sm border-0 rounded-4">
         <div class="card-body p-0">
-            <form class="row g-2 p-4 pb-3" method="get">
+            <form class="row g-2 p-4 pb-3" method="get" data-auto-search-form data-auto-search-delay="450">
                 <div class="col-12 col-md">
                     <label class="visually-hidden" for="application-search">Search applications</label>
                     <input
@@ -22,7 +22,8 @@
                         id="application-search"
                         name="q"
                         value="{{ search_query }}"
-                        placeholder="Search job, company, job type, location, status, or skill keyword"
+                        placeholder="Search job, company, job type, location, status, date, or skill keyword"
+                        data-auto-search-input
                     >
                 </div>
                 <div class="col-12 col-md-auto">

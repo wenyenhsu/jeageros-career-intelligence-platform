@@ -102,6 +102,23 @@ def test_job_list_renders_created_and_updated_columns(client, company):
 
 
 @pytest.mark.django_db
+def test_job_list_renders_job_status_between_skills_and_created(client, company):
+    JobPost.objects.create(
+        company=company,
+        title="Closed Role",
+        status=JobPost.StatusChoices.CLOSED,
+    )
+
+    response = client.get(reverse("job-list"))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert re.search(r"<th>Skills</th>\s*<th>Status</th>\s*<th>Created</th>", content)
+    assert "Closed" in content
+    assert "text-bg-secondary" in content
+
+
+@pytest.mark.django_db
 def test_job_list_does_not_render_manual_ollama_skill_actions(client, company):
     job = JobPost.objects.create(company=company, title="Needs Skills")
 

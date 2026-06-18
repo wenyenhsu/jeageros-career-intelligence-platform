@@ -11,6 +11,7 @@ from apps.analytics.services import (
 from apps.applications.models import Application
 from apps.applications.search import filter_applications_for_search
 from apps.companies.models import Company
+from apps.companies.search import filter_companies_for_search
 from apps.imports.models import CrawlRun, JobSource
 from apps.imports.services import JobSyncService, MonitoringService
 from apps.jobs.models import JobPost
@@ -29,6 +30,13 @@ from .serializers import (
 class CompanyViewSet(viewsets.ModelViewSet):
     queryset = Company.objects.all()
     serializer_class = CompanySerializer
+
+    def get_queryset(self):
+        queryset = Company.objects.all()
+        query = self.request.query_params.get("q", "").strip()
+        if not query:
+            return queryset
+        return filter_companies_for_search(queryset, query)
 
     @action(detail=True, methods=["post"], url_path="sync")
     def sync(self, request, pk=None):

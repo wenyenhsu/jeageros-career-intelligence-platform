@@ -74,6 +74,12 @@ def test_dashboard_page_renders_operational_overview(client, user):
     assert "Python" in content
     assert "Full Time" in content
     assert "Crawl / Sync Health" in content
+    assert "Crawl History" in content
+    assert "1 enabled / 1 total" in content
+    assert "Created 1" in content
+    assert "Updated 0" in content
+    assert "Closed 0" in content
+    assert "Errors 0" in content
     assert "Pipeline Status" in content
 
 

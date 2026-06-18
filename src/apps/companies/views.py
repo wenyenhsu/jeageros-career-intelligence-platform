@@ -12,6 +12,7 @@ from django.views.generic import (
 
 from .models import Company
 from .forms import CompanyForm
+from .search import filter_companies_for_search
 from apps.imports.services import JobSyncService
 
 
@@ -35,6 +36,18 @@ class CompanyListView(ListView):
     model = Company
     template_name = "companies/company_list.html"
     context_object_name = "companies"
+
+    def get_queryset(self):
+        queryset = Company.objects.all()
+        query = self.request.GET.get("q", "").strip()
+        if not query:
+            return queryset
+        return filter_companies_for_search(queryset, query)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["search_query"] = self.request.GET.get("q", "").strip()
+        return context
 
 
 class CompanyDetailView(DetailView):

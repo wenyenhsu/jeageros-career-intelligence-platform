@@ -12,6 +12,7 @@ class JobUpsertResult:
     job: object
     created: bool
     canonical_job_payload: dict | None = None
+    closed: bool = False
 
 
 @dataclass(frozen=True)

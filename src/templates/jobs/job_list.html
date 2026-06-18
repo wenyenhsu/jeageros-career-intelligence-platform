@@ -12,7 +12,7 @@
 
 <div class="card shadow-sm border-0">
   <div class="card-body">
-    <form class="row g-2 mb-3" method="get">
+    <form class="row g-2 mb-3" method="get" data-auto-search-form data-auto-search-delay="450">
       <div class="col-12 col-md">
         <label class="visually-hidden" for="job-search">Search jobs</label>
         <input
@@ -20,7 +20,8 @@
           id="job-search"
           name="q"
           value="{{ search_query }}"
-          placeholder="Search title, company, or skill keyword"
+          placeholder="Search title, company, status, date, or skill keyword"
+          data-auto-search-input
         >
       </div>
       <div class="col-12 col-md-auto">
@@ -43,6 +44,7 @@
               <th>Job Type</th>
               <th>Location</th>
               <th>Skills</th>
+              <th>Status</th>
               <th>Created</th>
               <th>Updated</th>
               <th class="text-end">Actions</th>
@@ -74,6 +76,11 @@
                   {% empty %}
                     <span class="text-muted">-</span>
                   {% endfor %}
+                </td>
+                <td>
+                  <span class="badge {% if job.status == 'ACTIVE' %}text-bg-success{% elif job.status == 'CLOSED' %}text-bg-secondary{% elif job.status == 'ARCHIVED' %}text-bg-dark{% else %}text-bg-light border{% endif %}">
+                    {{ job.get_status_display|default:job.status }}
+                  </span>
                 </td>
                 <td class="text-nowrap">
                   <time

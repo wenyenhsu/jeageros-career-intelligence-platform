@@ -143,6 +143,65 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script>
     (() => {
+      document.querySelectorAll("[data-auto-search-form]").forEach((form) => {
+        const input = form.querySelector("[data-auto-search-input]") || form.querySelector("input[name='q']");
+        if (!input) return;
+
+        const delay = Number(form.dataset.autoSearchDelay || 450);
+        const deleteDelay = Number(form.dataset.autoSearchDeleteDelay || Math.max(900, delay * 2));
+        const minLength = Number(form.dataset.autoSearchMinLength || 2);
+        let timer = null;
+        let composing = false;
+        let lastSubmittedValue = input.value.trim();
+        let previousValue = input.value.trim();
+
+        function clearTimer() {
+          if (timer) {
+            window.clearTimeout(timer);
+            timer = null;
+          }
+        }
+
+        function submitSearch() {
+          const value = input.value.trim();
+          if (value === lastSubmittedValue) return;
+          if (value && value.length < minLength) return;
+          lastSubmittedValue = value;
+
+          if (typeof form.requestSubmit === "function") {
+            form.requestSubmit();
+          } else {
+            form.submit();
+          }
+        }
+
+        function scheduleSearch(event) {
+          if (composing) return;
+          const value = input.value.trim();
+          const inputType = event && event.inputType ? event.inputType : "";
+          const isDelete = inputType.startsWith("delete") || value.length < previousValue.length;
+          previousValue = value;
+          clearTimer();
+          if (value && value.length < minLength) return;
+          timer = window.setTimeout(submitSearch, isDelete ? deleteDelay : delay);
+        }
+
+        input.addEventListener("input", scheduleSearch);
+        input.addEventListener("compositionstart", () => {
+          composing = true;
+          clearTimer();
+        });
+        input.addEventListener("compositionend", () => {
+          composing = false;
+          previousValue = input.value.trim();
+          scheduleSearch();
+        });
+        form.addEventListener("submit", clearTimer);
+      });
+    })();
+  </script>
+  <script>
+    (() => {
       const storageKey = "jaegeros.activeCrawlRunId";
       const terminalStatuses = new Set(["SUCCESS", "FAILED", "ABORTED"]);
       const widget = document.getElementById("globalCrawlStatus");

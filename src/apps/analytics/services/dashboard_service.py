@@ -14,6 +14,7 @@ class DashboardService:
     def operational_summary(self):
         today = timezone.localdate()
         latest_crawl_run = CrawlRun.objects.first()
+        source_counts = self._source_counts()
         recent_failures = PipelineLog.objects.filter(
             status=PipelineLog.StatusChoices.FAILED,
         )[: self.recent_limit]
@@ -24,7 +25,8 @@ class DashboardService:
             "recent_jobs": self._recent_jobs(),
             "recent_applications": self._recent_applications(),
             "latest_crawl_run": latest_crawl_run,
-            "source_counts": self._source_counts(),
+            "source_counts": source_counts,
+            "crawl_history": self._crawl_history(source_counts=source_counts),
             "skill_snapshot": self._skill_snapshot(),
             "skill_coverage": self._skill_coverage(),
             "job_type_breakdown": self._job_type_breakdown(),
@@ -88,6 +90,28 @@ class DashboardService:
             "disabled": disabled,
             "total": enabled + disabled,
         }
+
+    @staticmethod
+    def _crawl_history(source_counts, limit=5):
+        history = []
+        for crawl_run in CrawlRun.objects.all()[:limit]:
+            enabled_at_run = crawl_run.total_sources or source_counts["enabled"]
+            history.append(
+                {
+                    "run": crawl_run,
+                    "time": crawl_run.finished_at or crawl_run.started_at,
+                    "enabled_sources": enabled_at_run,
+                    "total_sources": source_counts["total"],
+                    "processed_sources": crawl_run.processed_sources,
+                    "jobs_created": crawl_run.jobs_created,
+                    "jobs_updated": crawl_run.jobs_updated,
+                    "jobs_closed": crawl_run.jobs_closed,
+                    "errors": crawl_run.errors,
+                    "status": crawl_run.status,
+                    "status_label": crawl_run.get_status_display(),
+                }
+            )
+        return history
 
     @staticmethod
     def _skill_snapshot(limit=6):

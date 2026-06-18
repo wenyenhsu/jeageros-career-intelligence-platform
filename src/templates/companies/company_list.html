@@ -14,6 +14,29 @@
 </div>
 
 <div class="card shadow-sm border-0">
+  <div class="card-body">
+    <form class="row g-2" method="get" data-auto-search-form data-auto-search-delay="450">
+      <div class="col-12 col-md">
+        <label class="visually-hidden" for="company-search">Search companies</label>
+        <input
+          class="form-control"
+          id="company-search"
+          name="q"
+          value="{{ search_query }}"
+          placeholder="Search company, industry, location, website, notes, or date"
+          data-auto-search-input
+        >
+      </div>
+      <div class="col-12 col-md-auto">
+        <button class="btn btn-outline-primary w-100" type="submit">Search</button>
+      </div>
+      {% if search_query %}
+        <div class="col-12 col-md-auto">
+          <a class="btn btn-outline-secondary w-100" href="{% url 'company-list' %}">Clear</a>
+        </div>
+      {% endif %}
+    </form>
+  </div>
   <div class="table-responsive">
     <table class="table align-middle mb-0 table-hover">
       <thead class="table-light">
@@ -53,10 +76,17 @@
             <td colspan="4">
               <div class="empty-state py-5 text-center">
                 <i class="bi bi-building fs-1"></i>
-                <p class="mb-2 mt-2">No companies yet.</p>
-                <a href="{% url 'company-create' %}" class="btn btn-primary">
-                  Create your first company
-                </a>
+                {% if search_query %}
+                  <p class="mb-2 mt-2">No companies match "{{ search_query }}".</p>
+                  <a href="{% url 'company-list' %}" class="btn btn-outline-secondary">
+                    Clear search
+                  </a>
+                {% else %}
+                  <p class="mb-2 mt-2">No companies yet.</p>
+                  <a href="{% url 'company-create' %}" class="btn btn-primary">
+                    Create your first company
+                  </a>
+                {% endif %}
               </div>
             </td>
           </tr>

@@ -1,19 +1,31 @@
 from django.db.models import Q
 
+from apps.common.search import (
+    annotate_datetime_search_fields,
+    build_datetime_search_filter,
+    clean_search_query,
+    combine_token_filters,
+    search_tokens,
+)
 from apps.skills.models import SkillKeyword
 
 from .models import JobPost
+
+
+JOB_DATETIME_SEARCH_FIELDS = {
+    "job_created_at_search": "created_at",
+    "job_updated_at_search": "updated_at",
+    "job_last_synced_at_search": "last_synced_at",
+}
 
 
 def filter_jobs_for_search(queryset, query):
     query = clean_search_query(query)
     if not query:
         return queryset
-    return queryset.filter(build_job_search_filter(query)).distinct()
-
-
-def clean_search_query(query):
-    return " ".join(str(query or "").split()).strip()
+    queryset = annotate_datetime_search_fields(queryset, JOB_DATETIME_SEARCH_FIELDS)
+    filters = combine_token_filters(search_tokens(query), build_job_search_filter)
+    return queryset.filter(filters).distinct()
 
 
 def build_job_search_filter(query):
@@ -27,6 +39,12 @@ def build_job_search_filter(query):
         | Q(location__icontains=query)
         | Q(remote_type__icontains=query)
         | Q(employment_type__icontains=query)
+        | Q(status__icontains=query)
+        | build_datetime_search_filter(
+            query,
+            field_names=("created_at", "updated_at", "last_synced_at"),
+            annotation_names=JOB_DATETIME_SEARCH_FIELDS.keys(),
+        )
     )
 
     if normalized_job_type and normalized_job_type != query:

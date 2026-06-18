@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 from django.urls import reverse
 from django.utils import timezone
@@ -224,6 +226,74 @@ def test_application_search_uses_linked_job_type_location_and_skill_keywords(
     skill_response = client.get(reverse("application-list"), {"q": "py"})
 
     for response in [job_type_response, location_response, skill_response]:
+        assert response.status_code == 200
+        content = response.content.decode()
+        assert "Research Intern" in content
+        assert "Frontend Engineer" not in content
+
+
+@pytest.mark.django_db
+def test_application_search_form_supports_auto_search(client, shared_application):
+    response = client.get(reverse("application-list"))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "data-auto-search-form" in content
+    assert "data-auto-search-input" in content
+
+
+@pytest.mark.django_db
+def test_application_search_uses_partial_job_type_and_applied_date(
+    client,
+    user,
+    company,
+):
+    other_company = Company.objects.create(name="Anthropic")
+    intern_job = JobPost.objects.create(
+        company=company,
+        title="Research Intern",
+        employment_type="Internship",
+        location="Remote",
+    )
+    full_time_job = JobPost.objects.create(
+        company=other_company,
+        title="Frontend Engineer",
+        employment_type="Full-time",
+        location="San Francisco",
+    )
+    intern_application = Application.objects.create(
+        user=user,
+        job_post=intern_job,
+        applied_at=datetime(2026, 6, 18, 9, 30, tzinfo=UTC),
+    )
+    full_time_application = Application.objects.create(
+        user=user,
+        job_post=full_time_job,
+        applied_at=datetime(2026, 5, 10, 11, 0, tzinfo=UTC),
+    )
+    Application.objects.filter(pk=intern_application.pk).update(
+        created_at=datetime(2026, 6, 18, 9, 30, tzinfo=UTC),
+        updated_at=datetime(2026, 6, 18, 9, 31, tzinfo=UTC),
+        last_updated_at=datetime(2026, 6, 18, 9, 32, tzinfo=UTC),
+    )
+    Application.objects.filter(pk=full_time_application.pk).update(
+        created_at=datetime(2026, 5, 10, 11, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 5, 10, 11, 1, tzinfo=UTC),
+        last_updated_at=datetime(2026, 5, 10, 11, 2, tzinfo=UTC),
+    )
+    JobPost.objects.filter(pk=intern_job.pk).update(
+        created_at=datetime(2026, 6, 18, 9, 20, tzinfo=UTC),
+        updated_at=datetime(2026, 6, 18, 9, 21, tzinfo=UTC),
+    )
+    JobPost.objects.filter(pk=full_time_job.pk).update(
+        created_at=datetime(2026, 5, 10, 10, 55, tzinfo=UTC),
+        updated_at=datetime(2026, 5, 10, 10, 56, tzinfo=UTC),
+    )
+
+    partial_type_response = client.get(reverse("application-list"), {"q": "intern"})
+    date_response = client.get(reverse("application-list"), {"q": "2026-06-18"})
+
+    for response in [partial_type_response, date_response]:
         assert response.status_code == 200
         content = response.content.decode()
         assert "Research Intern" in content
