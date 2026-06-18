@@ -63,6 +63,9 @@ def test_dashboard_page_renders_operational_overview(client, user):
     assert "Skill Coverage Snapshot" in content
     assert "Required Skill Snapshot" in content
     assert "Job Mix" in content
+    assert "Resume Analysis" not in content
+    assert "Resume attachment" not in content
+    assert "Analyze Resume" not in content
     assert "Fast read on job type and location spread." in content
     assert "Fast read on job type, source, and location spread." not in content
     assert "URL" not in content
@@ -86,6 +89,56 @@ def test_dashboard_does_not_contain_analytics_only_sections(client):
     assert "Skill Gaps" not in content
     assert "Job-Market Signals by Category" not in content
     assert "Analysis Filters" not in content
+
+
+@pytest.mark.django_db
+def test_dashboard_renders_resume_analysis_results_without_attachment_form(client):
+    session = client.session
+    session["resume_analysis_result"] = {
+        "analysis": {
+            "mapped_skills": [{"skillset_id": 1, "name": "Python"}],
+            "unmapped_keywords": [
+                {"name": "PowerShell", "reason": "no matching SkillSet"}
+            ],
+            "job_matches": [
+                {
+                    "title": "Backend Engineer",
+                    "company": "OpenAI",
+                    "job_type": "Full Time",
+                    "location": "Remote",
+                    "source_url": "",
+                    "match_percent": 80,
+                    "matched_skills": ["Python"],
+                    "missing_skills": ["Django"],
+                }
+            ],
+            "market_fit": {
+                "fit_percent": 50,
+                "covered": [{"skillset_id": 1, "name": "Python"}],
+                "missing": [{"skillset_id": 2, "name": "Django"}],
+            },
+            "metadata": {
+                "mapped_count": 1,
+                "job_match_count": 1,
+                "attachment_name": "resume.txt",
+            },
+        },
+        "error": "",
+        "attachment_name": "resume.txt",
+    }
+    session.save()
+
+    response = client.get(reverse("dashboard"))
+
+    content = response.content.decode()
+    assert response.status_code == 200
+    assert "Resume Analysis Results" in content
+    assert "Analyzed attachment: resume.txt" in content
+    assert "Mapped skills" in content
+    assert "Backend Engineer" in content
+    assert "Market Direction Fit" in content
+    assert "Resume attachment" not in content
+    assert "Analyze Resume" not in content
 
 
 @pytest.mark.django_db

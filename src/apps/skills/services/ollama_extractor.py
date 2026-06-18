@@ -57,6 +57,7 @@ class OllamaExtractor:
         normalized_text="",
         source_fragments=None,
         source_job_identifier="",
+        content_kind="job",
     ):
         content = self._build_content(
             title=title,
@@ -74,7 +75,9 @@ class OllamaExtractor:
             source_job_identifier or "",
         )
         try:
-            payload = self._call_ollama(self._build_prompt(content))
+            payload = self._call_ollama(
+                self._build_prompt(content, content_kind=content_kind)
+            )
             result = self.parse_response(
                 payload,
                 source_job_identifier=source_job_identifier,
@@ -152,7 +155,22 @@ class OllamaExtractor:
 
         return response_payload.get("response", response_payload)
 
-    def _build_prompt(self, content):
+    def _build_prompt(self, content, content_kind="job"):
+        if str(content_kind or "").casefold() == "resume":
+            return (
+                "Extract candidate technical skills from this resume content. "
+                "Return only JSON with a skills array. "
+                "Each item must include name and source. "
+                "Source must be one of summary, skills, experience, projects, "
+                "education, certifications, resume, or source_fragment. "
+                "Each item may include confidence and source_fragment. "
+                "Split compound skills when appropriate, for example SQL (MySQL) "
+                "should produce SQL and MySQL. "
+                "Do not include personal notes, generic soft skills, job titles, "
+                "company names, schools, or unrelated keywords. "
+                f"Limit to {self.max_skills} normalized technical skills.\n\n"
+                f"{content}"
+            )
         return (
             "Extract candidate technical skills from this job content. "
             "Return only JSON with a skills array. "
@@ -261,6 +279,7 @@ class OllamaExtractor:
             "html": "HTML",
             "javascript": "JavaScript",
             "kubernetes": "Kubernetes",
+            "mysql": "MySQL",
             "node.js": "Node.js",
             "postgresql": "PostgreSQL",
             "python": "Python",
@@ -290,6 +309,13 @@ class OllamaExtractor:
             "minimum_qualifications",
             "preferred_qualifications",
             "normalized_text",
+            "summary",
+            "skills",
+            "experience",
+            "projects",
+            "education",
+            "certifications",
+            "resume",
             "source_fragment",
             "raw_text",
         }

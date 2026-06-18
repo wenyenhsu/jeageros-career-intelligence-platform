@@ -76,6 +76,7 @@ class OllamaVerifier:
         normalized_text="",
         source_fragments=None,
         source_job_identifier="",
+        content_kind="job",
     ):
         candidates = self._coerce_candidate_skills(candidate_skills)
         content = self._build_content(
@@ -97,7 +98,13 @@ class OllamaVerifier:
             len(candidates),
         )
         try:
-            payload = self._call_ollama(self._build_prompt(content, candidates))
+            payload = self._call_ollama(
+                self._build_prompt(
+                    content,
+                    candidates,
+                    content_kind=content_kind,
+                )
+            )
             result = self.parse_response(
                 payload,
                 source_job_identifier=source_job_identifier,
@@ -201,8 +208,21 @@ class OllamaVerifier:
 
         return response_payload.get("response", response_payload)
 
-    def _build_prompt(self, content, candidates):
+    def _build_prompt(self, content, candidates, content_kind="job"):
         candidates_json = json.dumps(candidates, ensure_ascii=True)
+        if str(content_kind or "").casefold() == "resume":
+            return (
+                "Verify candidate technical skills against this resume content. "
+                "Accept skills that are supported by concrete resume evidence from skills, experience, projects, education, or certifications. "
+                "Reject weakly supported, generic, irrelevant, soft-skill, job-title, company-name, or hallucinated entries. "
+                "Refine skill names when the intended technical skill is clear. "
+                "Return only JSON with verified_skills and rejected_skills arrays. "
+                "Each verified skill must include name, status set to accepted, and reason. "
+                "Each rejected skill must include name and reason. "
+                f"Limit combined output to {self.max_skills} skills.\n\n"
+                f"Candidate skills JSON:\n{candidates_json}\n\n"
+                f"Resume content:\n{content}"
+            )
         return (
             "Verify candidate technical skills against this job content. "
             "Use canonical job fields and sections as evidence and reject weakly supported, generic, irrelevant, or hallucinated skills. "
@@ -364,6 +384,7 @@ class OllamaVerifier:
             "javascript": "JavaScript",
             "kubernetes": "Kubernetes",
             "machine learning": "Machine Learning",
+            "mysql": "MySQL",
             "node.js": "Node.js",
             "postgresql": "PostgreSQL",
             "python": "Python",
@@ -393,6 +414,13 @@ class OllamaVerifier:
             "minimum_qualifications",
             "preferred_qualifications",
             "normalized_text",
+            "summary",
+            "skills",
+            "experience",
+            "projects",
+            "education",
+            "certifications",
+            "resume",
             "source_fragment",
             "raw_text",
         }

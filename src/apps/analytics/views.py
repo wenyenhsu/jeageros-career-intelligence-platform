@@ -1,6 +1,6 @@
 from itertools import groupby
 
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 
 from apps.companies.models import Company
 
@@ -8,12 +8,14 @@ from .services import (
     CompanyAnalyticsService,
     DashboardService,
     JobAnalyticsService,
+    ResumeAnalyticsService,
     SkillAnalyticsService,
 )
 
 
 def dashboard(request):
     context = DashboardService().operational_summary()
+    context.update(_resume_analysis_session_context(request))
     return render(request, "dashboard/index.html", context)
 
 
@@ -22,6 +24,15 @@ def analytics_dashboard(request):
     skill_service = SkillAnalyticsService()
     company_service = CompanyAnalyticsService(skill_service=skill_service)
     job_service = JobAnalyticsService(skill_service=skill_service)
+    if request.method == "POST" and request.POST.get("action") == "resume_analysis":
+        resume_context = _resume_analysis_context(
+            request,
+            skill_service,
+            filters=filters,
+        )
+        _store_resume_analysis_context(request, resume_context)
+        return redirect("dashboard")
+
     company_id = skill_service.normalize_filters(filters).get("company_id")
     top_skills = skill_service.top_skills(limit=8, filters=filters)
     trends = skill_service.skill_trends_by_month(limit=5, filters=filters)
@@ -50,8 +61,64 @@ def analytics_dashboard(request):
             if company_id
             else []
         ),
+        "resume_analysis": None,
+        "resume_error": "",
+        "resume_text": "",
+        "resume_attachment_name": "",
     }
     return render(request, "analytics/dashboard.html", context)
+
+
+def _resume_analysis_context(request, skill_service, filters):
+    resume_analysis = None
+    resume_error = ""
+    resume_text = ""
+    resume_attachment_name = ""
+
+    if request.method == "POST" and request.POST.get("action") == "resume_analysis":
+        resume_text = request.POST.get("resume_text", "")
+        resume_file = request.FILES.get("resume_file")
+        if resume_file:
+            resume_attachment_name = resume_file.name
+        try:
+            resume_service = ResumeAnalyticsService(skill_service=skill_service)
+            if resume_file:
+                resume_analysis = resume_service.analyze_resume_attachment(
+                    resume_file,
+                    filters=filters,
+                )
+            else:
+                resume_analysis = resume_service.analyze_resume(
+                    resume_text,
+                    filters=filters,
+                )
+        except Exception as exc:
+            resume_error = str(exc)
+
+    return {
+        "resume_analysis": resume_analysis,
+        "resume_error": resume_error,
+        "resume_text": resume_text,
+        "resume_attachment_name": resume_attachment_name,
+    }
+
+
+def _store_resume_analysis_context(request, resume_context):
+    request.session["resume_analysis_result"] = {
+        "analysis": resume_context.get("resume_analysis"),
+        "error": resume_context.get("resume_error", ""),
+        "attachment_name": resume_context.get("resume_attachment_name", ""),
+    }
+    request.session.modified = True
+
+
+def _resume_analysis_session_context(request):
+    payload = request.session.get("resume_analysis_result") or {}
+    return {
+        "resume_analysis": payload.get("analysis"),
+        "resume_error": payload.get("error", ""),
+        "resume_attachment_name": payload.get("attachment_name", ""),
+    }
 
 
 def skill_analytics(request):

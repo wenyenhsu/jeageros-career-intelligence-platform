@@ -273,6 +273,10 @@ class JobSourceHelpView(TemplateView):
     template_name = "imports/job_source_help.html"
 
 
+class MonitoringHelpView(TemplateView):
+    template_name = "imports/monitoring_help.html"
+
+
 class JobSourceCreateView(CreateView):
     model = JobSource
     form_class = JobSourceForm

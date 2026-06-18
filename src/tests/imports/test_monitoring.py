@@ -1,6 +1,9 @@
+from datetime import timedelta
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from django.utils import timezone
 
 import apps.imports.services.crawl_service as crawl_service
 from apps.imports.models import CrawlRun, JobSource, PipelineLog
@@ -220,11 +223,48 @@ def test_monitoring_page_shows_recent_failures(client):
     assert timestamp["created_at_display"] in content
     assert timestamp["created_at_title"] in content
     assert "+00:00" not in content
+    assert content.index("Latest Crawl Run") < content.index("Pipeline Flow")
+    assert content.index("Pipeline Flow") < content.index("Top Error Sources")
+    assert content.index("Top Error Sources") < content.index("Recent Failures")
+
+
+@pytest.mark.django_db
+def test_monitoring_page_links_to_parameter_guide(client):
+    response = client.get(reverse("monitoring-dashboard"))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "Parameter guide" in content
+    assert reverse("monitoring-help") in content
+
+
+@pytest.mark.django_db
+def test_monitoring_help_view_explains_dashboard_parameters(client):
+    response = client.get(reverse("monitoring-help"))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "Monitoring Parameter Guide" in content
+    assert "Latest Crawl Run" in content
+    assert "Pipeline Flow" in content
+    assert "Top Error Sources" in content
+    assert "Recent Failures" in content
+    assert "Started" in content
+    assert "Finished" in content
+    assert "Created" in content
+    assert "Updated" in content
+    assert "Closed" in content
+    assert "Errors" in content
+    assert "crawl_run_id" in content
+    assert "source_detection" in content
+    assert "ollama_extract" in content
+    assert "skill_pipeline" in content
+    assert "HTTP 429" in content
 
 
 @pytest.mark.django_db
 def test_monitoring_page_shows_crawl_run_counts(client):
-    CrawlRun.objects.create(
+    crawl_run = CrawlRun.objects.create(
         status=CrawlRun.StatusChoices.SUCCESS,
         total_sources=1,
         processed_sources=1,
@@ -233,11 +273,24 @@ def test_monitoring_page_shows_crawl_run_counts(client):
         jobs_closed=4,
         errors=5,
     )
+    finished_at = timezone.now()
+    started_at = finished_at - timedelta(minutes=7)
+    CrawlRun.objects.filter(id=crawl_run.id).update(
+        started_at=started_at,
+        finished_at=finished_at,
+    )
+    latest_run = MonitoringService.dashboard_summary()["latest_run"]
 
     response = client.get(reverse("monitoring-dashboard"))
 
     assert response.status_code == 200
     content = response.content.decode()
+    assert "Started" in content
+    assert "Finished" in content
+    assert latest_run["started_at_display"] in content
+    assert latest_run["finished_at_display"] in content
+    assert latest_run["started_at_title"] in content
+    assert latest_run["finished_at_title"] in content
     assert "Created" in content
     assert "Updated" in content
     assert "Closed" in content

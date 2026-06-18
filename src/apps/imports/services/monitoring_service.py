@@ -227,7 +227,7 @@ class MonitoringService:
             .order_by("-total", "source__name")[:10]
         )
         return {
-            "latest_run": latest_run.as_progress_dict() if latest_run else None,
+            "latest_run": cls._crawl_run_to_dict(latest_run) if latest_run else None,
             "step_summary": cls.step_summary(
                 crawl_run_id=latest_run.id if latest_run else None
             ),
@@ -359,6 +359,23 @@ class MonitoringService:
                 metric_summary
             ),
         }
+
+    @staticmethod
+    def _crawl_run_to_dict(crawl_run):
+        payload = crawl_run.as_progress_dict()
+        started_at = MonitoringService._display_timestamp(crawl_run.started_at)
+        finished_at = MonitoringService._display_timestamp(crawl_run.finished_at)
+        payload.update(
+            {
+                "started_at_datetime": started_at["datetime"],
+                "started_at_display": started_at["display"],
+                "started_at_title": started_at["title"],
+                "finished_at_datetime": finished_at["datetime"],
+                "finished_at_display": finished_at["display"],
+                "finished_at_title": finished_at["title"],
+            }
+        )
+        return payload
 
     @classmethod
     def _logs_to_dicts(cls, logs):

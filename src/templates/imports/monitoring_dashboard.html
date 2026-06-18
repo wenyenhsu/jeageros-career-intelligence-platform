@@ -5,7 +5,10 @@
     <h1 class="h3 mb-1">Monitoring</h1>
     <p class="text-secondary mb-0">Recent crawl runs, pipeline events, and failures.</p>
   </div>
-  <a class="btn btn-outline-secondary" href="{% url 'source-list' %}">Sources</a>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-secondary" href="{% url 'monitoring-help' %}">Parameter guide</a>
+    <a class="btn btn-outline-secondary" href="{% url 'source-list' %}">Sources</a>
+  </div>
 </div>
 
 {% if selected_crawl_run_id %}
@@ -29,6 +32,36 @@
       <span class="text-secondary small">
         {{ latest_run.processed_sources }} of {{ latest_run.total_sources }} sources · {{ latest_run.progress_percentage }}%
       </span>
+    </div>
+    <div class="row g-3 mb-3">
+      <div class="col-12 col-md-6">
+        <div class="border rounded-2 p-3 h-100">
+          <div class="text-secondary small">Started</div>
+          <div class="fw-bold">
+            {% if latest_run.started_at_datetime %}
+              <time datetime="{{ latest_run.started_at_datetime }}" title="{{ latest_run.started_at_title }}">
+                {{ latest_run.started_at_display }}
+              </time>
+            {% else %}
+              -
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-md-6">
+        <div class="border rounded-2 p-3 h-100">
+          <div class="text-secondary small">Finished</div>
+          <div class="fw-bold">
+            {% if latest_run.finished_at_datetime %}
+              <time datetime="{{ latest_run.finished_at_datetime }}" title="{{ latest_run.finished_at_title }}">
+                {{ latest_run.finished_at_display }}
+              </time>
+            {% else %}
+              -
+            {% endif %}
+          </div>
+        </div>
+      </div>
     </div>
     <div class="progress mb-3" role="progressbar" aria-label="Latest crawl run progress" aria-valuemin="0" aria-valuemax="100">
       <div class="progress-bar" style="width: {{ latest_run.progress_percentage }}%">
@@ -72,74 +105,7 @@
   {% endif %}
 </section>
 
-<section class="mb-5">
-  <h2 class="h5 mb-3">Recent Failures</h2>
-  <div class="table-responsive">
-    <table class="table table-sm align-middle">
-      <thead>
-        <tr>
-          <th>Time</th>
-          <th>Step</th>
-          <th>Source</th>
-          <th>Message</th>
-          <th>Reason</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for log in recent_failures %}
-          <tr>
-            <td class="text-nowrap">
-              <time
-                datetime="{{ log.created_at_datetime }}"
-                title="{{ log.created_at_title }}"
-              >
-                {{ log.created_at_display }}
-              </time>
-            </td>
-            <td>{{ log.step_name }}</td>
-            <td>{{ log.source_name|default:"-" }}</td>
-            <td>{{ log.message }}</td>
-            <td>
-              {% if log.error_reason %}
-                <span class="text-danger">{{ log.error_reason }}</span>
-              {% else %}
-                <span class="text-secondary">-</span>
-              {% endif %}
-            </td>
-          </tr>
-        {% empty %}
-          <tr><td colspan="5" class="text-secondary">No recent failures.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</section>
-
-<section class="mb-5">
-  <h2 class="h5 mb-3">Top Error Sources</h2>
-  <div class="table-responsive">
-    <table class="table table-sm align-middle">
-      <thead>
-        <tr>
-          <th>Source</th>
-          <th class="text-end">Failures</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for source in top_error_sources %}
-          <tr>
-            <td>{{ source.source_name }}</td>
-            <td class="text-end">{{ source.total }}</td>
-          </tr>
-        {% empty %}
-          <tr><td colspan="2" class="text-secondary">No source failures yet.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</section>
-
-<section id="recent-pipeline-logs">
+<section id="recent-pipeline-logs" class="mb-5">
   <h2 class="h5 mb-3">Pipeline Flow</h2>
   <div class="table-responsive">
     <table class="table table-sm align-middle">
@@ -191,6 +157,73 @@
           </tr>
         {% empty %}
           <tr><td colspan="6" class="text-secondary">No pipeline logs yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="mb-5">
+  <h2 class="h5 mb-3">Top Error Sources</h2>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>Source</th>
+          <th class="text-end">Failures</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for source in top_error_sources %}
+          <tr>
+            <td>{{ source.source_name }}</td>
+            <td class="text-end">{{ source.total }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="2" class="text-secondary">No source failures yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="mb-5">
+  <h2 class="h5 mb-3">Recent Failures</h2>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Step</th>
+          <th>Source</th>
+          <th>Message</th>
+          <th>Reason</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in recent_failures %}
+          <tr>
+            <td class="text-nowrap">
+              <time
+                datetime="{{ log.created_at_datetime }}"
+                title="{{ log.created_at_title }}"
+              >
+                {{ log.created_at_display }}
+              </time>
+            </td>
+            <td>{{ log.step_name }}</td>
+            <td>{{ log.source_name|default:"-" }}</td>
+            <td>{{ log.message }}</td>
+            <td>
+              {% if log.error_reason %}
+                <span class="text-danger">{{ log.error_reason }}</span>
+              {% else %}
+                <span class="text-secondary">-</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="5" class="text-secondary">No recent failures.</td></tr>
         {% endfor %}
       </tbody>
     </table>

@@ -211,10 +211,8 @@ class SkillSetMapper:
 
         candidates = []
         for item in verified_skills or []:
-            name = cls._name_from_skill(item)
-            if not name:
-                continue
-            candidates.append({"name": name})
+            for name in cls._names_from_skill(item):
+                candidates.append({"name": name})
         return candidates
 
     @classmethod
@@ -229,27 +227,75 @@ class SkillSetMapper:
 
         names = []
         for item in rejected_skills or []:
-            name = cls._name_from_skill(item)
-            if name:
+            for name in cls._names_from_skill(item):
                 names.append(name)
         return names
 
     @classmethod
     def _name_from_skill(cls, item):
+        names = cls._names_from_skill(item)
+        return names[0] if names else ""
+
+    @classmethod
+    def _names_from_skill(cls, item):
+        raw_name = cls._raw_name_from_skill(item)
+        return cls._expand_compound_skill_names(raw_name)
+
+    @staticmethod
+    def _raw_name_from_skill(item):
         if isinstance(item, (VerifiedSkill,)):
-            raw_name = item.name
+            return item.name
         elif hasattr(item, "name"):
-            raw_name = item.name
+            return item.name
         elif isinstance(item, dict):
-            raw_name = item.get("name") or item.get("skill") or ""
-        else:
-            raw_name = item
-        return cls._normalize_display_name(raw_name)
+            return item.get("name") or item.get("skill") or ""
+        return item
+
+    @classmethod
+    def _expand_compound_skill_names(cls, name):
+        normalized = re.sub(r"\s+", " ", str(name or "")).strip()
+        normalized = normalized.strip(".,;:|/\\<>")
+        if not normalized:
+            return []
+
+        raw_parts = []
+        parenthetical_values = re.findall(r"\(([^()]*)\)", normalized)
+        outside_parentheses = re.sub(r"\([^()]*\)", " ", normalized).strip()
+        if outside_parentheses:
+            raw_parts.append(outside_parentheses)
+
+        for value in parenthetical_values:
+            if cls._is_standalone_parenthetical_skill(value):
+                raw_parts.append(value)
+
+        if not raw_parts:
+            raw_parts = [normalized]
+
+        names = []
+        seen = set()
+        for part in raw_parts:
+            display_name = cls._normalize_display_name(part)
+            key = SkillSet.normalize_name(display_name)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            names.append(display_name)
+        return names
+
+    @staticmethod
+    def _is_standalone_parenthetical_skill(value):
+        normalized = re.sub(r"\s+", " ", str(value or "")).strip()
+        normalized = normalized.strip(".,;:|/\\<>")
+        if not normalized or not re.search(r"[A-Za-z0-9]", normalized):
+            return False
+        if "," in normalized or ":" in normalized:
+            return False
+        return len(normalized.split()) <= 4
 
     @staticmethod
     def _normalize_display_name(name):
         normalized = re.sub(r"\s+", " ", str(name or "")).strip()
-        normalized = normalized.strip(".,;:|/\\")
+        normalized = normalized.strip(".,;:|/\\<>")
         known_spellings = {
             "aws": "AWS",
             "api": "API",
@@ -262,6 +308,7 @@ class SkillSetMapper:
             "javascript": "JavaScript",
             "kubernetes": "Kubernetes",
             "machine learning": "Machine Learning",
+            "mysql": "MySQL",
             "node.js": "Node.js",
             "postgresql": "PostgreSQL",
             "python": "Python",

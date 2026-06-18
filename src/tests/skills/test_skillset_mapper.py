@@ -124,6 +124,34 @@ def test_normalized_skill_keyword_lookup_resolves_existing_skillset():
 
 
 @pytest.mark.django_db
+def test_parenthetical_compound_skill_maps_to_separate_skillsets():
+    sql = SkillSet.objects.create(name="SQL")
+    mysql = SkillSet.objects.create(name="MySQL")
+    mapper = SkillSetMapper()
+
+    result = mapper.map_verified_skills(
+        [
+            {"name": "SQL (MySQL)"},
+            {"name": "sql"},
+        ]
+    )
+
+    assert [skill.as_dict() for skill in result.matched] == [
+        {
+            "name": "SQL",
+            "skillset_id": sql.id,
+            "created": False,
+        },
+        {
+            "name": "MySQL",
+            "skillset_id": mysql.id,
+            "created": False,
+        },
+    ]
+    assert result.unmapped == []
+
+
+@pytest.mark.django_db
 def test_unmapped_skills_are_returned_cleanly_when_auto_create_is_disabled():
     mapper = SkillSetMapper(auto_create=False)
 

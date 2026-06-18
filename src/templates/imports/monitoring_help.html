@@ -1,0 +1,353 @@
+{% extends 'base.html' %}
+{% block title %}Monitoring Parameters · JaegerOS{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+  <div>
+    <h1 class="h2 fw-bold mb-1">Monitoring Parameter Guide</h1>
+    <p class="text-muted mb-0">How crawl runs, pipeline events, status counts, and failures are reported.</p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a href="{% url 'monitoring-dashboard' %}" class="btn btn-primary">
+      Monitoring
+    </a>
+    <a href="{% url 'source-list' %}" class="btn btn-outline-secondary">
+      Sources
+    </a>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-12 col-xl-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h5 fw-bold">Monitoring Flow</h2>
+        <p class="text-muted mb-3">The dashboard reads persisted crawl runs and pipeline logs. It does not run crawler logic directly.</p>
+        <ol class="mb-0">
+          <li>A source run creates or reuses a <code>CrawlRun</code>.</li>
+          <li>Each pipeline service writes <code>PipelineLog</code> events.</li>
+          <li>The live status panel polls the run status endpoint.</li>
+          <li>The Monitoring page summarizes the selected run or latest logs.</li>
+          <li>Failures keep their reason text so partial crawls can be debugged later.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-xl-8">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h5 fw-bold">Dashboard Sections</h2>
+        <p class="text-muted">The Monitoring page is ordered from run-level status to detailed event history.</p>
+        <div class="table-responsive">
+          <table class="table align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Section</th>
+                <th>Purpose</th>
+                <th>Primary Source</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>Latest Crawl Run</code></td>
+                <td>Shows the newest or selected run status, time window, progress, and totals.</td>
+                <td><code>CrawlRun</code></td>
+              </tr>
+              <tr>
+                <td><code>Pipeline Flow</code></td>
+                <td>Shows individual events in the order they were recorded.</td>
+                <td><code>PipelineLog</code></td>
+              </tr>
+              <tr>
+                <td><code>Top Error Sources</code></td>
+                <td>Ranks sources that recently produced failures.</td>
+                <td><code>PipelineLog.source</code></td>
+              </tr>
+              <tr>
+                <td><code>Recent Failures</code></td>
+                <td>Lists the newest failed events with readable reason text.</td>
+                <td><code>PipelineLog.error_text</code> and metadata</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mt-4">
+  <div class="card-body">
+    <h2 class="h4 fw-bold mb-3">Latest Crawl Run Fields</h2>
+    <div class="table-responsive">
+      <table class="table align-middle">
+        <thead>
+          <tr>
+            <th>Parameter</th>
+            <th>Meaning</th>
+            <th>How to Read It</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Status</code></td>
+            <td>Current lifecycle state for the crawl run.</td>
+            <td><code>PENDING</code>, <code>RUNNING</code>, <code>SUCCESS</code>, <code>FAILED</code>, or <code>ABORTED</code>.</td>
+          </tr>
+          <tr>
+            <td><code>Started</code></td>
+            <td>When the crawl run began execution.</td>
+            <td>If blank, the run was queued but did not start yet.</td>
+          </tr>
+          <tr>
+            <td><code>Finished</code></td>
+            <td>When the crawl run reached a terminal state.</td>
+            <td>Blank means the run is still pending or running.</td>
+          </tr>
+          <tr>
+            <td><code>Processed</code></td>
+            <td>Number of sources processed out of the total selected sources.</td>
+            <td><code>0 / 1</code> means one source is planned and none has finished.</td>
+          </tr>
+          <tr>
+            <td><code>Progress</code></td>
+            <td>Run-level completion percentage.</td>
+            <td>Usually <code>processed_sources / total_sources</code>. Live pages may show estimated pipeline progress while a source is mid-run.</td>
+          </tr>
+          <tr>
+            <td><code>Created</code></td>
+            <td>Jobs inserted during this run.</td>
+            <td>Useful for seeing whether the crawler found new job records.</td>
+          </tr>
+          <tr>
+            <td><code>Updated</code></td>
+            <td>Existing jobs refreshed during this run.</td>
+            <td>High values are normal when the source returns jobs already in the database.</td>
+          </tr>
+          <tr>
+            <td><code>Closed</code></td>
+            <td>Known jobs marked closed because they were missing from the newest crawl scope.</td>
+            <td>Records are preserved; they are not deleted.</td>
+          </tr>
+          <tr>
+            <td><code>Errors</code></td>
+            <td>Failures recorded at run, source, extraction, sync, or skill pipeline level.</td>
+            <td>Click through to Pipeline Flow or Recent Failures to inspect the reason.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mt-4">
+  <div class="card-body">
+    <h2 class="h4 fw-bold mb-3">Pipeline Flow Fields</h2>
+    <div class="table-responsive">
+      <table class="table align-middle">
+        <thead>
+          <tr>
+            <th>Parameter</th>
+            <th>Meaning</th>
+            <th>Example</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Time</code></td>
+            <td>Local display time for when the event was recorded.</td>
+            <td><code>Jun 17, 10:59 PM</code>. Hover or inspect the timestamp for the full ISO value.</td>
+          </tr>
+          <tr>
+            <td><code>Step</code></td>
+            <td>The pipeline stage that wrote the event.</td>
+            <td><code>source_detection</code>, <code>listing_discovery</code>, <code>job_extraction</code>, <code>source_sync</code>.</td>
+          </tr>
+          <tr>
+            <td><code>Status</code></td>
+            <td>Outcome for that event.</td>
+            <td><code>STARTED</code>, <code>SUCCESS</code>, <code>FAILED</code>, <code>SKIPPED</code>, or <code>INFO</code>.</td>
+          </tr>
+          <tr>
+            <td><code>Duration</code></td>
+            <td>Time spent on the step or time since the previous event.</td>
+            <td><code>1:26</code> means one minute and twenty-six seconds.</td>
+          </tr>
+          <tr>
+            <td><code>Message</code></td>
+            <td>Human-readable summary written by the service.</td>
+            <td><code>Finished crawling LinkedIn data career.</code></td>
+          </tr>
+          <tr>
+            <td><code>Reason</code></td>
+            <td>Error detail extracted from exception text or structured metadata.</td>
+            <td><code>HTTP Error 429: Too Many Requests</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mt-4">
+  <div class="card-body">
+    <h2 class="h4 fw-bold mb-3">Pipeline Step Names</h2>
+    <div class="table-responsive">
+      <table class="table align-middle">
+        <thead>
+          <tr>
+            <th>Step</th>
+            <th>Meaning</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>crawl_run</code></td>
+            <td>Run-level lifecycle event such as queued, started, finished, failed, or aborted.</td>
+          </tr>
+          <tr>
+            <td><code>celery_task</code></td>
+            <td>Background task queue event for scheduled or manual crawl execution.</td>
+          </tr>
+          <tr>
+            <td><code>source_detection</code></td>
+            <td>Parser selection based on the configured source type and URL.</td>
+          </tr>
+          <tr>
+            <td><code>listing_discovery</code></td>
+            <td>Search/listing page generation or discovery.</td>
+          </tr>
+          <tr>
+            <td><code>job_extraction</code></td>
+            <td>Raw job extraction from listing or detail pages.</td>
+          </tr>
+          <tr>
+            <td><code>source_sync</code></td>
+            <td>Company upsert, job upsert, duplicate prevention, and closed-job detection.</td>
+          </tr>
+          <tr>
+            <td><code>ollama_extract</code></td>
+            <td>Ollama candidate skill extraction from normalized job or resume text.</td>
+          </tr>
+          <tr>
+            <td><code>ollama_verify</code></td>
+            <td>Ollama verification that extracted skills are supported by the source text.</td>
+          </tr>
+          <tr>
+            <td><code>skillset_mapping</code></td>
+            <td>Mapping verified skills to the canonical <code>SkillSet</code> table and keyword aliases.</td>
+          </tr>
+          <tr>
+            <td><code>skill_scoring</code></td>
+            <td>Deterministic evidence scoring for mapped skills.</td>
+          </tr>
+          <tr>
+            <td><code>skill_attach</code></td>
+            <td>Attaching final <code>SkillSet</code> records to jobs or applications.</td>
+          </tr>
+          <tr>
+            <td><code>skill_pipeline</code></td>
+            <td>Combined status for extract, verify, map, score, and attach.</td>
+          </tr>
+          <tr>
+            <td><code>crawl_progress</code></td>
+            <td>Progress checkpoint after a source finishes processing.</td>
+          </tr>
+          <tr>
+            <td><code>analytics_query</code></td>
+            <td>Analytics service aggregation event.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mt-4">
+  <div class="card-body">
+    <h2 class="h4 fw-bold mb-3">Filters, Links, and Live Status</h2>
+    <div class="table-responsive">
+      <table class="table align-middle">
+        <thead>
+          <tr>
+            <th>Parameter</th>
+            <th>Meaning</th>
+            <th>Usage</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>crawl_run_id</code></td>
+            <td>Optional query parameter that limits the dashboard to one crawl run.</td>
+            <td><code>/sources/monitoring/?crawl_run_id=123</code></td>
+          </tr>
+          <tr>
+            <td><code>run</code></td>
+            <td>Short alias for <code>crawl_run_id</code>.</td>
+            <td><code>/sources/monitoring/?run=123</code></td>
+          </tr>
+          <tr>
+            <td><code>Selected run</code></td>
+            <td>When a run id is valid, Monitoring only shows logs for that run.</td>
+            <td>Use this after clicking a crawl notification or live pipeline link.</td>
+          </tr>
+          <tr>
+            <td><code>Invalid run</code></td>
+            <td>When a run id no longer exists, the page falls back to latest monitoring data.</td>
+            <td>The warning means the filter was ignored safely.</td>
+          </tr>
+          <tr>
+            <td><code>Live status endpoint</code></td>
+            <td>JSON endpoint used by the live pipeline card.</td>
+            <td><code>GET /sources/runs/&lt;id&gt;/status/</code></td>
+          </tr>
+          <tr>
+            <td><code>Abort endpoint</code></td>
+            <td>Stops a running crawl by marking the run as aborted.</td>
+            <td><code>POST /sources/runs/&lt;id&gt;/abort/</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mt-4">
+  <div class="card-body">
+    <h2 class="h4 fw-bold mb-3">Common Failure Reasons</h2>
+    <div class="row g-3">
+      <div class="col-12 col-lg-6">
+        <div class="border rounded-2 p-3 h-100">
+          <h3 class="h6 fw-bold">Source and network failures</h3>
+          <dl class="mb-0">
+            <dt><code>HTTP 429</code></dt>
+            <dd class="text-muted">The source rate-limited requests. Lower request limits, increase delay, or wait for cooldown.</dd>
+            <dt><code>Name or service not known</code></dt>
+            <dd class="text-muted">DNS failed inside the runtime or container.</dd>
+            <dt><code>Network is unreachable</code></dt>
+            <dd class="text-muted">The runtime cannot reach the internet or target host.</dd>
+            <dt><code>The read operation timed out</code></dt>
+            <dd class="text-muted">The source accepted the connection but did not respond before timeout.</dd>
+          </dl>
+        </div>
+      </div>
+      <div class="col-12 col-lg-6">
+        <div class="border rounded-2 p-3 h-100">
+          <h3 class="h6 fw-bold">Pipeline and Ollama failures</h3>
+          <dl class="mb-0">
+            <dt><code>Ollama request failed</code></dt>
+            <dd class="text-muted">The Ollama service URL is unreachable, the model is missing, or the service is down.</dd>
+            <dt><code>Malformed JSON</code></dt>
+            <dd class="text-muted">The model response could not be parsed into the expected deterministic schema.</dd>
+            <dt><code>Skill pipeline failed</code></dt>
+            <dd class="text-muted">One or more extract, verify, map, score, or attach steps failed for a job.</dd>
+            <dt><code>0 created / 0 updated</code></dt>
+            <dd class="text-muted">The run may have found no jobs, filtered all results, or hit a source error before sync.</dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
