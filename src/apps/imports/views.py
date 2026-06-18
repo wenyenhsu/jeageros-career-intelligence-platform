@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from django.contrib import messages
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect
@@ -47,6 +49,49 @@ def run_source(request, pk):
     crawl_run = _start_crawl_run(source.name, total_sources=1)
     error = _enqueue_crawl_task(crawl_run.id, source_ids=[source.id])
     return _crawl_started_response(request, source.name, crawl_run, error=error)
+
+
+@require_POST
+def copy_source(request, pk):
+    source = get_object_or_404(JobSource, pk=pk)
+    copied_source = JobSource.objects.create(
+        name=_next_source_copy_name(source.name),
+        resource=source.resource,
+        base_url=source.base_url,
+        enabled=source.enabled,
+        crawl_interval_minutes=source.crawl_interval_minutes,
+        crawl_config=deepcopy(source.crawl_config or {}),
+        filter_config=deepcopy(source.filter_config or {}),
+        notes=source.notes,
+    )
+    MonitoringService.log_event(
+        step_name="source_copy",
+        status=PipelineLog.StatusChoices.SUCCESS,
+        severity=PipelineLog.SeverityChoices.INFO,
+        message=f"Copied JobSource {source.name}.",
+        service_name=__name__,
+        source=copied_source,
+        metadata={
+            "original_source_id": source.id,
+            "copied_source_id": copied_source.id,
+        },
+    )
+
+    payload = {
+        "success": True,
+        "source_id": copied_source.id,
+        "name": copied_source.name,
+        "detail_url": reverse("source-detail", args=[copied_source.id]),
+        "edit_url": reverse("source-update", args=[copied_source.id]),
+    }
+    if _wants_json(request):
+        return JsonResponse(payload, status=201)
+
+    messages.success(
+        request,
+        f'Copied "{source.name}" to "{copied_source.name}".',
+    )
+    return redirect("source-list")
 
 
 def crawl_run_status(request, pk):
@@ -206,6 +251,17 @@ def _wants_json(request):
         request.headers.get("X-Requested-With") == "XMLHttpRequest"
         or "application/json" in request.headers.get("Accept", "")
     )
+
+
+def _next_source_copy_name(name):
+    base_name = f"{name} copy"
+    if not JobSource.objects.filter(name=base_name).exists():
+        return base_name
+
+    index = 2
+    while JobSource.objects.filter(name=f"{base_name} {index}").exists():
+        index += 1
+    return f"{base_name} {index}"
 
 
 def _add_crawl_message(request, label, summary):

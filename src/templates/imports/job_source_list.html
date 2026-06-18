@@ -135,6 +135,10 @@
                   {% csrf_token %}
                   <button type="submit" class="btn btn-outline-success btn-sm">Run</button>
                 </form>
+                <form method="post" action="{% url 'source-copy' source.pk %}" class="d-inline">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-outline-secondary btn-sm">Copy</button>
+                </form>
                 <a href="{% url 'source-detail' source.pk %}" class="btn btn-outline-primary btn-sm">View</a>
                 <a href="{% url 'source-update' source.pk %}" class="btn btn-outline-secondary btn-sm">Edit</a>
                 <a href="{% url 'source-delete' source.pk %}" class="btn btn-outline-danger btn-sm">Delete</a>

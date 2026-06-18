@@ -1,5 +1,6 @@
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 
 import apps.imports.views as import_views
 from apps.imports.forms import JobSourceForm
@@ -40,6 +41,8 @@ def test_source_list_view(client):
     assert "Abort" in content
     assert reverse("source-run-abort", args=[0]) in content
     assert "Run" in content
+    assert "Copy" in content
+    assert reverse("source-copy", args=[source.id]) in content
     assert "Delete" in content
     assert reverse("source-delete", args=[source.id]) in content
 
@@ -286,6 +289,68 @@ def test_source_delete_view(client):
 
     assert response.status_code in (302, 303)
     assert not JobSource.objects.filter(id=source.id).exists()
+
+
+@pytest.mark.django_db
+def test_source_copy_view_duplicates_source_without_runtime_state(client):
+    source = JobSource.objects.create(
+        name="LinkedIn data career",
+        resource=JobSource.Resource.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
+        enabled=False,
+        crawl_interval_minutes=720,
+        crawl_config={
+            "max_pages": 2,
+            "fetch_details": "new_or_missing",
+            "rolling_state": {"linkedin_search_offset": 25},
+        },
+        filter_config={
+            "location": ["CA", "TX"],
+            "job_types": ["Internship"],
+            "include_keywords": ["data engineer"],
+        },
+        last_crawled_at=timezone.now(),
+        notes="Keep this config",
+    )
+
+    response = client.post(reverse("source-copy", args=[source.id]), follow=True)
+
+    assert response.status_code == 200
+    copied = JobSource.objects.get(name="LinkedIn data career copy")
+    assert copied.id != source.id
+    assert copied.resource == source.resource
+    assert copied.base_url == source.base_url
+    assert copied.enabled == source.enabled
+    assert copied.crawl_interval_minutes == source.crawl_interval_minutes
+    assert copied.crawl_config == source.crawl_config
+    assert copied.filter_config == source.filter_config
+    assert copied.notes == source.notes
+    assert copied.last_crawled_at is None
+    assert "Copied &quot;LinkedIn data career&quot;" in response.content.decode()
+    assert PipelineLog.objects.filter(
+        step_name="source_copy",
+        source=copied,
+        metadata__original_source_id=source.id,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_source_copy_view_uses_next_available_copy_name(client):
+    source = JobSource.objects.create(
+        name="LinkedIn",
+        resource=JobSource.Resource.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
+    )
+    JobSource.objects.create(
+        name="LinkedIn copy",
+        resource=JobSource.Resource.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
+    )
+
+    response = client.post(reverse("source-copy", args=[source.id]))
+
+    assert response.status_code in (302, 303)
+    assert JobSource.objects.filter(name="LinkedIn copy 2").exists()
 
 
 @pytest.mark.django_db

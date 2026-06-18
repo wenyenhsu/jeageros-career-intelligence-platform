@@ -9,6 +9,7 @@ from .views import (
     JobSourceUpdateView,
     MonitoringHelpView,
     abort_crawl_run,
+    copy_source,
     crawl_run_status,
     job_url_import,
     monitoring_dashboard,
@@ -29,5 +30,6 @@ urlpatterns = [
     path("<int:pk>/edit/", JobSourceUpdateView.as_view(), name="source-update"),
     path("<int:pk>/delete/", JobSourceDeleteView.as_view(), name="source-delete"),
     path("<int:pk>/run/", run_source, name="source-run"),
+    path("<int:pk>/copy/", copy_source, name="source-copy"),
     path("job-url/", job_url_import, name="job-url-import"),
 ]
