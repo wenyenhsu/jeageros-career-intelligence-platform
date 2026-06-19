@@ -1,7 +1,8 @@
 from copy import deepcopy
+import json
 
 from django.contrib import messages
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.shortcuts import render
 from django.urls import reverse, reverse_lazy
@@ -18,8 +19,8 @@ from django.views.generic import (
 )
 
 from .forms import JobSourceForm
-from .models import CrawlRun, JobSource, PipelineLog
-from .services import MonitoringService
+from .models import CrawlRun, JobArchiveRun, JobSource, PipelineLog
+from .services import JobArchiveService, MonitoringService
 
 
 def job_url_import(request):
@@ -39,6 +40,91 @@ def monitoring_dashboard(request):
             resume_run_id=resume_run_id,
         ),
     )
+
+
+@require_POST
+def archive_jobs(request):
+    age_months = request.POST.get("age_months", "3")
+    try:
+        archive_run = JobArchiveService.archive_old_jobs(age_months=age_months)
+    except ValueError as exc:
+        if _wants_json(request):
+            return JsonResponse({"success": False, "error": str(exc)}, status=400)
+        messages.error(request, str(exc))
+        return redirect(f"{reverse('monitoring-dashboard')}#job-archive")
+    except Exception as exc:
+        MonitoringService.log_failure(
+            step_name="job_archive",
+            message="Job archive failed.",
+            service_name=__name__,
+            error=exc,
+        )
+        if _wants_json(request):
+            return JsonResponse({"success": False, "error": str(exc)}, status=500)
+        messages.error(request, f"Job archive failed: {exc}")
+        return redirect(f"{reverse('monitoring-dashboard')}#job-archive")
+
+    payload = {
+        "success": True,
+        "archive_run_id": archive_run.id,
+        "jobs_archived": archive_run.jobs_archived,
+        "download_url": reverse("job-archive-download", args=[archive_run.id]),
+    }
+    if _wants_json(request):
+        return JsonResponse(payload, status=201)
+
+    messages.success(
+        request,
+        (
+            f"Archived {archive_run.jobs_archived} jobs created more than "
+            f"{archive_run.age_months} months ago."
+        ),
+    )
+    return redirect(f"{reverse('monitoring-dashboard')}#job-archive")
+
+
+@require_POST
+def restore_job_archive(request, pk):
+    archive_run = get_object_or_404(JobArchiveRun, pk=pk)
+    try:
+        result = JobArchiveService.restore_archive(archive_run)
+    except Exception as exc:
+        MonitoringService.log_failure(
+            step_name="job_archive_restore",
+            message=f"Job archive restore failed for archive run #{archive_run.id}.",
+            service_name=__name__,
+            error=exc,
+            metadata={"archive_run_id": archive_run.id},
+        )
+        if _wants_json(request):
+            return JsonResponse({"success": False, "error": str(exc)}, status=500)
+        messages.error(request, f"Job archive restore failed: {exc}")
+        return redirect(f"{reverse('monitoring-dashboard')}#job-archive")
+
+    payload = {
+        "success": True,
+        "archive_run_id": archive_run.id,
+        "jobs_restored": result["jobs_restored"],
+        "skipped_job_ids": result["skipped_job_ids"],
+    }
+    if _wants_json(request):
+        return JsonResponse(payload)
+
+    messages.success(
+        request,
+        f"Restored {result['jobs_restored']} archived jobs to active jobs.",
+    )
+    return redirect(f"{reverse('monitoring-dashboard')}#job-archive")
+
+
+def download_job_archive(request, pk):
+    archive_run = get_object_or_404(JobArchiveRun, pk=pk)
+    content = json.dumps(archive_run.payload or {}, indent=2, ensure_ascii=False)
+    response = HttpResponse(content, content_type="application/json")
+    response["Content-Disposition"] = (
+        f'attachment; filename="job-archive-{archive_run.id}.json"'
+    )
+    return response
 
 
 @require_POST

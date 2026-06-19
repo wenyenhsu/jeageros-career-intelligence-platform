@@ -60,6 +60,11 @@
                 <td><code>PipelineLog</code></td>
               </tr>
               <tr>
+                <td><code>Job Archive</code></td>
+                <td>Archives older jobs, stores an export snapshot, and restores archived jobs when needed.</td>
+                <td><code>JobArchiveRun</code> and <code>JobPost.status</code></td>
+              </tr>
+              <tr>
                 <td><code>Top Error Sources</code></td>
                 <td>Ranks sources that recently produced failures.</td>
                 <td><code>PipelineLog.source</code></td>
@@ -257,6 +262,50 @@
           <tr>
             <td><code>analytics_query</code></td>
             <td>Analytics service aggregation event.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mt-4">
+  <div class="card-body">
+    <h2 class="h4 fw-bold mb-3">Job Archive Fields</h2>
+    <div class="table-responsive">
+      <table class="table align-middle">
+        <thead>
+          <tr>
+            <th>Parameter</th>
+            <th>Meaning</th>
+            <th>How to Read It</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Created before</code></td>
+            <td>User-selected age threshold in months.</td>
+            <td><code>3</code> archives jobs whose <code>created_at</code> is older than three months.</td>
+          </tr>
+          <tr>
+            <td><code>Cutoff</code></td>
+            <td>Exact timestamp calculated from the age threshold.</td>
+            <td>Jobs created before this timestamp are eligible for archive.</td>
+          </tr>
+          <tr>
+            <td><code>Archived</code></td>
+            <td>Number of jobs moved to <code>ARCHIVED</code> status.</td>
+            <td>Archived jobs remain in the database and keep their SkillSet links.</td>
+          </tr>
+          <tr>
+            <td><code>Download</code></td>
+            <td>Exports the archive snapshot as JSON.</td>
+            <td>The file includes job fields, company label, timestamps, and skill links.</td>
+          </tr>
+          <tr>
+            <td><code>Restore</code></td>
+            <td>Moves archived jobs back to <code>ACTIVE</code>.</td>
+            <td>Restore updates each restored job's <code>created_at</code> to the restore time.</td>
           </tr>
         </tbody>
       </table>

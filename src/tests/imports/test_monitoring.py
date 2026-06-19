@@ -316,6 +316,7 @@ def test_monitoring_help_view_explains_dashboard_parameters(client):
     assert "Monitoring Parameter Guide" in content
     assert "Latest Crawl Run" in content
     assert "Pipeline Flow" in content
+    assert "Job Archive" in content
     assert "Top Error Sources" in content
     assert "Recent Failures" in content
     assert "Started" in content
@@ -329,6 +330,8 @@ def test_monitoring_help_view_explains_dashboard_parameters(client):
     assert "ollama_extract" in content
     assert "skill_pipeline" in content
     assert "HTTP 429" in content
+    assert "Created before" in content
+    assert "JobArchiveRun" in content
 
 
 @pytest.mark.django_db

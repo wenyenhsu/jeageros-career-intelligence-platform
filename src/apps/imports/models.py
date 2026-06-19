@@ -92,6 +92,34 @@ class CrawlRun(models.Model):
         return f"CrawlRun #{self.pk} ({self.status})"
 
 
+class JobArchiveRun(models.Model):
+    class StatusChoices(models.TextChoices):
+        CREATED = "CREATED", "Created"
+        RESTORED = "RESTORED", "Restored"
+        FAILED = "FAILED", "Failed"
+
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    cutoff_at = models.DateTimeField(db_index=True)
+    age_months = models.PositiveSmallIntegerField(default=3)
+    jobs_archived = models.PositiveIntegerField(default=0)
+    jobs_restored = models.PositiveIntegerField(default=0)
+    status = models.CharField(
+        max_length=20,
+        choices=StatusChoices.choices,
+        default=StatusChoices.CREATED,
+        db_index=True,
+    )
+    payload = models.JSONField(default=dict, blank=True)
+    restored_at = models.DateTimeField(null=True, blank=True)
+    error_text = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"JobArchiveRun #{self.pk} ({self.status})"
+
+
 class PipelineLog(models.Model):
     class SeverityChoices(models.TextChoices):
         DEBUG = "DEBUG", "Debug"

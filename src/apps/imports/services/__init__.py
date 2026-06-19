@@ -2,6 +2,7 @@ from .job_extractor import ExtractedJob, JobExtractor
 from .company_upsert_service import CompanyUpsertService
 from .crawl_service import CrawlService
 from .job_sync_service import JobSyncService
+from .job_archive_service import JobArchiveService
 from .job_normalizer import CanonicalJobPayload, JobNormalizer
 from .listing_finder import ListingFinder, ListingPage
 from .monitoring_service import MonitoringService
@@ -38,6 +39,7 @@ __all__ = [
     "GreenhouseParser",
     "HandshakeParser",
     "JobNormalizer",
+    "JobArchiveService",
     "JobSyncService",
     "JobUpsertResult",
     "JobExtractor",

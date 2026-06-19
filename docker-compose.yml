@@ -50,7 +50,7 @@ services:
 
   celery-beat:
     build: .
-    command: celery -A config beat --loglevel=info
+    command: celery -A config beat --loglevel=info --schedule=/tmp/celerybeat-schedule
 
     env_file:
       - .env

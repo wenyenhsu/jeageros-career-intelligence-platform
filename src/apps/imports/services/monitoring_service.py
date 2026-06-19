@@ -8,7 +8,7 @@ from django.db.models import Avg, Count, Max
 from django.utils import timezone
 from django.utils.dateformat import format as date_format
 
-from apps.imports.models import CrawlRun, PipelineLog
+from apps.imports.models import CrawlRun, JobArchiveRun, PipelineLog
 
 logger = logging.getLogger(__name__)
 
@@ -244,6 +244,7 @@ class MonitoringService:
                 crawl_run_id=selected_run.id if selected_run else None,
             ),
             "analysis_pipeline": cls.analysis_pipeline(resume_run_id=resume_run_id),
+            "job_archives": cls.job_archives(limit=10),
             "recent_failures": cls._logs_to_dicts(list(recent_failures)),
             "top_error_sources": [
                 {
@@ -256,6 +257,13 @@ class MonitoringService:
             "selected_crawl_run_id": selected_run.id if selected_run else None,
             "invalid_crawl_run_id": bool(crawl_run_id and not selected_run),
         }
+
+    @classmethod
+    def job_archives(cls, limit=10):
+        return [
+            cls._job_archive_to_dict(archive_run)
+            for archive_run in JobArchiveRun.objects.all()[:limit]
+        ]
 
     @classmethod
     def analysis_pipeline(cls, resume_run_id=None):
@@ -522,6 +530,32 @@ class MonitoringService:
             }
         )
         return payload
+
+    @staticmethod
+    def _job_archive_to_dict(archive_run):
+        created_at = MonitoringService._display_timestamp(archive_run.created_at)
+        cutoff_at = MonitoringService._display_timestamp(archive_run.cutoff_at)
+        restored_at = MonitoringService._display_timestamp(archive_run.restored_at)
+        return {
+            "id": archive_run.id,
+            "created_at_datetime": created_at["datetime"],
+            "created_at_display": created_at["display"],
+            "created_at_title": created_at["title"],
+            "cutoff_at_datetime": cutoff_at["datetime"],
+            "cutoff_at_display": cutoff_at["display"],
+            "cutoff_at_title": cutoff_at["title"],
+            "restored_at_datetime": restored_at["datetime"],
+            "restored_at_display": restored_at["display"],
+            "restored_at_title": restored_at["title"],
+            "age_months": archive_run.age_months,
+            "jobs_archived": archive_run.jobs_archived,
+            "jobs_restored": archive_run.jobs_restored,
+            "status": archive_run.status,
+            "can_restore": (
+                archive_run.status != JobArchiveRun.StatusChoices.RESTORED
+                and archive_run.jobs_archived > 0
+            ),
+        }
 
     @classmethod
     def _logs_to_dicts(cls, logs):

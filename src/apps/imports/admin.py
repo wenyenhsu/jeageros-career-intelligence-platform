@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import CrawlRun, JobSource, PipelineLog
+from .models import CrawlRun, JobArchiveRun, JobSource, PipelineLog
 
 
 @admin.register(JobSource)
@@ -72,6 +72,33 @@ class CrawlRunAdmin(admin.ModelAdmin):
     @admin.display(description="Progress")
     def progress_percentage(self, obj):
         return f"{obj.progress_percentage:.2f}%"
+
+
+@admin.register(JobArchiveRun)
+class JobArchiveRunAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "status",
+        "age_months",
+        "jobs_archived",
+        "jobs_restored",
+        "cutoff_at",
+        "created_at",
+        "restored_at",
+    )
+    list_filter = ("status", "age_months", "created_at", "restored_at")
+    search_fields = ("payload", "error_text")
+    readonly_fields = (
+        "created_at",
+        "cutoff_at",
+        "age_months",
+        "jobs_archived",
+        "jobs_restored",
+        "status",
+        "payload",
+        "restored_at",
+        "error_text",
+    )
 
 
 @admin.register(PipelineLog)

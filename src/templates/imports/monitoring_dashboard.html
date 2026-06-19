@@ -263,6 +263,103 @@
   {% endif %}
 </section>
 
+<section id="job-archive" class="mb-5">
+  <div class="d-flex flex-column flex-md-row justify-content-between gap-3 align-items-md-end mb-3">
+    <div>
+      <h2 class="h5 mb-1">Job Archive</h2>
+      <p class="text-secondary mb-0">
+        Export and archive older jobs. Restoring archived jobs sets them back to active and refreshes their created time.
+      </p>
+    </div>
+    <form method="post" action="{% url 'job-archive-create' %}" class="d-flex flex-wrap gap-2 align-items-end">
+      {% csrf_token %}
+      <div>
+        <label class="form-label small text-secondary" for="archive-age-months">Created before</label>
+        <div class="input-group">
+          <input
+            id="archive-age-months"
+            class="form-control"
+            type="number"
+            name="age_months"
+            min="1"
+            max="120"
+            value="3"
+            aria-label="Archive jobs older than this many months"
+          >
+          <span class="input-group-text">months ago</span>
+        </div>
+      </div>
+      <button class="btn btn-outline-danger" type="submit">Archive jobs</button>
+    </form>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>Created</th>
+          <th>Cutoff</th>
+          <th>Age</th>
+          <th>Status</th>
+          <th class="text-end">Archived</th>
+          <th class="text-end">Restored</th>
+          <th>Restored at</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for archive in job_archives %}
+          <tr>
+            <td class="text-nowrap">
+              <time datetime="{{ archive.created_at_datetime }}" title="{{ archive.created_at_title }}">
+                {{ archive.created_at_display }}
+              </time>
+            </td>
+            <td class="text-nowrap">
+              <time datetime="{{ archive.cutoff_at_datetime }}" title="{{ archive.cutoff_at_title }}">
+                {{ archive.cutoff_at_display }}
+              </time>
+            </td>
+            <td>{{ archive.age_months }} months</td>
+            <td>
+              <span class="badge {% if archive.status == 'RESTORED' %}text-bg-success{% elif archive.status == 'FAILED' %}text-bg-danger{% else %}text-bg-secondary{% endif %}">
+                {{ archive.status }}
+              </span>
+            </td>
+            <td class="text-end">{{ archive.jobs_archived }}</td>
+            <td class="text-end">{{ archive.jobs_restored }}</td>
+            <td class="text-nowrap">
+              {% if archive.restored_at_datetime %}
+                <time datetime="{{ archive.restored_at_datetime }}" title="{{ archive.restored_at_title }}">
+                  {{ archive.restored_at_display }}
+                </time>
+              {% else %}
+                <span class="text-secondary">-</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              <div class="d-inline-flex flex-wrap gap-2 justify-content-end">
+                <a class="btn btn-sm btn-outline-secondary" href="{% url 'job-archive-download' archive.id %}">Download</a>
+                <form method="post" action="{% url 'job-archive-restore' archive.id %}">
+                  {% csrf_token %}
+                  <button class="btn btn-sm btn-outline-primary" type="submit" {% if not archive.can_restore %}disabled{% endif %}>
+                    Restore
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="8" class="text-secondary">
+              No job archives yet. Choose an age threshold and archive old jobs when you are ready.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
 <section class="mb-5">
   <h2 class="h5 mb-3">Top Error Sources</h2>
   <div class="table-responsive">
