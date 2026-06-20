@@ -1,6 +1,7 @@
 import re
 
 from django.db import models
+from pgvector.django import VectorField
 
 from apps.common.models import TimeStampedModel
 
@@ -12,6 +13,7 @@ class SkillSet(TimeStampedModel):
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
     auto_created = models.BooleanField(default=False)
+    embedding = VectorField(dimensions=1024, null=True, blank=True)
 
     class Meta:
         ordering = ["name"]
@@ -194,6 +196,26 @@ class SkillKeyword(TimeStampedModel):
 
     def __str__(self):
         return f"{self.raw_text} -> {self.skill_set.name}"
+
+
+class SkillAlias(TimeStampedModel):
+    alias = models.CharField(max_length=120, unique=True, db_index=True)
+    skill = models.ForeignKey(
+        SkillSet,
+        on_delete=models.CASCADE,
+        related_name="skill_aliases",
+    )
+
+    class Meta:
+        ordering = ["alias"]
+        verbose_name_plural = "skill aliases"
+
+    def save(self, *args, **kwargs):
+        self.alias = re.sub(r"\s+", " ", str(self.alias or "")).strip()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.alias} -> {self.skill.name}"
 
 
 class SkillAttachmentSource(models.TextChoices):

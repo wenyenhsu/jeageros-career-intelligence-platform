@@ -192,7 +192,7 @@ def _queue_resume_analysis(request, filters):
         _serializable_filters(filters),
     )
     if getattr(settings, "RESUME_ANALYSIS_RUN_INLINE", False):
-        payload = _run_resume_analysis_job(*args)
+        payload = _run_resume_analysis_job(*args, close_connections=False)
         if payload:
             request.session["resume_analysis_result"] = payload["result"]
             request.session["resume_analysis_status"] = payload["status"]
@@ -216,8 +216,10 @@ def _run_resume_analysis_job(
     resume_text,
     attachment,
     filters,
+    close_connections=True,
 ):
-    close_old_connections()
+    if close_connections:
+        close_old_connections()
     try:
         skill_service = SkillAnalyticsService()
         resume_service = ResumeAnalyticsService(skill_service=skill_service)
@@ -287,7 +289,8 @@ def _run_resume_analysis_job(
             status=PipelineLog.StatusChoices.FAILED,
         )
     finally:
-        close_old_connections()
+        if close_connections:
+            close_old_connections()
 
 
 def _store_resume_analysis_payload(

@@ -10,6 +10,7 @@ from apps.analytics.services.resume_analytics_service import ResumeAnalysisError
 from apps.companies.models import Company
 from apps.jobs.models import JobPost
 from apps.skills.models import JobPostSkill, SkillSet
+from apps.skills.services.normalizer import SkillMappingResult as RAGMappingResult
 
 
 class FakeExtractor:
@@ -44,6 +45,28 @@ class FakeVerifier:
             "verified_skills": accepted,
             "rejected_skills": self.rejected,
         }
+
+
+class FakeRAGPipeline:
+    def __init__(self, results):
+        self.results = results
+        self.calls = []
+
+    def map_skills(self, raw_skills):
+        self.calls.append(list(raw_skills))
+        return [
+            self.results.get(
+                raw_skill,
+                RAGMappingResult(
+                    original=raw_skill,
+                    canonical=None,
+                    confidence=0.0,
+                    source="unresolved",
+                    reason="No test mapping.",
+                ),
+            )
+            for raw_skill in raw_skills
+        ]
 
 
 @pytest.mark.django_db
@@ -102,6 +125,46 @@ def test_resume_analysis_matches_jobs_and_market_direction():
     ]
     assert result["metadata"]["candidate_count"] == 3
     assert result["metadata"]["verified_count"] == 3
+
+
+@pytest.mark.django_db
+def test_resume_analysis_uses_rag_for_unmapped_verified_skills():
+    company = Company.objects.create(name="OpenAI")
+    machine_learning = SkillSet.objects.create(name="Machine Learning")
+    job = JobPost.objects.create(company=company, title="ML Engineer")
+    JobPostSkill.objects.create(
+        job_post=job,
+        skill_set=machine_learning,
+        score=90,
+    )
+    rag_pipeline = FakeRAGPipeline(
+        {
+            "AI & LLM Engineering": RAGMappingResult(
+                original="AI & LLM Engineering",
+                canonical="Machine Learning",
+                confidence=0.91,
+                source="rag",
+                reason="Mapped through retrieved catalog candidates.",
+            )
+        }
+    )
+    service = ResumeAnalyticsService(
+        extractor=FakeExtractor(
+            [{"name": "AI & LLM Engineering", "source": "resume"}]
+        ),
+        verifier=FakeVerifier(),
+        rag_pipeline=rag_pipeline,
+    )
+
+    result = service.analyze_resume("Built AI and LLM systems")
+
+    assert rag_pipeline.calls == [["AI & LLM Engineering"]]
+    assert result["mapped_skills"] == [
+        {"skillset_id": machine_learning.id, "name": "Machine Learning"}
+    ]
+    assert result["unmapped_keywords"] == []
+    assert result["job_matches"][0]["title"] == "ML Engineer"
+    assert result["metadata"]["mapped_count"] == 1
 
 
 @pytest.mark.django_db

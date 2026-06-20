@@ -1,0 +1,88 @@
+{
+  "expected": [
+    "Python",
+    "SQL",
+    "JavaScript",
+    "Hadoop",
+    "Power BI"
+  ],
+  "expected_mapped": [
+    "Python",
+    "SQL",
+    "JavaScript",
+    "Hadoop",
+    "Power BI"
+  ],
+  "optional": [
+    "MySQL",
+    "Java",
+    "Git",
+    "Linux",
+    "Bash",
+    "PowerShell",
+    "TensorFlow",
+    "Scikit-learn",
+    "PyTorch",
+    "Matplotlib",
+    "Seaborn",
+    "BeautifulSoup",
+    "Tableau",
+    "VMware",
+    "Ignition SCADA",
+    "Tenable OT",
+    "HighByte",
+    "CyberArk",
+    "Data Modeling"
+  ],
+  "expected_any_of": {
+    "programming_language": [
+      "Python",
+      "Java",
+      "JavaScript"
+    ],
+    "database": [
+      "SQL",
+      "MySQL"
+    ],
+    "data_stack": [
+      "Hadoop",
+      "TensorFlow",
+      "Scikit-learn",
+      "PyTorch",
+      "Power BI",
+      "Tableau"
+    ],
+    "systems_or_security": [
+      "Linux",
+      "Bash",
+      "PowerShell",
+      "VMware",
+      "Tenable OT",
+      "CyberArk"
+    ]
+  },
+  "reject": [
+    "Communication",
+    "Team player",
+    "Job seeker",
+    "Problem solving",
+    "Leadership"
+  ],
+  "normalize": {
+    "Python Programming": "Python",
+    "Java programming": "Java",
+    "SQL (MySQL)": "SQL"
+  },
+  "split": {
+    "SQL (MySQL)": [
+      "SQL",
+      "MySQL"
+    ]
+  },
+  "minimum": {
+    "verified_count": 10,
+    "mapped_count": 5,
+    "job_match_count": 1
+  },
+  "notes": "Core expected skills are intentionally narrow. Optional skills are monitored for stability but do not fail the regression by themselves."
+}

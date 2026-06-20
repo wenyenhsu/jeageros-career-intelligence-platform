@@ -30,7 +30,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements/ /app/requirements/
-RUN pip install --no-cache-dir -r /app/requirements/base.txt && \
+ARG REQUIREMENTS_FILE=base.txt
+RUN pip install --no-cache-dir -r /app/requirements/${REQUIREMENTS_FILE} && \
     pip install --no-cache-dir gunicorn==23.0.0
 
 COPY . /app

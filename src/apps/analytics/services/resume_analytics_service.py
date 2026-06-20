@@ -10,7 +10,13 @@ from apps.imports.services.monitoring_service import MonitoringService
 from apps.skills.models import SkillSet
 from apps.skills.services.ollama_extractor import OllamaExtractor, SkillExtractionError
 from apps.skills.services.ollama_verifier import OllamaVerifier
-from apps.skills.services.skillset_mapper import SkillSetMapper
+from apps.skills.services.skill_rag_pipeline import SkillRAGPipeline
+from apps.skills.services.skillset_mapper import (
+    MappedSkill,
+    SkillMappingResult,
+    SkillSetMapper,
+    UnmappedSkill,
+)
 
 from .skill_analytics_service import SkillAnalyticsService
 
@@ -28,10 +34,18 @@ class ResumeAnalyticsService:
     text_extensions = {".txt", ".text", ".md", ".markdown"}
     supported_attachment_extensions = text_extensions | {".pdf", ".docx"}
 
-    def __init__(self, extractor=None, verifier=None, mapper=None, skill_service=None):
+    def __init__(
+        self,
+        extractor=None,
+        verifier=None,
+        mapper=None,
+        rag_pipeline=None,
+        skill_service=None,
+    ):
         self.extractor = extractor or OllamaExtractor()
         self.verifier = verifier or OllamaVerifier()
         self.mapper = mapper or SkillSetMapper(auto_create=False)
+        self.rag_pipeline = rag_pipeline or SkillRAGPipeline()
         self.skill_service = skill_service or SkillAnalyticsService()
 
     def analyze_resume(
@@ -157,6 +171,7 @@ class ResumeAnalyticsService:
                 source_job_identifier="resume-analysis",
                 model_name=getattr(self.verifier, "model", ""),
             )
+            mapping_result = self._augment_mapping_with_rag(mapping_result)
             mapped_skills = self._mapped_skills(mapping_result)
             unmapped_keywords = self._unmapped_skills(mapping_result)
             resume_skill_ids = {skill["skillset_id"] for skill in mapped_skills}
@@ -168,7 +183,10 @@ class ResumeAnalyticsService:
                 started=stage_started,
                 message="Verified skills mapped to the SkillSet catalog.",
                 count=len(mapped_skills),
-                metadata={"unmapped_count": len(unmapped_keywords)},
+                metadata={
+                    "unmapped_count": len(unmapped_keywords),
+                    **(mapping_result.metadata.get("rag_pipeline") or {}),
+                },
             )
             current_stage = None
 
@@ -643,6 +661,97 @@ class ResumeAnalyticsService:
         total_seconds = max(0, round((duration_ms or 0) / 1000))
         minutes, seconds = divmod(total_seconds, 60)
         return f"{minutes}:{seconds:02d}"
+
+    def _augment_mapping_with_rag(self, mapping_result):
+        """Give unresolved verified resume skills a RAG mapping pass.
+
+        The existing SkillSetMapper remains the deterministic first pass for
+        names, aliases, and SkillKeyword records. RAG only sees verified skills
+        that were still unmapped, then may map them back to existing SkillSet
+        records. It never creates new canonical skills.
+        """
+        unresolved = [
+            item.name
+            for item in mapping_result.unmapped
+            if item.reason == "no matching SkillSet"
+        ]
+        if not unresolved:
+            return mapping_result
+
+        rag_results = self.rag_pipeline.map_skills(unresolved)
+        matched = list(mapping_result.matched)
+        unmapped = list(mapping_result.unmapped)
+        keywords = list(mapping_result.keywords)
+        metadata = dict(mapping_result.metadata)
+
+        seen_skill_ids = {skill.skillset_id for skill in matched}
+        rag_matched_keys = set()
+        rag_unmapped = []
+        rag_sources = {}
+
+        for result in rag_results:
+            source = getattr(result, "source", "") or "rag"
+            rag_sources[source] = rag_sources.get(source, 0) + 1
+            canonical = getattr(result, "canonical", None)
+            original = getattr(result, "original", "")
+            if not canonical:
+                rag_unmapped.append(
+                    UnmappedSkill(
+                        name=original,
+                        reason=getattr(result, "reason", "") or "RAG unresolved",
+                    )
+                )
+                continue
+
+            skillset = SkillSet.objects.filter(
+                normalized_name=SkillSet.normalize_name(canonical)
+            ).first()
+            if not skillset:
+                rag_unmapped.append(
+                    UnmappedSkill(
+                        name=original,
+                        reason=f"RAG suggested {canonical}, but no SkillSet exists.",
+                    )
+                )
+                continue
+
+            rag_matched_keys.add(SkillSet.normalize_name(original))
+            if skillset.id in seen_skill_ids:
+                continue
+            seen_skill_ids.add(skillset.id)
+            matched.append(
+                MappedSkill(
+                    name=skillset.name,
+                    skillset_id=skillset.id,
+                    created=False,
+                )
+            )
+
+        unmapped = [
+            item
+            for item in unmapped
+            if SkillSet.normalize_name(item.name) not in rag_matched_keys
+        ]
+        seen_unmapped = {SkillSet.normalize_name(item.name) for item in unmapped}
+        for item in rag_unmapped:
+            key = SkillSet.normalize_name(item.name)
+            if not key or key in seen_unmapped or key in rag_matched_keys:
+                continue
+            seen_unmapped.add(key)
+            unmapped.append(item)
+
+        metadata["rag_pipeline"] = {
+            "rag_attempted_count": len(rag_results),
+            "rag_mapped_count": len(rag_matched_keys),
+            "rag_unmapped_count": len(rag_unmapped),
+            "rag_sources": rag_sources,
+        }
+        return SkillMappingResult(
+            matched=matched,
+            unmapped=unmapped,
+            keywords=keywords,
+            metadata=metadata,
+        )
 
     @staticmethod
     def _mapped_skills(mapping_result):

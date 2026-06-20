@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import ApplicationSkill, JobPostSkill, SkillKeyword, SkillSet
+from .models import ApplicationSkill, JobPostSkill, SkillAlias, SkillKeyword, SkillSet
 
 
 class SkillKeywordInline(admin.TabularInline):
@@ -16,12 +16,19 @@ class SkillKeywordInline(admin.TabularInline):
     readonly_fields = ("normalized_text",)
 
 
+class SkillAliasInline(admin.TabularInline):
+    model = SkillAlias
+    extra = 0
+    fields = ("alias",)
+
+
 @admin.register(SkillSet)
 class SkillSetAdmin(admin.ModelAdmin):
-    inlines = (SkillKeywordInline,)
+    inlines = (SkillKeywordInline, SkillAliasInline)
     list_display = (
         "name",
         "normalized_name",
+        "has_embedding",
         "is_active",
         "auto_created",
         "created_at",
@@ -32,10 +39,15 @@ class SkillSetAdmin(admin.ModelAdmin):
         "name",
         "normalized_name",
         "aliases",
+        "skill_aliases__alias",
         "keywords__raw_text",
         "keywords__normalized_text",
     )
     readonly_fields = ("normalized_name", "created_at", "updated_at")
+
+    @admin.display(boolean=True, description="Embedding")
+    def has_embedding(self, obj):
+        return obj.embedding is not None
 
 
 @admin.register(SkillKeyword)
@@ -59,6 +71,14 @@ class SkillKeywordAdmin(admin.ModelAdmin):
     )
     readonly_fields = ("normalized_text", "created_at", "updated_at")
     autocomplete_fields = ("skill_set",)
+
+
+@admin.register(SkillAlias)
+class SkillAliasAdmin(admin.ModelAdmin):
+    list_display = ("alias", "skill", "created_at", "updated_at")
+    search_fields = ("alias", "skill__name", "skill__normalized_name")
+    readonly_fields = ("created_at", "updated_at")
+    autocomplete_fields = ("skill",)
 
 
 @admin.register(JobPostSkill)

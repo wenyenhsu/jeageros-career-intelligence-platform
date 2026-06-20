@@ -1,6 +1,9 @@
 services:
   web:
-    build: .
+    build:
+      context: .
+      args:
+        REQUIREMENTS_FILE: dev.txt
     command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
 
     env_file:
@@ -26,7 +29,10 @@ services:
       - redis
 
   celery-worker:
-    build: .
+    build:
+      context: .
+      args:
+        REQUIREMENTS_FILE: dev.txt
     command: celery -A config worker --loglevel=info
 
     env_file:
@@ -49,7 +55,10 @@ services:
       - redis
 
   celery-beat:
-    build: .
+    build:
+      context: .
+      args:
+        REQUIREMENTS_FILE: dev.txt
     command: celery -A config beat --loglevel=info --schedule=/tmp/celerybeat-schedule
 
     env_file:
@@ -81,7 +90,7 @@ services:
       - web
 
   db:
-    image: postgres:15
+    image: pgvector/pgvector:pg15
 
     environment:
       POSTGRES_DB: jaegeros

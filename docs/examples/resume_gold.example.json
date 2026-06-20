@@ -1,0 +1,64 @@
+{
+  "expected": [
+    "Python",
+    "SQL",
+    "JavaScript"
+  ],
+  "expected_mapped": [
+    "Python",
+    "SQL"
+  ],
+  "optional": [
+    "MySQL",
+    "Git",
+    "Linux",
+    "Bash",
+    "PowerShell",
+    "Hadoop",
+    "TensorFlow",
+    "Scikit-learn",
+    "Matplotlib",
+    "Power BI",
+    "Tableau"
+  ],
+  "expected_any_of": {
+    "database": [
+      "SQL",
+      "MySQL",
+      "PostgreSQL"
+    ],
+    "programming": [
+      "Python",
+      "Java",
+      "JavaScript"
+    ],
+    "data_tooling": [
+      "Hadoop",
+      "TensorFlow",
+      "Scikit-learn",
+      "Power BI",
+      "Tableau"
+    ]
+  },
+  "reject": [
+    "Communication",
+    "Team player",
+    "Job seeker"
+  ],
+  "normalize": {
+    "Python Programming": "Python",
+    "Java programming": "Java"
+  },
+  "split": {
+    "SQL (MySQL)": [
+      "SQL",
+      "MySQL"
+    ]
+  },
+  "minimum": {
+    "verified_count": 8,
+    "mapped_count": 3,
+    "job_match_count": 1
+  },
+  "notes": "Edit this file to match the one resume you trust as the gold sample."
+}
