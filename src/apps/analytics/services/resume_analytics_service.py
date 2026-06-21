@@ -21,6 +21,7 @@ from apps.skills.services.skillset_mapper import (
 
 from .skill_analytics_service import SkillAnalyticsService
 from .skill_candidate_service import SkillCandidateService
+from .market_fit_service import MarketFitService, calculate_market_fit
 from .resume_gap_service import ResumeGapService
 from .skill_demand_service import SkillDemandService
 
@@ -48,6 +49,7 @@ class ResumeAnalyticsService:
         demand_service=None,
         gap_service=None,
         candidate_service=None,
+        market_fit_service=None,
     ):
         self.extractor = extractor or OllamaExtractor()
         self.verifier = verifier or OllamaVerifier()
@@ -57,6 +59,7 @@ class ResumeAnalyticsService:
         self.demand_service = demand_service or SkillDemandService()
         self.gap_service = gap_service or ResumeGapService(self.demand_service)
         self.candidate_service = candidate_service or SkillCandidateService()
+        self.market_fit_service = market_fit_service or MarketFitService()
 
     def analyze_resume(
         self,
@@ -277,7 +280,10 @@ class ResumeAnalyticsService:
                     "mapped_count": len(mapped_skills),
                     "unmapped_count": len(unmapped_keywords),
                     "job_match_count": len(job_matches),
-                    "market_fit_percent": market_fit.get("fit_percent", 0),
+                    "market_fit_percent": market_fit.get(
+                        "market_fit",
+                        market_fit.get("fit_percent", 0),
+                    ),
                     "resume_run_id": run_id,
                 },
             }
@@ -410,58 +416,14 @@ class ResumeAnalyticsService:
         )[:limit]
 
     def _market_fit(self, resume_skill_ids, filters=None, limit=None):
-        demand_rows = self.demand_service.top_skills(limit=limit or self.default_market_limit)
-        if demand_rows:
-            market_skills = [
-                {
-                    "skillset_id": row["skillset_id"],
-                    "name": row["name"],
-                    "count": row["unique_jobs"],
-                    "average_score": None,
-                    "max_score": None,
-                    "demand_score": row["demand_score"],
-                    "rolling_30_day_count": row["rolling_30_day_count"],
-                }
-                for row in demand_rows
-            ]
-        else:
-            market_skills = self.skill_service.top_skills(
-                limit=limit or self.default_market_limit,
-                filters=filters,
-            )
-
-        if not market_skills:
-            return {
-                "fit_percent": 0,
-                "covered": [],
-                "missing": [],
-                "resume_only": [],
-                "market_profile": self.demand_service.build_market_profile(),
-            }
-
-        covered = [
-            skill for skill in market_skills if skill["skillset_id"] in resume_skill_ids
-        ]
-        missing = [
-            skill
-            for skill in market_skills
-            if skill["skillset_id"] not in resume_skill_ids
-        ]
-        market_skill_ids = {skill["skillset_id"] for skill in market_skills}
-        resume_only = list(
-            SkillSet.objects.filter(id__in=(resume_skill_ids - market_skill_ids))
-            .order_by("name")
-            .values("id", "name")
+        market_fit = self.market_fit_service.calculate(
+            resume_skill_ids,
+            top_demand_limit=limit or self.default_market_limit,
         )
-        return {
-            "fit_percent": round((len(covered) / len(market_skills)) * 100, 1),
-            "covered": covered,
-            "missing": missing,
-            "resume_only": [
-                {"skillset_id": row["id"], "name": row["name"]} for row in resume_only
-            ],
-            "market_profile": self.demand_service.build_market_profile(),
-        }
+        market_fit["market_profile"] = self.demand_service.build_market_profile(
+            limit=limit or self.default_market_limit,
+        )
+        return market_fit
 
     @staticmethod
     def _verified_skills(verification_result):

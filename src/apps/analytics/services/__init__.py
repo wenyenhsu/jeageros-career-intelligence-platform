@@ -2,6 +2,7 @@ from .company_analytics_service import CompanyAnalyticsService
 from .dashboard_service import DashboardService
 from .job_analytics_service import JobAnalyticsService
 from .resume_analytics_service import ResumeAnalyticsService
+from .market_fit_service import MarketFitService, calculate_market_fit
 from .resume_profile_service import ResumeProfileService, build_resume_profile
 from .resume_gap_service import ResumeGapService
 from .resume_tuning_service import ResumeTuningService
@@ -13,6 +14,7 @@ __all__ = [
     "CompanyAnalyticsService",
     "DashboardService",
     "JobAnalyticsService",
+    "MarketFitService",
     "ResumeAnalyticsService",
     "ResumeGapService",
     "ResumeProfileService",
@@ -22,5 +24,6 @@ __all__ = [
     "SkillDemandService",
     "build_market_profile",
     "build_resume_profile",
+    "calculate_market_fit",
     "update_skill_demand",
 ]

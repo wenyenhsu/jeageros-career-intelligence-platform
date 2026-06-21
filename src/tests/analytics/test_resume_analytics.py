@@ -108,12 +108,13 @@ def test_resume_analysis_matches_jobs_and_market_direction():
     ]
     assert result["job_matches"][0]["title"] == "Data Analyst"
     assert result["job_matches"][0]["match_percent"] == 100
-    assert {skill["name"] for skill in result["market_fit"]["covered"]} == {
+    assert {skill["name"] for skill in result["market_fit"]["matched_skills"]} == {
         "Python",
         "SQL",
     }
     assert any(
-        skill["name"] == "Django" for skill in result["market_fit"]["missing"]
+        skill["name"] == "Django"
+        for skill in result["market_fit"]["missing_skills"]
     )
     assert [step["key"] for step in result["pipeline_steps"]] == [
         "text_extraction",
