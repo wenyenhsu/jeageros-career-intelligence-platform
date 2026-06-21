@@ -1,6 +1,14 @@
 from django.contrib import admin
 
-from .models import ApplicationSkill, JobPostSkill, SkillAlias, SkillKeyword, SkillSet
+from .models import (
+    ApplicationSkill,
+    JobPostSkill,
+    SkillAlias,
+    SkillCategory,
+    SkillKeyword,
+    SkillRelationship,
+    SkillSet,
+)
 
 
 class SkillKeywordInline(admin.TabularInline):
@@ -79,6 +87,40 @@ class SkillAliasAdmin(admin.ModelAdmin):
     search_fields = ("alias", "skill__name", "skill__normalized_name")
     readonly_fields = ("created_at", "updated_at")
     autocomplete_fields = ("skill",)
+
+
+@admin.register(SkillCategory)
+class SkillCategoryAdmin(admin.ModelAdmin):
+    list_display = (
+        "name",
+        "parent",
+        "esco_uri",
+        "is_active",
+        "created_at",
+        "updated_at",
+    )
+    list_filter = ("is_active",)
+    search_fields = ("name", "normalized_name", "esco_uri")
+    readonly_fields = ("normalized_name", "created_at", "updated_at")
+    autocomplete_fields = ("parent",)
+
+
+@admin.register(SkillRelationship)
+class SkillRelationshipAdmin(admin.ModelAdmin):
+    list_display = (
+        "source_skill",
+        "relationship_type",
+        "target_skill",
+        "created_at",
+        "updated_at",
+    )
+    list_filter = ("relationship_type",)
+    search_fields = (
+        "source_skill__name",
+        "target_skill__name",
+    )
+    readonly_fields = ("created_at", "updated_at")
+    autocomplete_fields = ("source_skill", "target_skill")
 
 
 @admin.register(JobPostSkill)

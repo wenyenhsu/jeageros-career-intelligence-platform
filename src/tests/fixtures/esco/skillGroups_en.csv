@@ -1,0 +1,5 @@
+conceptUri,conceptType,preferredLabel,description
+http://data.europa.eu/esco/group/programming-languages,SkillGroup,Programming Languages,Languages used for software development
+http://data.europa.eu/esco/group/databases,SkillGroup,Databases,Database technologies
+http://data.europa.eu/esco/group/ai-ml,SkillGroup,AI / ML,Artificial intelligence and machine learning
+http://data.europa.eu/esco/group/cloud,SkillGroup,Cloud Computing,Cloud platforms and services

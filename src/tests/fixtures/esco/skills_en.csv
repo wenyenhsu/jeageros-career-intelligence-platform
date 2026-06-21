@@ -1,0 +1,9 @@
+conceptUri,conceptType,preferredLabel,altLabels,description
+http://data.europa.eu/esco/skill/python,KnowledgeSkillCompetence,Python,Py|Python programming,General-purpose programming language
+http://data.europa.eu/esco/skill/javascript,KnowledgeSkillCompetence,JavaScript,JS|ECMAScript,Scripting language for web development
+http://data.europa.eu/esco/skill/postgresql,KnowledgeSkillCompetence,PostgreSQL,Postgres,Open-source relational database
+http://data.europa.eu/esco/skill/drf,KnowledgeSkillCompetence,Django REST Framework,DRF,REST API framework for Django
+http://data.europa.eu/esco/skill/nlp,KnowledgeSkillCompetence,NLP,natural language processing,Natural language processing
+http://data.europa.eu/esco/skill/ml,KnowledgeSkillCompetence,Machine Learning,ML,Machine learning methods
+http://data.europa.eu/esco/skill/rag,KnowledgeSkillCompetence,RAG,retrieval augmented generation,Retrieval augmented generation
+http://data.europa.eu/esco/skill/ir,KnowledgeSkillCompetence,Information Retrieval,IR,Information retrieval techniques

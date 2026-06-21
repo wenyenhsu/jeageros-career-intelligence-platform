@@ -1,0 +1,3 @@
+originalSkillUri,relatedSkillUri,relationType
+http://data.europa.eu/esco/skill/nlp,http://data.europa.eu/esco/skill/ml,related
+http://data.europa.eu/esco/skill/rag,http://data.europa.eu/esco/skill/ir,related

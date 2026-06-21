@@ -1,0 +1,7 @@
+conceptUri,broaderUri
+http://data.europa.eu/esco/skill/python,http://data.europa.eu/esco/group/programming-languages
+http://data.europa.eu/esco/skill/javascript,http://data.europa.eu/esco/group/programming-languages
+http://data.europa.eu/esco/skill/postgresql,http://data.europa.eu/esco/group/databases
+http://data.europa.eu/esco/skill/nlp,http://data.europa.eu/esco/group/ai-ml
+http://data.europa.eu/esco/skill/ml,http://data.europa.eu/esco/group/ai-ml
+http://data.europa.eu/esco/group/programming-languages,http://data.europa.eu/esco/group/ai-ml

@@ -11,9 +11,21 @@ class SkillSet(TimeStampedModel):
     normalized_name = models.CharField(max_length=120, unique=True, db_index=True)
     aliases = models.JSONField(default=list, blank=True)
     description = models.TextField(blank=True)
+    esco_uri = models.CharField(
+        max_length=255,
+        unique=True,
+        null=True,
+        blank=True,
+        db_index=True,
+    )
     is_active = models.BooleanField(default=True)
     auto_created = models.BooleanField(default=False)
     embedding = VectorField(dimensions=1024, null=True, blank=True)
+    categories = models.ManyToManyField(
+        "SkillCategory",
+        blank=True,
+        related_name="skill_sets",
+    )
 
     class Meta:
         ordering = ["name"]
@@ -216,6 +228,81 @@ class SkillAlias(TimeStampedModel):
 
     def __str__(self):
         return f"{self.alias} -> {self.skill.name}"
+
+
+class SkillCategory(TimeStampedModel):
+    name = models.CharField(max_length=120)
+    normalized_name = models.CharField(max_length=120, db_index=True)
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="children",
+    )
+    esco_uri = models.CharField(
+        max_length=255,
+        unique=True,
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name_plural = "skill categories"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["parent", "normalized_name"],
+                name="unique_skill_category_per_parent",
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        self.normalized_name = SkillSet.normalize_name(self.name)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+
+class SkillRelationship(TimeStampedModel):
+    class RelationshipType(models.TextChoices):
+        BROADER = "broader", "Broader"
+        NARROWER = "narrower", "Narrower"
+        RELATED = "related", "Related"
+
+    source_skill = models.ForeignKey(
+        SkillSet,
+        on_delete=models.CASCADE,
+        related_name="outgoing_relationships",
+    )
+    target_skill = models.ForeignKey(
+        SkillSet,
+        on_delete=models.CASCADE,
+        related_name="incoming_relationships",
+    )
+    relationship_type = models.CharField(
+        max_length=20,
+        choices=RelationshipType.choices,
+    )
+
+    class Meta:
+        ordering = ["source_skill__name", "relationship_type", "target_skill__name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source_skill", "target_skill", "relationship_type"],
+                name="unique_skill_relationship",
+            )
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.source_skill.name} -[{self.relationship_type}]-> "
+            f"{self.target_skill.name}"
+        )
 
 
 class SkillAttachmentSource(models.TextChoices):

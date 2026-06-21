@@ -5,7 +5,7 @@ from typing import Any
 
 from django.db import IntegrityError, transaction
 
-from apps.skills.models import SkillKeyword, SkillSet
+from apps.skills.models import SkillAlias, SkillKeyword, SkillSet
 
 from .ollama_verifier import SkillVerificationResult, VerifiedSkill
 
@@ -366,6 +366,17 @@ class SkillSetMapper:
                         match_type="alias",
                     ),
                 )
+        for alias_record in SkillAlias.objects.select_related("skill").all():
+            normalized_alias = SkillSet.normalize_name(alias_record.alias)
+            if not normalized_alias:
+                continue
+            index.setdefault(
+                normalized_alias,
+                SkillSetMapper._match_payload(
+                    skillset=alias_record.skill,
+                    match_type="skill_alias",
+                ),
+            )
         return index
 
     @staticmethod
