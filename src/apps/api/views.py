@@ -6,7 +6,10 @@ from django.db.models import Q
 from apps.analytics.services import (
     CompanyAnalyticsService,
     JobAnalyticsService,
+    ResumeGapService,
     SkillAnalyticsService,
+    SkillDemandService,
+    SkillCandidateService,
 )
 from apps.applications.models import Application
 from apps.applications.search import filter_applications_for_search
@@ -304,6 +307,119 @@ def analytics_job_categories(request):
 def analytics_application_comparison(request, pk):
     service = SkillAnalyticsService()
     return Response(service.application_skill_comparison(application_id=pk))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def analytics_demand_top_skills(request):
+    service = SkillDemandService()
+    return Response(
+        {"results": service.top_skills(limit=_limit_from_request(request))}
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def analytics_demand_emerging(request):
+    service = SkillDemandService()
+    return Response(
+        {"results": service.top_emerging_skills(limit=_limit_from_request(request))}
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def analytics_demand_trending(request):
+    service = SkillDemandService()
+    trend_type = request.query_params.get("trend_type", "").strip() or None
+    return Response(
+        {
+            "results": service.trending_skills(
+                limit=_limit_from_request(request),
+                trend_type=trend_type,
+            )
+        }
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def analytics_demand_categories(request):
+    service = SkillDemandService()
+    return Response(
+        {
+            "market_profile": service.build_market_profile(),
+            "results": service.top_categories(limit=_limit_from_request(request)),
+        }
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def analytics_demand_ai_skills(request):
+    service = SkillDemandService()
+    return Response(
+        {"results": service.most_requested_ai_skills(limit=_limit_from_request(request))}
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def analytics_demand_cloud_skills(request):
+    service = SkillDemandService()
+    return Response(
+        {
+            "results": service.most_requested_cloud_skills(
+                limit=_limit_from_request(request)
+            )
+        }
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def analytics_demand_data_skills(request):
+    service = SkillDemandService()
+    return Response(
+        {
+            "results": service.most_requested_data_skills(
+                limit=_limit_from_request(request)
+            )
+        }
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def analytics_demand_candidates(request):
+    service = SkillCandidateService()
+    return Response({"results": service.flagged_candidates(limit=_limit_from_request(request, 50))})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def analytics_resume_gap(request):
+    skillset_ids = request.query_params.get("skillset_ids", "")
+    if not skillset_ids.strip():
+        return Response({"detail": "skillset_ids is required."}, status=400)
+    resume_ids = []
+    for piece in skillset_ids.split(","):
+        piece = piece.strip()
+        if not piece:
+            continue
+        try:
+            resume_ids.append(int(piece))
+        except ValueError:
+            continue
+    if not resume_ids:
+        return Response({"detail": "No valid skillset_ids provided."}, status=400)
+    service = ResumeGapService()
+    return Response(
+        service.analyze_resume_gap(
+            resume_skill_ids=resume_ids,
+            limit=_limit_from_request(request, 15),
+        )
+    )
 
 
 def _limit_from_request(request, default=10):

@@ -311,7 +311,7 @@ def test_company_sync_does_not_close_missing_jobs_within_same_source_scope(compa
 
 
 @pytest.mark.django_db
-def test_company_sync_closes_job_when_source_reports_not_accepting(company):
+def test_company_sync_preserves_active_when_source_reports_not_accepting(company):
     job = JobPost.objects.create(
         company=company,
         title="Data Engineer",
@@ -341,12 +341,12 @@ def test_company_sync_closes_job_when_source_reports_not_accepting(company):
     job.refresh_from_db()
     assert result.jobs_created == 0
     assert result.jobs_updated == 1
-    assert result.jobs_closed == 1
-    assert job.status == JobPost.StatusChoices.CLOSED
+    assert result.jobs_closed == 0
+    assert job.status == JobPost.StatusChoices.ACTIVE
 
 
 @pytest.mark.django_db
-def test_company_sync_closes_job_when_source_url_is_invalid(company):
+def test_company_sync_preserves_active_when_source_url_is_invalid(company):
     job = JobPost.objects.create(
         company=company,
         title="Backend Engineer",
@@ -374,8 +374,8 @@ def test_company_sync_closes_job_when_source_url_is_invalid(company):
     )
 
     job.refresh_from_db()
-    assert result.jobs_closed == 1
-    assert job.status == JobPost.StatusChoices.CLOSED
+    assert result.jobs_closed == 0
+    assert job.status == JobPost.StatusChoices.ACTIVE
 
 
 @pytest.mark.django_db
@@ -453,7 +453,7 @@ def test_company_sync_does_not_close_on_transient_source_unavailable(company):
 
 
 @pytest.mark.django_db
-def test_company_sync_reopens_closed_job_when_source_reports_active(company):
+def test_company_sync_preserves_manual_closed_status(company):
     job = JobPost.objects.create(
         company=company,
         title="Backend Engineer",
@@ -482,7 +482,7 @@ def test_company_sync_reopens_closed_job_when_source_reports_active(company):
 
     job.refresh_from_db()
     assert result.jobs_closed == 0
-    assert job.status == JobPost.StatusChoices.ACTIVE
+    assert job.status == JobPost.StatusChoices.CLOSED
 
 
 @pytest.mark.django_db

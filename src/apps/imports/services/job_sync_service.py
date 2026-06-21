@@ -12,58 +12,60 @@ from .sync_result import JobUpsertResult, SyncResult
 
 
 class JobSyncService:
-    CLOSED_METADATA_BOOLEAN_KEYS = {
-        "closed_by_source",
-        "is_closed",
-        "job_closed",
-        "job_removed",
-        "job_expired",
-        "job_url_invalid",
-        "link_invalid",
-        "no_longer_accepting",
-        "no_longer_accepting_applications",
-        "no_longer_recruiting",
-        "not_accepting_applications",
-        "posting_removed",
-        "source_confirms_closed",
-        "source_reports_closed",
-        "source_url_invalid",
-        "url_invalid",
-    }
-    CLOSED_POSTING_STATUS_KEYS = {
-        "availability",
-        "job_status",
-        "posting_status",
-        "status",
-    }
-    CLOSED_POSTING_STATUS_VALUES = {
-        "closed",
-        "expired",
-        "inactive",
-        "no longer accepting",
-        "no longer accepting applications",
-        "no longer recruiting",
-        "not accepting",
-        "not accepting applications",
-        "posting removed",
-        "removed",
-    }
-    CLOSED_LINK_STATUS_KEYS = {
-        "job_url_status",
-        "link_status",
-        "source_url_status",
-        "url_status",
-    }
-    CLOSED_LINK_STATUS_VALUES = {
-        "404",
-        "410",
-        "gone",
-        "invalid",
-        "link invalid",
-        "not found",
-        "removed",
-        "url invalid",
-    }
+    # Auto close detection is disabled; status is manual-only for now.
+    # Restore the three categories below when re-enabling automatic closed/active sync.
+    # CLOSED_METADATA_BOOLEAN_KEYS = {
+    #     "closed_by_source",
+    #     "is_closed",
+    #     "job_closed",
+    #     "job_removed",
+    #     "job_expired",
+    #     "job_url_invalid",
+    #     "link_invalid",
+    #     "no_longer_accepting",
+    #     "no_longer_accepting_applications",
+    #     "no_longer_recruiting",
+    #     "not_accepting_applications",
+    #     "posting_removed",
+    #     "source_confirms_closed",
+    #     "source_reports_closed",
+    #     "source_url_invalid",
+    #     "url_invalid",
+    # }
+    # CLOSED_POSTING_STATUS_KEYS = {
+    #     "availability",
+    #     "job_status",
+    #     "posting_status",
+    #     "status",
+    # }
+    # CLOSED_POSTING_STATUS_VALUES = {
+    #     "closed",
+    #     "expired",
+    #     "inactive",
+    #     "no longer accepting",
+    #     "no longer accepting applications",
+    #     "no longer recruiting",
+    #     "not accepting",
+    #     "not accepting applications",
+    #     "posting removed",
+    #     "removed",
+    # }
+    # CLOSED_LINK_STATUS_KEYS = {
+    #     "job_url_status",
+    #     "link_status",
+    #     "source_url_status",
+    #     "url_status",
+    # }
+    # CLOSED_LINK_STATUS_VALUES = {
+    #     "404",
+    #     "410",
+    #     "gone",
+    #     "invalid",
+    #     "link invalid",
+    #     "not found",
+    #     "removed",
+    #     "url invalid",
+    # }
     CANONICAL_KEYS = {
         "source",
         "source_url",
@@ -294,6 +296,8 @@ class JobSyncService:
             existing_value = getattr(job, field_name, "")
             if incoming_value in (None, "") and existing_value not in (None, ""):
                 fields[field_name] = existing_value
+        # Manual status only until auto close detection is restored.
+        fields["status"] = job.status
         return fields
 
     @classmethod
@@ -330,48 +334,46 @@ class JobSyncService:
 
     @classmethod
     def _job_status_from_data(cls, data):
-        metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
-        if cls._metadata_indicates_closed(metadata):
-            return JobPost.StatusChoices.CLOSED
+        # New jobs default to ACTIVE; existing jobs keep manual status during sync.
         return JobPost.StatusChoices.ACTIVE
 
-    @classmethod
-    def _metadata_indicates_closed(cls, metadata):
-        if not isinstance(metadata, dict):
-            return False
-
-        for key, value in metadata.items():
-            normalized_key = cls._normalize_metadata_key(key)
-            if normalized_key in cls.CLOSED_METADATA_BOOLEAN_KEYS and cls._is_truthy(
-                value
-            ):
-                return True
-            if normalized_key in cls.CLOSED_POSTING_STATUS_KEYS:
-                normalized_value = cls._normalize_metadata_value(value)
-                if normalized_value in cls.CLOSED_POSTING_STATUS_VALUES:
-                    return True
-            if normalized_key in cls.CLOSED_LINK_STATUS_KEYS:
-                normalized_value = cls._normalize_metadata_value(value)
-                if normalized_value in cls.CLOSED_LINK_STATUS_VALUES:
-                    return True
-
-        return False
-
-    @staticmethod
-    def _normalize_metadata_key(value):
-        return str(value).strip().casefold().replace("-", "_").replace(" ", "_")
-
-    @staticmethod
-    def _normalize_metadata_value(value):
-        return " ".join(str(value).strip().casefold().replace("_", " ").split())
-
-    @staticmethod
-    def _is_truthy(value):
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, str):
-            return value.strip().casefold() in {"1", "true", "yes", "y"}
-        return bool(value)
+    # @classmethod
+    # def _metadata_indicates_closed(cls, metadata):
+    #     if not isinstance(metadata, dict):
+    #         return False
+    #
+    #     for key, value in metadata.items():
+    #         normalized_key = cls._normalize_metadata_key(key)
+    #         if normalized_key in cls.CLOSED_METADATA_BOOLEAN_KEYS and cls._is_truthy(
+    #             value
+    #         ):
+    #             return True
+    #         if normalized_key in cls.CLOSED_POSTING_STATUS_KEYS:
+    #             normalized_value = cls._normalize_metadata_value(value)
+    #             if normalized_value in cls.CLOSED_POSTING_STATUS_VALUES:
+    #                 return True
+    #         if normalized_key in cls.CLOSED_LINK_STATUS_KEYS:
+    #             normalized_value = cls._normalize_metadata_value(value)
+    #             if normalized_value in cls.CLOSED_LINK_STATUS_VALUES:
+    #                 return True
+    #
+    #     return False
+    #
+    # @staticmethod
+    # def _normalize_metadata_key(value):
+    #     return str(value).strip().casefold().replace("-", "_").replace(" ", "_")
+    #
+    # @staticmethod
+    # def _normalize_metadata_value(value):
+    #     return " ".join(str(value).strip().casefold().replace("_", " ").split())
+    #
+    # @staticmethod
+    # def _is_truthy(value):
+    #     if isinstance(value, bool):
+    #         return value
+    #     if isinstance(value, str):
+    #         return value.strip().casefold() in {"1", "true", "yes", "y"}
+    #     return bool(value)
 
     @staticmethod
     def _validate_job_data(data):

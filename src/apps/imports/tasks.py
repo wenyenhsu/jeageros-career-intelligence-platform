@@ -55,6 +55,15 @@ def crawl_all_sources(crawl_run_id=None, source_ids=None):
                 crawl_run_id=summary.get("crawl_run_id") or crawl_run_id,
                 metadata=summary,
             )
+            try:
+                from apps.analytics.services.skill_demand_service import (
+                    update_skill_demand,
+                )
+
+                demand_stats = update_skill_demand()
+                summary["skill_demand_update"] = demand_stats
+            except Exception as exc:
+                logger.warning("Skill demand update after crawl failed: %s", exc)
         return summary
     except Exception as exc:
         MonitoringService.log_failure(

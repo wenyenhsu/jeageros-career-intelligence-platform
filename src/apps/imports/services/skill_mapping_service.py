@@ -79,6 +79,14 @@ class SkillMappingService:
                 "created_skillset_ids": result.metadata.get("created_skillset_ids", []),
             },
         )
+        try:
+            from apps.analytics.services.skill_candidate_service import (
+                SkillCandidateService,
+            )
+
+            SkillCandidateService().record_unmapped_skills(result.unmapped)
+        except Exception:
+            pass
         return result
 
     def map_from_job_data(

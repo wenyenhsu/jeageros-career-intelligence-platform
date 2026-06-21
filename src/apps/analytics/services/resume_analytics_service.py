@@ -8,6 +8,7 @@ from zipfile import BadZipFile, ZipFile
 from apps.imports.models import PipelineLog
 from apps.imports.services.monitoring_service import MonitoringService
 from apps.skills.models import SkillSet
+from apps.analytics.models import SkillCandidate
 from apps.skills.services.ollama_extractor import OllamaExtractor, SkillExtractionError
 from apps.skills.services.ollama_verifier import OllamaVerifier
 from apps.skills.services.skill_rag_pipeline import SkillRAGPipeline
@@ -19,6 +20,9 @@ from apps.skills.services.skillset_mapper import (
 )
 
 from .skill_analytics_service import SkillAnalyticsService
+from .skill_candidate_service import SkillCandidateService
+from .resume_gap_service import ResumeGapService
+from .skill_demand_service import SkillDemandService
 
 logger = logging.getLogger(__name__)
 
@@ -41,12 +45,18 @@ class ResumeAnalyticsService:
         mapper=None,
         rag_pipeline=None,
         skill_service=None,
+        demand_service=None,
+        gap_service=None,
+        candidate_service=None,
     ):
         self.extractor = extractor or OllamaExtractor()
         self.verifier = verifier or OllamaVerifier()
         self.mapper = mapper or SkillSetMapper(auto_create=False)
         self.rag_pipeline = rag_pipeline or SkillRAGPipeline()
         self.skill_service = skill_service or SkillAnalyticsService()
+        self.demand_service = demand_service or SkillDemandService()
+        self.gap_service = gap_service or ResumeGapService(self.demand_service)
+        self.candidate_service = candidate_service or SkillCandidateService()
 
     def analyze_resume(
         self,
@@ -174,6 +184,10 @@ class ResumeAnalyticsService:
             mapping_result = self._augment_mapping_with_rag(mapping_result)
             mapped_skills = self._mapped_skills(mapping_result)
             unmapped_keywords = self._unmapped_skills(mapping_result)
+            self.candidate_service.record_unmapped_names(
+                [item.get("name") for item in unmapped_keywords],
+                source=SkillCandidate.SourceChoices.RESUME,
+            )
             resume_skill_ids = {skill["skillset_id"] for skill in mapped_skills}
             self._append_pipeline_step(
                 pipeline_steps,
@@ -231,6 +245,10 @@ class ResumeAnalyticsService:
                 filters=filters,
                 limit=market_limit,
             )
+            resume_gap = self.gap_service.analyze_resume_gap(
+                resume_skill_ids=resume_skill_ids,
+                limit=market_limit,
+            )
             self._append_pipeline_step(
                 pipeline_steps,
                 key="market_fit",
@@ -250,6 +268,7 @@ class ResumeAnalyticsService:
                 "unmapped_keywords": unmapped_keywords,
                 "job_matches": job_matches,
                 "market_fit": market_fit,
+                "resume_gap": resume_gap,
                 "pipeline_steps": pipeline_steps,
                 "metadata": {
                     "candidate_count": len(candidate_skills),
@@ -391,16 +410,33 @@ class ResumeAnalyticsService:
         )[:limit]
 
     def _market_fit(self, resume_skill_ids, filters=None, limit=None):
-        market_skills = self.skill_service.top_skills(
-            limit=limit or self.default_market_limit,
-            filters=filters,
-        )
+        demand_rows = self.demand_service.top_skills(limit=limit or self.default_market_limit)
+        if demand_rows:
+            market_skills = [
+                {
+                    "skillset_id": row["skillset_id"],
+                    "name": row["name"],
+                    "count": row["unique_jobs"],
+                    "average_score": None,
+                    "max_score": None,
+                    "demand_score": row["demand_score"],
+                    "rolling_30_day_count": row["rolling_30_day_count"],
+                }
+                for row in demand_rows
+            ]
+        else:
+            market_skills = self.skill_service.top_skills(
+                limit=limit or self.default_market_limit,
+                filters=filters,
+            )
+
         if not market_skills:
             return {
                 "fit_percent": 0,
                 "covered": [],
                 "missing": [],
                 "resume_only": [],
+                "market_profile": self.demand_service.build_market_profile(),
             }
 
         covered = [
@@ -424,6 +460,7 @@ class ResumeAnalyticsService:
             "resume_only": [
                 {"skillset_id": row["id"], "name": row["name"]} for row in resume_only
             ],
+            "market_profile": self.demand_service.build_market_profile(),
         }
 
     @staticmethod
