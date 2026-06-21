@@ -13,6 +13,7 @@ from django.urls import reverse
 from django.utils.html import format_html
 
 from apps.companies.models import Company
+from apps.analytics.serialization import make_json_serializable
 from apps.imports.models import PipelineLog
 from apps.imports.services.monitoring_service import MonitoringService
 
@@ -322,6 +323,7 @@ def _resume_analysis_session_payload(
 ):
     attachment_name = ""
     if analysis:
+        analysis = make_json_serializable(analysis)
         attachment_name = (analysis.get("metadata") or {}).get("attachment_name", "")
     return {
         "result": {

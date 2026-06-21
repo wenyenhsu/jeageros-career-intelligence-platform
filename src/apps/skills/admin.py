@@ -2,10 +2,14 @@ from django.contrib import admin
 
 from .models import (
     ApplicationSkill,
+    BusinessCategory,
     JobPostSkill,
+    MarketCategory,
     SkillAlias,
+    SkillBusinessCategory,
     SkillCategory,
     SkillKeyword,
+    SkillMarketCategory,
     SkillRelationship,
     SkillSet,
 )
@@ -121,6 +125,64 @@ class SkillRelationshipAdmin(admin.ModelAdmin):
     )
     readonly_fields = ("created_at", "updated_at")
     autocomplete_fields = ("source_skill", "target_skill")
+
+
+@admin.register(BusinessCategory)
+class BusinessCategoryAdmin(admin.ModelAdmin):
+    list_display = ("name", "slug", "parent", "is_active", "created_at")
+    list_filter = ("is_active",)
+    search_fields = ("name", "slug")
+    prepopulated_fields = {"slug": ("name",)}
+    autocomplete_fields = ("parent",)
+
+
+@admin.register(MarketCategory)
+class MarketCategoryAdmin(admin.ModelAdmin):
+    list_display = ("name", "slug", "parent", "is_active", "created_at")
+    list_filter = ("is_active",)
+    search_fields = ("name", "slug")
+    prepopulated_fields = {"slug": ("name",)}
+    autocomplete_fields = ("parent",)
+
+
+@admin.register(SkillBusinessCategory)
+class SkillBusinessCategoryAdmin(admin.ModelAdmin):
+    list_display = (
+        "skill",
+        "category",
+        "source",
+        "is_approved",
+        "confidence",
+        "updated_at",
+    )
+    list_filter = ("source", "is_approved", "category")
+    search_fields = ("skill__name", "category__name")
+    autocomplete_fields = ("skill", "category")
+    actions = ("approve_mappings",)
+
+    @admin.action(description="Approve selected business mappings")
+    def approve_mappings(self, request, queryset):
+        queryset.update(is_approved=True, source="MANUAL")
+
+
+@admin.register(SkillMarketCategory)
+class SkillMarketCategoryAdmin(admin.ModelAdmin):
+    list_display = (
+        "skill",
+        "category",
+        "source",
+        "is_approved",
+        "confidence",
+        "updated_at",
+    )
+    list_filter = ("source", "is_approved", "category")
+    search_fields = ("skill__name", "category__name")
+    autocomplete_fields = ("skill", "category")
+    actions = ("approve_mappings",)
+
+    @admin.action(description="Approve selected market mappings")
+    def approve_mappings(self, request, queryset):
+        queryset.update(is_approved=True, source="MANUAL")
 
 
 @admin.register(JobPostSkill)

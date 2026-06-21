@@ -5,7 +5,15 @@ from django.db.models import Count, Max, Min, Q
 from django.utils import timezone
 
 from apps.analytics.models import SkillDemand, SkillTrend
-from apps.skills.models import JobPostSkill, SkillCategory, SkillSet
+from apps.skills.models import (
+    BusinessCategory,
+    JobPostSkill,
+    MarketCategory,
+    SkillBusinessCategory,
+    SkillCategory,
+    SkillMarketCategory,
+    SkillSet,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +112,46 @@ class SkillDemandService:
             "stale_removed": stale[0],
         }
 
-    def build_market_profile(self) -> dict[str, int]:
+    def build_market_profile(self, limit: int = 10) -> dict:
+        business_counts = self._job_counts_by_business_category()
+        market_counts = self._job_counts_by_market_category()
+        esco_counts = self._job_counts_by_esco_category()
+
+        return {
+            "top_skills": self.top_skills(limit=limit),
+            "top_business_categories": self._serialize_category_counts(
+                business_counts,
+                limit=limit,
+            ),
+            "top_market_categories": self._serialize_category_counts(
+                market_counts,
+                limit=limit,
+            ),
+            "fastest_growing_skills": self.fastest_growing_skills(limit=limit),
+            "emerging_skills": self.top_emerging_skills(limit=limit),
+            "business_categories": business_counts,
+            "market_categories": market_counts,
+            "esco_categories": esco_counts,
+            # Backward-compatible flat profile used by older gap analysis callers.
+            "market_profile": esco_counts,
+        }
+
+    def build_legacy_category_profile(self) -> dict[str, int]:
+        return self._job_counts_by_esco_category()
+
+    def _job_counts_by_business_category(self) -> dict[str, int]:
+        return self._job_counts_for_mapping(
+            BusinessCategory,
+            SkillBusinessCategory,
+        )
+
+    def _job_counts_by_market_category(self) -> dict[str, int]:
+        return self._job_counts_for_mapping(
+            MarketCategory,
+            SkillMarketCategory,
+        )
+
+    def _job_counts_by_esco_category(self) -> dict[str, int]:
         profile: dict[str, int] = {}
         categories = SkillCategory.objects.filter(is_active=True).order_by("name")
         for category in categories:
@@ -119,6 +166,57 @@ class SkillDemandService:
         return dict(
             sorted(profile.items(), key=lambda item: (-item[1], item[0].casefold()))
         )
+
+    @staticmethod
+    def _job_counts_for_mapping(category_model, link_model):
+        profile: dict[str, int] = {}
+        categories = category_model.objects.filter(is_active=True).order_by("name")
+        for category in categories:
+            if link_model is SkillBusinessCategory:
+                count = (
+                    JobPostSkill.objects.filter(
+                        skill_set__business_category_links__category=category,
+                        skill_set__business_category_links__is_approved=True,
+                    )
+                    .values("job_post_id")
+                    .distinct()
+                    .count()
+                )
+            elif link_model is SkillMarketCategory:
+                count = (
+                    JobPostSkill.objects.filter(
+                        skill_set__market_category_links__category=category,
+                        skill_set__market_category_links__is_approved=True,
+                    )
+                    .values("job_post_id")
+                    .distinct()
+                    .count()
+                )
+            else:
+                count = 0
+            if count:
+                profile[category.name] = count
+        return dict(
+            sorted(profile.items(), key=lambda item: (-item[1], item[0].casefold()))
+        )
+
+    @staticmethod
+    def _serialize_category_counts(profile: dict[str, int], limit: int = 10) -> list[dict]:
+        total = sum(profile.values())
+        rows = []
+        for name, count in list(profile.items())[:limit]:
+            rows.append(
+                {
+                    "category": name,
+                    "job_count": count,
+                    "share_percent": SkillDemandService._percentage(count, total),
+                }
+            )
+        return rows
+
+    @staticmethod
+    def _percentage(part, total):
+        return round((part / total) * 100, 1) if total else 0
 
     def top_skills(self, limit: int = 10) -> list[dict]:
         rows = SkillDemand.objects.select_related("skill").order_by(
@@ -148,7 +246,7 @@ class SkillDemandService:
         return [self._serialize_trend(row) for row in rows]
 
     def top_categories(self, limit: int = 10) -> list[dict]:
-        profile = self.build_market_profile()
+        profile = self.build_legacy_category_profile()
         return [
             {"category": name, "job_count": count}
             for name, count in list(profile.items())[:limit]
@@ -224,9 +322,13 @@ class SkillDemandService:
             "rolling_30_day_count": row.rolling_30_day_count,
             "rolling_90_day_count": row.rolling_90_day_count,
             "demand_score": row.demand_score,
-            "first_seen": row.first_seen,
-            "last_seen": row.last_seen,
+            "first_seen": SkillDemandService._serialize_datetime(row.first_seen),
+            "last_seen": SkillDemandService._serialize_datetime(row.last_seen),
         }
+
+    @staticmethod
+    def _serialize_datetime(value):
+        return value.isoformat() if value is not None else None
 
     @staticmethod
     def _serialize_trend(row: SkillTrend) -> dict:
@@ -253,5 +355,5 @@ def update_skill_demand() -> dict[str, int]:
     return SkillDemandService().update_skill_demand()
 
 
-def build_market_profile() -> dict[str, int]:
-    return SkillDemandService().build_market_profile()
+def build_market_profile(limit: int = 10) -> dict:
+    return SkillDemandService().build_market_profile(limit=limit)

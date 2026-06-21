@@ -305,6 +305,145 @@ class SkillRelationship(TimeStampedModel):
         )
 
 
+class CategoryMappingSource(models.TextChoices):
+    SEED = "SEED", "Seed"
+    MANUAL = "MANUAL", "Manual"
+    AUTO = "AUTO", "Auto"
+    SUGGESTED = "SUGGESTED", "Suggested"
+
+
+class BusinessCategory(TimeStampedModel):
+    name = models.CharField(max_length=120)
+    slug = models.SlugField(max_length=120, unique=True)
+    description = models.TextField(blank=True)
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="children",
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name_plural = "business categories"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["parent", "name"],
+                name="unique_business_category_per_parent",
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            from django.utils.text import slugify
+
+            self.slug = slugify(self.name)[:120]
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+
+class MarketCategory(TimeStampedModel):
+    name = models.CharField(max_length=120)
+    slug = models.SlugField(max_length=120, unique=True)
+    description = models.TextField(blank=True)
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="children",
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name_plural = "market categories"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["parent", "name"],
+                name="unique_market_category_per_parent",
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            from django.utils.text import slugify
+
+            self.slug = slugify(self.name)[:120]
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+
+class SkillBusinessCategory(TimeStampedModel):
+    skill = models.ForeignKey(
+        SkillSet,
+        on_delete=models.CASCADE,
+        related_name="business_category_links",
+    )
+    category = models.ForeignKey(
+        BusinessCategory,
+        on_delete=models.CASCADE,
+        related_name="skill_links",
+    )
+    source = models.CharField(
+        max_length=20,
+        choices=CategoryMappingSource.choices,
+        default=CategoryMappingSource.AUTO,
+    )
+    is_approved = models.BooleanField(default=False)
+    confidence = models.FloatField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["category__name", "skill__name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["skill", "category"],
+                name="unique_skill_business_category",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.skill.name} -> {self.category.name}"
+
+
+class SkillMarketCategory(TimeStampedModel):
+    skill = models.ForeignKey(
+        SkillSet,
+        on_delete=models.CASCADE,
+        related_name="market_category_links",
+    )
+    category = models.ForeignKey(
+        MarketCategory,
+        on_delete=models.CASCADE,
+        related_name="skill_links",
+    )
+    source = models.CharField(
+        max_length=20,
+        choices=CategoryMappingSource.choices,
+        default=CategoryMappingSource.AUTO,
+    )
+    is_approved = models.BooleanField(default=False)
+    confidence = models.FloatField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["category__name", "skill__name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["skill", "category"],
+                name="unique_skill_market_category",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.skill.name} -> {self.category.name}"
+
+
 class SkillAttachmentSource(models.TextChoices):
     OLLAMA_PIPELINE = "OLLAMA_PIPELINE", "Ollama Pipeline"
     MANUAL = "MANUAL", "Manual"

@@ -70,8 +70,8 @@ def test_build_market_profile_counts_jobs_per_category():
     JobPostSkill.objects.create(job_post=job, skill_set=terraform, score=75)
 
     profile = SkillDemandService().build_market_profile()
-    assert profile["AI / ML"] == 1
-    assert profile["Cloud Computing"] == 1
+    assert profile["esco_categories"]["AI / ML"] == 1
+    assert profile["esco_categories"]["Cloud Computing"] == 1
 
 
 @pytest.mark.django_db
@@ -119,7 +119,7 @@ def test_resume_gap_analysis_returns_market_profile_and_recommendations():
     SkillDemandService().update_skill_demand()
 
     gap = ResumeGapService().analyze_resume_gap({python.id}, limit=5)
-    assert "AI / ML" in gap["market_profile"]
+    assert "AI / ML" in gap["market_profile"]["esco_categories"]
     assert any(
         item["name"] == "LangChain"
         for item in gap["missing_high_demand_skills"]
