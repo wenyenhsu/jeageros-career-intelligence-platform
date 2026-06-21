@@ -12,6 +12,7 @@ class JobPost(TimeStampedModel):
 
     class StatusChoices(models.TextChoices):
         ACTIVE = "ACTIVE", "Active"
+        APPLIED = "APPLIED", "Applied"
         CLOSED = "CLOSED", "Closed"
         ARCHIVED = "ARCHIVED", "Archived"
 
@@ -102,6 +103,16 @@ class JobPost(TimeStampedModel):
     @property
     def skill_set_display(self):
         return ", ".join(self.skill_set_names)
+
+    @property
+    def status_badge_class(self):
+        badge_classes = {
+            self.StatusChoices.ACTIVE: "text-bg-success",
+            self.StatusChoices.APPLIED: "text-bg-primary",
+            self.StatusChoices.CLOSED: "text-bg-secondary",
+            self.StatusChoices.ARCHIVED: "text-bg-dark",
+        }
+        return badge_classes.get(self.status, "text-bg-light border")
 
     @classmethod
     def normalize_job_type(cls, value):

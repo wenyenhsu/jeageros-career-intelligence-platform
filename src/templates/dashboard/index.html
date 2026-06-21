@@ -82,22 +82,40 @@
           <span class="text-secondary small">Job status</span>
           <span class="small text-secondary">{{ skill_coverage.total_jobs }} total</span>
         </div>
-        <div class="status-stack" aria-label="Active and closed job status mix">
+        <div class="status-stack" aria-label="Active, applied, and closed job status mix">
+          {% if skill_coverage.active_jobs %}
           <div
             class="status-segment status-segment-active"
+            data-has-jobs="true"
             style="width: {{ skill_coverage.active_percent }}%;"
             title="Active jobs: {{ skill_coverage.active_jobs }}"
           ></div>
+          {% endif %}
+          {% if skill_coverage.applied_jobs %}
+          <div
+            class="status-segment status-segment-applied"
+            data-has-jobs="true"
+            style="width: {{ skill_coverage.applied_percent }}%;"
+            title="Applied jobs: {{ skill_coverage.applied_jobs }}"
+          ></div>
+          {% endif %}
+          {% if skill_coverage.closed_jobs %}
           <div
             class="status-segment status-segment-closed"
+            data-has-jobs="true"
             style="width: {{ skill_coverage.closed_percent }}%;"
             title="Closed jobs: {{ skill_coverage.closed_jobs }}"
           ></div>
+          {% endif %}
         </div>
         <div class="d-flex flex-wrap gap-3 mt-2">
           <span class="status-legend-item">
             <span class="status-dot status-dot-active"></span>
             Active {{ skill_coverage.active_jobs }}
+          </span>
+          <span class="status-legend-item">
+            <span class="status-dot status-dot-applied"></span>
+            Applied {{ skill_coverage.applied_jobs }}
           </span>
           <span class="status-legend-item">
             <span class="status-dot status-dot-closed"></span>

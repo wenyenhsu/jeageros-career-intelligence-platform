@@ -107,7 +107,7 @@ def test_dashboard_skill_coverage_shows_active_closed_status_mix(client):
     assert "Job status" in content
     assert "Active 1" in content
     assert "Closed 1" in content
-    assert 'aria-label="Active and closed job status mix"' in content
+    assert 'aria-label="Active, applied, and closed job status mix"' in content
 
 
 @pytest.mark.django_db

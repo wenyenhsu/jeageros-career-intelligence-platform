@@ -144,6 +144,9 @@ class DashboardService:
         active_jobs = JobPost.objects.filter(
             status=JobPost.StatusChoices.ACTIVE,
         ).count()
+        applied_jobs = JobPost.objects.filter(
+            status=JobPost.StatusChoices.APPLIED,
+        ).count()
         closed_jobs = JobPost.objects.filter(
             status=JobPost.StatusChoices.CLOSED,
         ).count()
@@ -154,8 +157,10 @@ class DashboardService:
             "jobs_with_skills": jobs_with_skills,
             "jobs_without_skills": max(total_jobs - jobs_with_skills, 0),
             "active_jobs": active_jobs,
+            "applied_jobs": applied_jobs,
             "closed_jobs": closed_jobs,
             "active_percent": DashboardService._percentage(active_jobs, total_jobs),
+            "applied_percent": DashboardService._percentage(applied_jobs, total_jobs),
             "closed_percent": DashboardService._percentage(closed_jobs, total_jobs),
             "coverage_percent": DashboardService._percentage(
                 jobs_with_skills,

@@ -186,6 +186,8 @@ def test_job_apply_action_creates_application_and_copies_skills(client, user, co
     assert application_skill.score == 91
     assert application_skill.source_type == SkillAttachmentSource.OLLAMA_PIPELINE
     assert application_skill.extraction_metadata == {"source": "job"}
+    job.refresh_from_db()
+    assert job.status == JobPost.StatusChoices.APPLIED
 
 
 @pytest.mark.django_db
