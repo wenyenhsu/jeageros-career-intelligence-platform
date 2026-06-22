@@ -2,311 +2,751 @@
 
 ![Django](docs/logo.png)
 
-JägerOS is a Django-based Career Intelligence Platform designed to help users:
+JägerOS is a Django-based career intelligence platform for job tracking, application management, automated crawling, Ollama skill extraction, market demand analysis, and resume matching.
 
-- Track job applications
-- Manage interview processes
-- Schedule reminders and follow-ups
-- Crawl job postings automatically
-- Extract skills using LLMs (Ollama)
-- Analyze job market trends
-- Match resumes against market demand
+This guide walks you through **zero to a working system**, step by step.
 
 ---
 
-# Architecture
+## Table of Contents
 
-![structure](docs/structure.png)
-
----
-
-# Current Features
-
-## Job Tracking
-
-- Create / Update / Delete jobs
-- Track application status
-- Company management
-- Job source management
-
-## Application Management
-
-- Applied
-- Interview
-- Offer
-- Rejected
-- Withdrawn
-
-## Interview Tracking
-
-- Multiple interview rounds
-- Notes
-- Scheduling
-
-## Reminder System
-
-- Follow-up reminders
-- Interview reminders
-
-## Job Crawling
-
-### Current
-
-- LinkedIn
-
-### Planned
-
-- Greenhouse
-- Lever
-- Handshake
-- Indeed
-- Workday
-
-## Skill Intelligence
-
-- Automatic skill extraction
-- Ollama-powered processing
-- Skill normalization
-- SkillSet mapping
-- Embedding generation (pgvector)
-
-## Analytics
-
-- Application statistics
-- Skill trends
-- Market demand analysis
+1. [Prerequisites](#prerequisites)
+2. [Installation from Scratch](#installation-from-scratch)
+3. [Environment Variables](#environment-variables)
+4. [Database Migration](#database-migration)
+5. [Management Commands Reference](#management-commands-reference)
+6. [Recommended First-Run Data Pipeline](#recommended-first-run-data-pipeline)
+7. [Docker and Daily Development Commands](#docker-and-daily-development-commands)
+8. [Built-in Django Commands](#built-in-django-commands)
+9. [Ollama Setup](#ollama-setup)
+10. [Celery Background Tasks](#celery-background-tasks)
+11. [Post-Install Verification](#post-install-verification)
+12. [Testing](#testing)
+13. [Troubleshooting](#troubleshooting)
+14. [Architecture and Features](#architecture-and-features)
 
 ---
 
-# Tech Stack
+## Prerequisites
 
-## Backend
+| Item | Version / Notes |
+|------|-----------------|
+| Git | Any recent version |
+| Docker | 20.10+ |
+| Docker Compose | v2 (`docker compose` subcommand) |
+| Disk space | 5 GB+ recommended (PostgreSQL volume, ESCO CSV) |
+| Ollama (optional) | Host install for skill extraction, embeddings, resume analysis; CRUD and crawling work without it, but AI features will fail |
 
-- Django 5
-- Django ORM
-- Django Admin
+Verify Docker is available:
 
-## Database
-
-- PostgreSQL 15
-- pgvector
-
-## AI / LLM
-
-- Ollama
-
-## Async Processing
-
-- Celery
-- Redis
-
-## Infrastructure
-
-- Docker
-- Docker Compose
-- Nginx
-
----
-
-# Project Structure
-
-```text
-src/
-│
-├── apps/
-│   ├── accounts/
-│   ├── analytics/
-│   ├── api/
-│   ├── applications/
-│   ├── companies/
-│   ├── imports/
-│   ├── interviews/
-│   ├── jobs/
-│   ├── notifications/
-│   ├── reminders/
-│   └── skills/
-│
-├── config/
-│
-└── manage.py
+```bash
+docker info
+docker compose version
 ```
 
 ---
 
-# Initial Setup
+## Installation from Scratch
 
-## 1. Clone Repository
+The steps below assume you are in the **project root** (contains `docker-compose.yml` and `src/manage.py`).
+
+### Step 1: Clone the repository
 
 ```bash
-git clone https://github.com/<your-account>/jeageros-django-job-tracker.git
-
+git clone git@github.com:wenyenhsu/jeageros-django-job-tracker.git
 cd jeageros-django-job-tracker
 ```
 
-## 2. Create Environment File
+### Step 2: Create the environment file
 
 ```bash
 cp .env.example .env
 ```
 
-Example:
+Edit `.env` as needed (see [Environment Variables](#environment-variables)).
 
-```env
-DEBUG=True
+### Step 3: Verify ESCO data (skill knowledge base)
 
-POSTGRES_DB=jaegeros
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=postgres
-
-DJANGO_SETTINGS_MODULE=config.settings.dev
-
-OLLAMA_BASE_URL=http://host.docker.internal:11434
-```
-
-## 3. Verify Docker
+CSV files ship under `data/esco/`. Confirm they exist:
 
 ```bash
-docker info
+ls -la data/esco/
 ```
 
-## 4. Build Containers
+Expected files at minimum:
+
+- `skills_en.csv`
+- `skillGroups_en.csv`
+- `broaderRelationsSkillPillar_en.csv`
+- `skillSkillRelations_en.csv`
+
+### Step 4: Build Docker images
 
 ```bash
 docker compose build
 ```
 
-## 5. Start Services
+### Step 5: Start all services
 
 ```bash
 docker compose up -d
 ```
 
-Services:
+This starts:
 
-| Service | Purpose |
-|----------|----------|
-| web | Django |
-| db | PostgreSQL + pgvector |
-| redis | Redis |
-| celery-worker | Background Jobs |
-| celery-beat | Scheduler |
-| nginx | Reverse Proxy |
+| Service | Purpose | Exposed port |
+|---------|---------|--------------|
+| `web` | Django (runs `migrate` on startup) | `8000` |
+| `db` | PostgreSQL 15 + pgvector | `5432` |
+| `redis` | Celery broker | `6379` |
+| `celery-worker` | Background tasks | — |
+| `celery-beat` | Scheduler (default: crawl every 15 min) | — |
+| `nginx` | Reverse proxy | `80` |
 
-## 6. Run Migrations
+Check container status:
+
+```bash
+docker compose ps
+```
+
+### Step 6: Confirm migrations are applied
+
+The `web` container runs `python manage.py migrate` on startup, but verify manually:
+
+```bash
+docker compose exec web python manage.py showmigrations
+```
+
+If any migration shows `[ ]` (not applied), run:
 
 ```bash
 docker compose exec web python manage.py migrate
 ```
 
-Verify:
-
-```bash
-docker compose exec web python manage.py showmigrations
-```
-
-## 7. Create Admin User
+### Step 7: Create an admin user
 
 ```bash
 docker compose exec web python manage.py createsuperuser
 ```
 
-Example:
+Enter username, email, and password when prompted.
 
-```text
-Username: admin
-Email: admin@example.com
-Password: ********
+### Step 8: (Optional) Install Ollama on the host and pull models
+
+Run on the **host machine** (not inside the container):
+
+```bash
+# Install Ollama: https://ollama.com
+ollama pull qwen2.5-coder:7b
+ollama pull mxbai-embed-large
 ```
 
-## 8. Access Application
+Containers reach host Ollama at `http://host.docker.internal:11434` by default (see `extra_hosts` in `docker-compose.yml`).
 
-### Website
+### Step 9: Initialize skill and analytics data
 
-```text
-http://localhost:8000
-```
+Follow the [Recommended First-Run Data Pipeline](#recommended-first-run-data-pipeline).  
+At minimum, run the ESCO import; run the rest based on which features you need.
 
-### Django Admin
+### Step 10: Verify in the browser
 
-```text
-http://localhost:8000/admin
-```
+| Page | URL |
+|------|-----|
+| Home | http://localhost:8000 |
+| Django Admin | http://localhost:8000/admin |
+| Nginx proxy | http://localhost |
+
+Basic installation is complete.
 
 ---
 
-# Common Development Commands
+## Environment Variables
 
-## Start Project
+`.env.example` and field descriptions:
+
+```env
+SECRET_KEY=change-me          # Django secret; change in production
+DEBUG=1                         # 1 = development mode
+ALLOWED_HOSTS=localhost,127.0.0.1
+
+DB_NAME=jaegeros                # Must match POSTGRES_DB in docker-compose db service
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_HOST=db                      # Service name in Docker; use localhost for local runs
+DB_PORT=5432
+```
+
+Additional variables from `docker-compose.yml` (defaults apply when not set in `.env`):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DJANGO_SETTINGS_MODULE` | `config.settings.dev` | Django settings module |
+| `OLLAMA_BASE_URL` | `http://host.docker.internal:11434` | Ollama API base URL |
+| `OLLAMA_SKILL_MODEL` | `qwen2.5-coder:7b` | Skill extract / verify model |
+| `OLLAMA_EMBEDDING_MODEL` | `mxbai-embed-large` | Embedding model |
+| `CRAWL_SCHEDULE_SECONDS` | `900` | Celery Beat crawl interval (seconds) |
+| `CRAWL_SKILL_PIPELINE_ENABLED` | `true` | Run skill pipeline after crawl |
+| `USE_SQLITE` | `0` | Set `1` for SQLite (not recommended; no pgvector) |
+
+---
+
+## Database Migration
+
+### Overview
+
+- Migration files live in `src/apps/<app>/migrations/`.
+- **Fresh database**: run `migrate` only; no `makemigrations` unless you change models.
+- **After pulling new code**: run `showmigrations`, then `migrate`.
+
+### Migrations by app
+
+| App | Migrations |
+|-----|------------|
+| `companies` | `0001_initial` |
+| `jobs` | `0001`–`0007` (includes Applied status) |
+| `applications` | `0001`–`0003` |
+| `interviews` | `0001_initial` |
+| `reminders` | `0001_initial` |
+| `imports` | `0001`–`0010` (JobSource, CrawlRun, etc.) |
+| `skills` | `0001`–`0010` (ESCO, embeddings, Business/Market taxonomy) |
+| `analytics` | `0001` (SkillDemand, SkillTrend) |
+
+### First-time install
 
 ```bash
+# 1. Check migration status per app ([X] = applied, [ ] = pending)
+docker compose exec web python manage.py showmigrations
+
+# 2. Apply all pending migrations
+docker compose exec web python manage.py migrate
+
+# 3. Confirm everything is [X]
+docker compose exec web python manage.py showmigrations
+```
+
+### After changing models (developers)
+
+```bash
+# 1. Generate migration files from model changes
+docker compose exec web python manage.py makemigrations
+
+# 2. Limit to a single app (optional)
+docker compose exec web python manage.py makemigrations skills
+
+# 3. Apply migrations
+docker compose exec web python manage.py migrate
+
+# 4. Inspect SQL for a migration (debugging)
+docker compose exec web python manage.py sqlmigrate skills 0010
+```
+
+### Other migration commands
+
+```bash
+# Migrate a single app only
+docker compose exec web python manage.py migrate skills
+
+# Roll back to a specific migration (dev only; use with care)
+docker compose exec web python manage.py migrate skills 0009
+
+# Squash migrations (advanced)
+docker compose exec web python manage.py squashmigrations skills 0001 0010
+```
+
+### Common migration errors
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `relation "xxx" does not exist` | DB not migrated | `python manage.py migrate` |
+| Migration conflict | Concurrent model changes | Merge migrations or reset dev DB volume |
+
+Reset the development database (**deletes all data**):
+
+```bash
+docker compose down -v
 docker compose up -d
-```
-
-## Stop Project
-
-```bash
-docker compose down
-```
-
-## View Logs
-
-```bash
-docker compose logs -f web
-```
-
-## Enter Django Container
-
-```bash
-docker compose exec web bash
-```
-
-## Django Shell
-
-```bash
-docker compose exec web python manage.py shell
+docker compose exec web python manage.py migrate
+docker compose exec web python manage.py createsuperuser
 ```
 
 ---
 
-# Database Commands
+## Management Commands Reference
 
-## Open PostgreSQL
+> **Docker command prefix**  
+> Run from the project root:  
+> `docker compose exec web python manage.py <command> [options]`  
+>
+> **Container working directory**: `/app/src` (where `manage.py` lives — **do not** `cd src`).  
+> **Local (non-Docker)**: `cd src && python manage.py <command>`
+
+The project defines **19 custom commands** (including 1 alias).
+
+---
+
+### imports — Job crawling
+
+#### `crawl_job_sources`
+
+Runs the JobSource crawl and sync pipeline (company upsert, job upsert, skill pipeline).
 
 ```bash
-docker compose exec db psql -U postgres
+# Crawl all enabled JobSources
+docker compose exec web python manage.py crawl_job_sources
+
+# Crawl a single JobSource by id
+docker compose exec web python manage.py crawl_job_sources --source-id 1
 ```
 
-## List Tables
+| Option | Description |
+|--------|-------------|
+| `--source-id <int>` | Process only this `JobSource.id` |
 
-```sql
-\dt
+Output includes summaries for `Created`, `Updated`, `Closed`, `Filtered`, `Skills attached`, `Errors`, etc.
+
+**When to run**: After creating JobSources in Admin, or to trigger a crawl outside Celery Beat.
+
+---
+
+#### `crawl_jobs`
+
+**Alias** for `crawl_job_sources` — identical behavior.
+
+```bash
+docker compose exec web python manage.py crawl_jobs
+docker compose exec web python manage.py crawl_jobs --source-id 1
 ```
 
-## Check Migrations
+---
+
+### skills — ESCO and skill knowledge base
+
+#### `inspect_esco_data`
+
+Inspects ESCO CSV files (paths, row counts). **Does not write to the database.**
+
+```bash
+docker compose exec web python manage.py inspect_esco_data
+
+# Custom data directory
+docker compose exec web python manage.py inspect_esco_data --data-dir /app/data/esco
+```
+
+| Option | Description |
+|--------|-------------|
+| `--data-dir <path>` | ESCO CSV directory (default: `data/esco`) |
+
+**When to run**: Before `import_esco`, to confirm CSVs are ready.
+
+---
+
+#### `import_esco`
+
+**One-shot full ESCO import** (skills, aliases, taxonomy, relationships) with validation stats at the end.
+
+```bash
+# Import from local CSV (default)
+docker compose exec web python manage.py import_esco
+
+# Custom directory
+docker compose exec web python manage.py import_esco --data-dir /app/data/esco
+
+# Import from public ESCO API (requires network)
+docker compose exec web python manage.py import_esco --source api --language en
+
+# Skip skill-skill relationships (faster)
+docker compose exec web python manage.py import_esco --skip-relationships
+
+# Skip SkillKeyword sync
+docker compose exec web python manage.py import_esco --skip-keyword-sync
+```
+
+| Option | Description |
+|--------|-------------|
+| `--data-dir <path>` | CSV directory |
+| `--source csv\|api` | Data source (default: `csv`) |
+| `--language <code>` | API language (default: `en`) |
+| `--skip-relationships` | Skip skill relationship import |
+| `--skip-keyword-sync` | Skip SkillKeyword sync |
+
+**When to run**: First install, or when rebuilding the skill knowledge base.
+
+---
+
+#### `import_esco_skills`
+
+Imports ESCO skills only → `SkillSet`.
+
+```bash
+docker compose exec web python manage.py import_esco_skills
+docker compose exec web python manage.py import_esco_skills --data-dir /app/data/esco
+```
+
+| Option | Description |
+|--------|-------------|
+| `--data-dir <path>` | CSV directory |
+
+---
+
+#### `import_esco_aliases`
+
+Imports ESCO alternative labels only → `SkillAlias`.
+
+```bash
+docker compose exec web python manage.py import_esco_aliases
+docker compose exec web python manage.py import_esco_aliases --data-dir /app/data/esco
+```
+
+---
+
+#### `import_esco_taxonomy`
+
+Imports ESCO skill groups only → `SkillCategory`.
+
+```bash
+docker compose exec web python manage.py import_esco_taxonomy
+docker compose exec web python manage.py import_esco_taxonomy --data-dir /app/data/esco
+```
+
+---
+
+#### `import_esco_relationships`
+
+Imports ESCO skill-skill relationships only → `SkillRelationship`.
+
+```bash
+docker compose exec web python manage.py import_esco_relationships
+docker compose exec web python manage.py import_esco_relationships --data-dir /app/data/esco
+```
+
+---
+
+#### `validate_skill_knowledge_base`
+
+Post-import quality check: counts, missing categories, orphan skills, duplicate aliases.
+
+```bash
+docker compose exec web python manage.py validate_skill_knowledge_base
+```
+
+**When to run**: After `import_esco`.
+
+---
+
+#### `seed_us_emerging_skills`
+
+Seeds curated US emerging technology skills into `SkillSet` (aliases and category links included).
+
+```bash
+docker compose exec web python manage.py seed_us_emerging_skills
+```
+
+No additional options.
+
+---
+
+#### `seed_business_taxonomy`
+
+Creates JägerOS **Business Category** taxonomy and assigns skill mappings.
+
+```bash
+# Create categories and assign
+docker compose exec web python manage.py seed_business_taxonomy
+
+# Re-assign only (categories already exist)
+docker compose exec web python manage.py seed_business_taxonomy --assign-only
+```
+
+| Option | Description |
+|--------|-------------|
+| `--assign-only` | Skip category creation; run assignment only |
+
+**Prerequisites**: `skills.0010` migration applied and ESCO import completed.
+
+---
+
+#### `seed_market_taxonomy`
+
+Creates **US Market Category** taxonomy and assigns skill mappings.
+
+```bash
+docker compose exec web python manage.py seed_market_taxonomy
+docker compose exec web python manage.py seed_market_taxonomy --assign-only
+```
+
+| Option | Description |
+|--------|-------------|
+| `--assign-only` | Skip category creation; run assignment only |
+
+---
+
+#### `validate_skill_normalization`
+
+Checks skill normalization coverage: unresolved aliases, duplicate canonicals, orphan relationships.
+
+```bash
+docker compose exec web python manage.py validate_skill_normalization
+```
+
+**When to run**: After taxonomy seeding, or when skill mapping looks wrong.
+
+---
+
+#### `generate_skill_embeddings`
+
+Generates pgvector embeddings for `SkillSet` records (default: Ollama `mxbai-embed-large`).
+
+```bash
+# Process skills without embeddings only
+docker compose exec web python manage.py generate_skill_embeddings
+
+# Force regenerate all
+docker compose exec web python manage.py generate_skill_embeddings --force
+
+# Limit count (testing)
+docker compose exec web python manage.py generate_skill_embeddings --limit 100
+```
+
+| Option | Description |
+|--------|-------------|
+| `--force` | Overwrite existing embeddings |
+| `--limit <int>` | Maximum records to process |
+
+**Prerequisites**: Ollama running with the embedding model pulled; `skills.0008` migration (pgvector column).
+
+---
+
+### analytics — Market demand and resume evaluation
+
+#### `update_skill_demand`
+
+Aggregates `JobPostSkill` data into `SkillDemand` and `SkillTrend`.
+
+```bash
+docker compose exec web python manage.py update_skill_demand
+```
+
+**When to run**: After crawling and attaching skills to jobs; required for dashboard market analytics.
+
+---
+
+#### `eval_resume_ollama`
+
+Runs repeated Ollama resume analysis against a gold JSON spec (development / tuning).
+
+```bash
+docker compose exec web python manage.py eval_resume_ollama \
+  /path/to/resume.pdf \
+  /path/to/gold.json
+
+# Custom run count
+docker compose exec web python manage.py eval_resume_ollama \
+  resume.pdf gold.json --runs 5
+
+# Write full JSON report
+docker compose exec web python manage.py eval_resume_ollama \
+  resume.pdf gold.json --output /tmp/report.json
+
+# Non-zero exit if any run fails expectations
+docker compose exec web python manage.py eval_resume_ollama \
+  resume.pdf gold.json --fail-on-regression
+
+# Limit job / market comparison counts
+docker compose exec web python manage.py eval_resume_ollama \
+  resume.pdf gold.json --job-limit 20 --market-limit 50
+```
+
+| Argument / Option | Description |
+|-------------------|-------------|
+| `resume_path` | Resume file path (PDF, DOCX, TXT, Markdown) |
+| `gold_path` | Expected skills JSON spec |
+| `--runs <int>` | Number of runs (default: 3) |
+| `--output <path>` | Write full report to file |
+| `--fail-on-regression` | Exit with error on failure |
+| `--job-limit <int>` | Limit job comparisons |
+| `--market-limit <int>` | Limit market comparisons |
+
+---
+
+## Recommended First-Run Data Pipeline
+
+For a **full-featured** fresh install (skill KB + vectors + market analytics + crawling), run in order:
+
+```bash
+# 0. Confirm migrations and admin (see install steps above)
+docker compose exec web python manage.py migrate
+docker compose exec web python manage.py createsuperuser
+
+# 1. Check ESCO CSVs
+docker compose exec web python manage.py inspect_esco_data
+
+# 2. Import ESCO knowledge base (can take a while)
+docker compose exec web python manage.py import_esco
+
+# 3. Validate ESCO import
+docker compose exec web python manage.py validate_skill_knowledge_base
+
+# 4. Seed US emerging skills
+docker compose exec web python manage.py seed_us_emerging_skills
+
+# 5. Business / Market taxonomy layers
+docker compose exec web python manage.py seed_business_taxonomy
+docker compose exec web python manage.py seed_market_taxonomy
+
+# 6. Normalization check
+docker compose exec web python manage.py validate_skill_normalization
+
+# 7. Generate embeddings (requires Ollama)
+docker compose exec web python manage.py generate_skill_embeddings
+
+# 8. Create JobSources in Admin, then crawl
+docker compose exec web python manage.py crawl_job_sources
+
+# 9. Refresh market demand aggregates
+docker compose exec web python manage.py update_skill_demand
+```
+
+For **basic CRUD only** (no AI / analytics), step 0 plus `createsuperuser` is enough to log in.
+
+---
+
+## Docker and Daily Development Commands
+
+```bash
+# Start (detached)
+docker compose up -d
+
+# Start and stream logs (foreground)
+docker compose up
+
+# Stop
+docker compose down
+
+# Stop and remove DB volume (wipes database)
+docker compose down -v
+
+# Rebuild images and start
+docker compose build --no-cache
+docker compose up -d
+
+# Service status
+docker compose ps
+
+# Web logs
+docker compose logs -f web
+
+# Shell into web container (WORKDIR is already /app/src)
+docker compose exec web bash
+
+# PostgreSQL shell
+docker compose exec db psql -U postgres -d jaegeros
+```
+
+---
+
+## Built-in Django Commands
+
+All use the `docker compose exec web python manage.py` prefix.
+
+| Command | Purpose |
+|---------|---------|
+| `check` | Validate Django settings and common issues |
+| `shell` | Django ORM shell |
+| `dbshell` | Database CLI |
+| `createsuperuser` | Create admin user |
+| `changepassword <username>` | Reset password |
+| `flush` | Clear all tables (dev only; requires confirmation) |
+| `dumpdata <app>` | Export JSON data |
+| `loaddata <fixture>` | Load fixture |
+| `collectstatic` | Collect static files (production deploy) |
+| `test` | Django test runner |
+| `showmigrations` | Show migration status |
+| `makemigrations` | Generate migrations |
+| `migrate` | Apply migrations |
+| `sqlmigrate <app> <num>` | Show migration SQL |
+| `clearsessions` | Remove expired sessions |
+
+Examples:
+
+```bash
+docker compose exec web python manage.py check
+docker compose exec web python manage.py shell
+docker compose exec web python manage.py collectstatic --noinput
+```
+
+---
+
+## Ollama Setup
+
+1. Install and start Ollama on the host.
+2. Pull models:
+
+```bash
+ollama pull qwen2.5-coder:7b
+ollama pull mxbai-embed-large
+```
+
+3. Verify the API on the host:
+
+```bash
+curl http://localhost:11434/api/tags
+```
+
+4. Default URL inside Docker: `OLLAMA_BASE_URL=http://host.docker.internal:11434`  
+   On Linux, if `host.docker.internal` fails, set the host IP in `.env`.
+
+Features that depend on Ollama:
+
+- Post-crawl skill Extract / Verify / Mapping
+- `generate_skill_embeddings`
+- Resume analysis and `eval_resume_ollama`
+
+---
+
+## Celery Background Tasks
+
+```bash
+# Worker logs
+docker compose logs -f celery-worker
+
+# Beat scheduler logs
+docker compose logs -f celery-beat
+```
+
+Default Beat task: `crawl-enabled-job-sources` (interval: `CRAWL_SCHEDULE_SECONDS`, default 900 seconds).
+
+To trigger a crawl manually:
+
+```bash
+docker compose exec web python manage.py crawl_job_sources
+```
+
+---
+
+## Post-Install Verification
+
+### 1. HTTP and Admin
+
+- http://localhost:8000 loads
+- http://localhost:8000/admin accepts superuser login
+
+### 2. pgvector extension
+
+```bash
+docker compose exec db psql -U postgres -d jaegeros -c "SELECT * FROM pg_extension WHERE extname = 'vector';"
+```
+
+You should see one row for `vector`.
+
+### 3. All migrations applied
 
 ```bash
 docker compose exec web python manage.py showmigrations
 ```
 
----
+Every entry should show `[X]`.
 
-# pgvector Verification
-
-Verify pgvector is installed:
-
-```sql
-SELECT * FROM pg_extension;
-```
-
-Expected:
-
-```text
-vector
-```
-
----
-
-# Skill Embedding Status
+### 4. Skill and embedding counts
 
 ```bash
 docker compose exec web python manage.py shell
@@ -316,117 +756,115 @@ docker compose exec web python manage.py shell
 from apps.skills.models import SkillSet
 
 total = SkillSet.objects.count()
-
-embedded = SkillSet.objects.filter(
-    embedding__isnull=False
-).count()
-
+embedded = SkillSet.objects.filter(embedding__isnull=False).count()
 print(f"Total Skills: {total}")
 print(f"Embedded Skills: {embedded}")
 ```
 
----
+After ESCO import, `total` should be > 0. After `generate_skill_embeddings`, `embedded` should increase.
 
-# Celery
-
-## Worker Logs
+### 5. Market demand data
 
 ```bash
-docker compose logs -f celery-worker
+docker compose exec web python manage.py shell
 ```
 
-## Beat Scheduler Logs
-
-```bash
-docker compose logs -f celery-beat
+```python
+from apps.analytics.models import SkillDemand
+print(SkillDemand.objects.count())
 ```
 
----
-
-# Job Crawling
-
-Run crawler manually:
-
-```bash
-docker compose exec web python manage.py crawl_jobs
-```
+Meaningful counts require crawling plus `update_skill_demand`.
 
 ---
 
-# Migration Workflow
+## Testing
 
-## Generate Migration
-
-```bash
-docker compose exec web python manage.py makemigrations
-```
-
-## Apply Migration
+The project uses pytest (see `pytest.ini` at the repo root).
 
 ```bash
-docker compose exec web python manage.py migrate
-```
+# Inside the web container
+docker compose exec web pytest
 
-## Check Status
+# Single file
+docker compose exec web pytest apps/analytics/tests/test_market_fit_service.py -v
 
-```bash
-docker compose exec web python manage.py showmigrations
+# On the host (install dev dependencies first)
+cd src
+pip install -r ../requirements/dev.txt
+pytest
 ```
 
 ---
 
-# Future Roadmap
+## Troubleshooting
 
-## Phase 1
-
-- LinkedIn crawler
-- Application tracking
-- Skill extraction
-
-## Phase 2
-
-- Greenhouse support
-- Lever support
-- Handshake support
-
-## Phase 3
-
-- Resume analysis
-- Skill gap analysis
-- Market fit scoring
-
-## Phase 4
-
-- Open Skills Network integration
-- ESCO integration
-- Market taxonomy layer
-
-## Phase 5
-
-- Career recommendation engine
-- Salary intelligence
-- Hiring trend forecasting
+| Issue | Fix |
+|-------|-----|
+| `relation "skills_xxx" does not exist` | Run `migrate`; confirm `skills.0010` is applied |
+| `cd src` unnecessary in container | WORKDIR is already `/app/src` |
+| Ollama connection refused | Ensure Ollama runs on host; check `OLLAMA_BASE_URL` |
+| All embeddings failed | `ollama pull mxbai-embed-large` |
+| Crawler returns 0 jobs | Create and enable `JobSource` in Admin |
+| Applied status not shown | Confirm `jobs.0007` migration is applied |
+| `POSTGRES_DB` in `.env` has no effect | Django reads `DB_NAME`; see `.env.example` |
 
 ---
 
-# License
+## Architecture and Features
+
+![structure](docs/structure.png)
+
+### Tech Stack
+
+- Django 5, PostgreSQL 15, pgvector
+- Ollama (skill extraction, embeddings)
+- Celery + Redis (background crawling)
+- Docker Compose, Nginx
+
+### Core Features
+
+- Job / company / application / interview / reminder CRUD
+- JobSource crawler (LinkedIn today; architecture supports multiple sources)
+- Ollama skill pipeline: Extract → Verify → SkillSet Mapping → Scoring
+- ESCO knowledge base, Business / Market taxonomy
+- Market demand analysis, resume gap analysis, Market Fit (pgvector similarity)
+- Scheduled crawling via Celery Beat
+
+### Project Structure
+
+```text
+jeageros-django-job-tracker/
+├── data/esco/              # ESCO CSV files
+├── docker-compose.yml
+├── requirements/
+│   ├── base.txt
+│   └── dev.txt
+└── src/
+    ├── apps/
+    │   ├── accounts/
+    │   ├── analytics/
+    │   ├── applications/
+    │   ├── companies/
+    │   ├── imports/        # Crawler, JobSource
+    │   ├── jobs/
+    │   ├── skills/         # SkillSet, ESCO, embeddings
+    │   └── ...
+    ├── config/
+    └── manage.py
+```
+
+Development rules and architecture constraints: [AGENTS.md](AGENTS.md).  
+Roadmap and progress: [PROGRESS.md](PROGRESS.md).
+
+---
+
+## License
 
 MIT License
 
 ---
 
-# Author
+## Author
 
-**DR.XX**
-
-JägerOS Career Intelligence Platform
-
-Built with:
-
-- Django
-- PostgreSQL
-- pgvector
-- Docker
-- Ollama
-- Celery
-- Redis
+**DR.XX** — JägerOS Career Intelligence Platform
