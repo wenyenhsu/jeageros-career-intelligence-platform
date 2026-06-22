@@ -19,6 +19,11 @@ Thumbs.db
 db.sqlite3
 src/db.sqlite3
 *.log
+*.drawio
+*.mmd
+db-schema.md
 
 # Local compose overrides
 docker-compose.override.yml
+
+

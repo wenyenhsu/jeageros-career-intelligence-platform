@@ -1,14 +1,75 @@
 # JägerOS - Career Intelligence Platform
 
-![Django](docs/logo.png)
+![Django](docs/logo-nbg.png)
 
 JägerOS is a Django-based career intelligence platform for job tracking, application management, automated crawling, Ollama skill extraction, market demand analysis, and resume matching.
 
-This guide walks you through **zero to a working system**, step by step.
 
 ---
 
-## Table of Contents
+## Architecture and Features
+
+![structure](docs/structure.png)
+
+### Tech Stack
+
+- Django 5, PostgreSQL 15, pgvector
+- RAG, Prompt engineering, Context engineering
+- Ollama (skill extraction, embeddings)
+- Celery + Redis (background crawling)
+- Docker Compose, Nginx
+
+### Core Features
+
+- Dashboard for Job Search Tracking
+  - Provides market demand analysis, resume gap analysis, and job market fit evaluation using pgvector similarity search.
+  - Visualizes career insights and application progress through an interactive dashboard.
+![dashboard](docs/dashboard.png)
+- Resume Analysis Engine
+  - Implements an Ollama-powered skill extraction pipeline: Extract → Verify → SkillSet Mapping → Scoring.
+  - Integrates the ESCO knowledge base and business/market taxonomies for skill normalization and career intelligence.
+![reusme_1](docs/resume_analysis.png)
+![reusme_2](docs/resume_pipeline_show.png)
+- Job Matching
+  - Recommends relevant job opportunities based on skill alignment, experience, and market fit scoring.
+![reusme_3](docs/job_matches.png)
+- Job Source Crawler 
+  - Currently supports LinkedIn, with a scalable architecture designed for multiple job sources.
+  - Automated scheduled crawling powered by Celery Beat.
+![crawl](docs/crawl_data.png)
+- Career Management Platform
+  - Full CRUD support for Jobs, Companies, Applications, Interviews, and Reminders.
+  - Centralized workflow for tracking the entire job application lifecycle.
+![crud](docs/crud.png)
+
+### Project Structure
+
+```text
+jeageros-django-job-tracker/
+├── data/esco/              # ESCO CSV files
+├── docker-compose.yml
+├── requirements/
+│   ├── base.txt
+│   └── dev.txt
+└── src/
+    ├── apps/
+    │   ├── accounts/
+    │   ├── analytics/
+    │   ├── applications/
+    │   ├── companies/
+    │   ├── imports/        # Crawler, JobSource
+    │   ├── jobs/
+    │   ├── skills/         # SkillSet, ESCO, embeddings
+    │   └── ...
+    ├── config/
+    └── manage.py
+```
+
+Development rules and architecture constraints: [AGENTS.md](AGENTS.md).  
+Roadmap and progress: [PROGRESS.md](PROGRESS.md).
+
+
+## Table of Instructions
 
 1. [Prerequisites](#prerequisites)
 2. [Installation from Scratch](#installation-from-scratch)
@@ -797,74 +858,8 @@ pytest
 
 ---
 
-## Troubleshooting
-
-| Issue | Fix |
-|-------|-----|
-| `relation "skills_xxx" does not exist` | Run `migrate`; confirm `skills.0010` is applied |
-| `cd src` unnecessary in container | WORKDIR is already `/app/src` |
-| Ollama connection refused | Ensure Ollama runs on host; check `OLLAMA_BASE_URL` |
-| All embeddings failed | `ollama pull mxbai-embed-large` |
-| Crawler returns 0 jobs | Create and enable `JobSource` in Admin |
-| Applied status not shown | Confirm `jobs.0007` migration is applied |
-| `POSTGRES_DB` in `.env` has no effect | Django reads `DB_NAME`; see `.env.example` |
-
----
-
-## Architecture and Features
-
-![structure](docs/structure.png)
-
-### Tech Stack
-
-- Django 5, PostgreSQL 15, pgvector
-- Ollama (skill extraction, embeddings)
-- Celery + Redis (background crawling)
-- Docker Compose, Nginx
-
-### Core Features
-
-- Job / company / application / interview / reminder CRUD
-- JobSource crawler (LinkedIn today; architecture supports multiple sources)
-- Ollama skill pipeline: Extract → Verify → SkillSet Mapping → Scoring
-- ESCO knowledge base, Business / Market taxonomy
-- Market demand analysis, resume gap analysis, Market Fit (pgvector similarity)
-- Scheduled crawling via Celery Beat
-
-### Project Structure
-
-```text
-jeageros-django-job-tracker/
-├── data/esco/              # ESCO CSV files
-├── docker-compose.yml
-├── requirements/
-│   ├── base.txt
-│   └── dev.txt
-└── src/
-    ├── apps/
-    │   ├── accounts/
-    │   ├── analytics/
-    │   ├── applications/
-    │   ├── companies/
-    │   ├── imports/        # Crawler, JobSource
-    │   ├── jobs/
-    │   ├── skills/         # SkillSet, ESCO, embeddings
-    │   └── ...
-    ├── config/
-    └── manage.py
-```
-
-Development rules and architecture constraints: [AGENTS.md](AGENTS.md).  
-Roadmap and progress: [PROGRESS.md](PROGRESS.md).
-
----
-
 ## License
 
 MIT License
 
 ---
-
-## Author
-
-**DR.XX** — JägerOS Career Intelligence Platform
