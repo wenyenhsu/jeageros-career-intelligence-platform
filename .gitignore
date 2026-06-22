@@ -22,6 +22,7 @@ src/db.sqlite3
 *.drawio
 *.mmd
 db-schema.md
+.drawio.bkp
 
 # Local compose overrides
 docker-compose.override.yml
