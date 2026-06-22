@@ -83,8 +83,6 @@ Roadmap and progress: [PROGRESS.md](PROGRESS.md).
 10. [Celery Background Tasks](#celery-background-tasks)
 11. [Post-Install Verification](#post-install-verification)
 12. [Testing](#testing)
-13. [Troubleshooting](#troubleshooting)
-14. [Architecture and Features](#architecture-and-features)
 
 ---
 
