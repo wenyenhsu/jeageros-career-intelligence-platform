@@ -1,6 +1,6 @@
 # JägerOS - Career Intelligence Platform
 
-![Django](docs/logo-nbg.png)
+![Django](docs/logo.png)
 
 JägerOS is a Django-based career intelligence platform for job tracking, application management, automated crawling, Ollama skill extraction, market demand analysis, and resume matching.
 
