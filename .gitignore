@@ -7,3 +7,18 @@ media/
 .pytest_cache/
 .coverage
 celerybeat-schedule*
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local DB / logs
+db.sqlite3
+src/db.sqlite3
+*.log
+
+# Local compose overrides
+docker-compose.override.yml

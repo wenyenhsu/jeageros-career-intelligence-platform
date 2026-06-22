@@ -38,9 +38,9 @@ def test_celery_beat_schedule_runs_crawl_task():
 @pytest.mark.django_db
 def test_scheduled_crawl_task_runs_against_mocked_job_source(monkeypatch):
     source = JobSource.objects.create(
-        name="Greenhouse",
-        resource=JobSource.ResourceChoices.GREENHOUSE,
-        base_url="https://boards.greenhouse.io/openai",
+        name="LinkedIn OpenAI",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/?keywords=backend",
         enabled=True,
     )
     _patch_parser(monkeypatch)
@@ -74,15 +74,15 @@ def test_scheduled_crawl_task_runs_against_mocked_job_source(monkeypatch):
 @pytest.mark.django_db
 def test_scheduled_crawl_task_can_run_selected_source_ids(monkeypatch):
     first = JobSource.objects.create(
-        name="Greenhouse",
-        resource=JobSource.ResourceChoices.GREENHOUSE,
-        base_url="https://boards.greenhouse.io/openai",
+        name="LinkedIn First",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/?keywords=first",
         enabled=True,
     )
     second = JobSource.objects.create(
-        name="Lever",
-        resource=JobSource.ResourceChoices.LEVER,
-        base_url="https://jobs.lever.co/anthropic",
+        name="LinkedIn Second",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/?keywords=second",
         enabled=True,
     )
     _patch_parser(monkeypatch)
@@ -126,9 +126,9 @@ def test_scheduled_crawl_normalizes_raw_parser_output_before_sync(monkeypatch):
 @pytest.mark.django_db
 def test_scheduled_crawl_skips_disabled_sources(monkeypatch):
     JobSource.objects.create(
-        name="Disabled Greenhouse",
-        resource=JobSource.ResourceChoices.GREENHOUSE,
-        base_url="https://boards.greenhouse.io/openai",
+        name="Disabled LinkedIn",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/?keywords=disabled",
         enabled=False,
     )
 
@@ -152,9 +152,9 @@ def test_scheduled_crawl_skips_disabled_sources(monkeypatch):
 @pytest.mark.django_db
 def test_scheduled_crawl_processes_enabled_sources(monkeypatch):
     source = JobSource.objects.create(
-        name="Lever",
-        resource=JobSource.ResourceChoices.LEVER,
-        base_url="https://jobs.lever.co/openai",
+        name="LinkedIn Lever Style",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/?keywords=lever",
         enabled=True,
     )
     _patch_parser(monkeypatch)
@@ -309,9 +309,9 @@ def test_aborted_crawl_run_does_not_start_parser(monkeypatch):
 @override_settings(CRAWL_SKILL_PIPELINE_ENABLED=True)
 def test_scheduled_crawl_runs_skill_pipeline_after_sync(monkeypatch):
     source = JobSource.objects.create(
-        name="Greenhouse",
-        resource=JobSource.ResourceChoices.GREENHOUSE,
-        base_url="https://boards.greenhouse.io/openai",
+        name="LinkedIn OpenAI",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/?keywords=backend",
         enabled=True,
         crawl_config={"auto_create_skills": True},
     )
@@ -436,9 +436,9 @@ def test_scheduled_crawl_skips_ollama_for_jobs_that_already_have_skills(monkeypa
 @pytest.mark.django_db
 def test_scheduled_crawl_returns_summary_and_logs_counts(monkeypatch, caplog):
     JobSource.objects.create(
-        name="Greenhouse",
-        resource=JobSource.ResourceChoices.GREENHOUSE,
-        base_url="https://boards.greenhouse.io/openai",
+        name="LinkedIn OpenAI",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/?keywords=backend",
         enabled=True,
     )
     _patch_parser(monkeypatch)
@@ -448,7 +448,7 @@ def test_scheduled_crawl_returns_summary_and_logs_counts(monkeypatch, caplog):
 
     assert summary["success"] is True
     assert summary["jobs_created"] == 1
-    assert "Crawling job source Greenhouse" in caplog.text
+    assert "Crawling job source LinkedIn OpenAI" in caplog.text
     assert "created=1 updated=0 closed=0" in caplog.text
     assert "progress=100.00%" in caplog.text
     assert "Scheduled crawl summary" in caplog.text
@@ -457,15 +457,15 @@ def test_scheduled_crawl_returns_summary_and_logs_counts(monkeypatch, caplog):
 @pytest.mark.django_db
 def test_progress_values_are_updated_for_multiple_enabled_sources(monkeypatch):
     first = JobSource.objects.create(
-        name="Greenhouse",
-        resource=JobSource.ResourceChoices.GREENHOUSE,
-        base_url="https://boards.greenhouse.io/openai",
+        name="LinkedIn First",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/?keywords=first",
         enabled=True,
     )
     second = JobSource.objects.create(
-        name="Lever",
-        resource=JobSource.ResourceChoices.LEVER,
-        base_url="https://jobs.lever.co/openai",
+        name="LinkedIn Second",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/?keywords=second",
         enabled=True,
     )
     _patch_parser(monkeypatch)
@@ -493,9 +493,9 @@ def test_progress_values_are_updated_for_multiple_enabled_sources(monkeypatch):
 def test_crawl_run_progress_api_returns_latest_run(client, user, monkeypatch):
     client.force_login(user)
     JobSource.objects.create(
-        name="Greenhouse",
-        resource=JobSource.ResourceChoices.GREENHOUSE,
-        base_url="https://boards.greenhouse.io/openai",
+        name="LinkedIn OpenAI",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/?keywords=backend",
         enabled=True,
     )
     _patch_parser(monkeypatch)
@@ -514,9 +514,9 @@ def test_crawl_run_progress_api_returns_latest_run(client, user, monkeypatch):
 def test_crawl_run_api_endpoints_start_and_report_status(client, user, monkeypatch):
     client.force_login(user)
     JobSource.objects.create(
-        name="Greenhouse",
-        resource=JobSource.ResourceChoices.GREENHOUSE,
-        base_url="https://boards.greenhouse.io/openai",
+        name="LinkedIn OpenAI",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/?keywords=backend",
         enabled=True,
     )
     _patch_parser(monkeypatch)
@@ -543,9 +543,9 @@ def test_crawl_run_api_endpoints_start_and_report_status(client, user, monkeypat
 @pytest.mark.django_db
 def test_manual_crawl_command_displays_progress_bar(monkeypatch):
     JobSource.objects.create(
-        name="Greenhouse",
-        resource=JobSource.ResourceChoices.GREENHOUSE,
-        base_url="https://boards.greenhouse.io/openai",
+        name="LinkedIn OpenAI",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/?keywords=backend",
         enabled=True,
     )
     _patch_parser(monkeypatch)
@@ -554,7 +554,7 @@ def test_manual_crawl_command_displays_progress_bar(monkeypatch):
     call_command("crawl_jobs", stdout=stdout)
 
     output = stdout.getvalue()
-    assert "[1/1] Greenhouse (100.00%)" in output
+    assert "[1/1] LinkedIn OpenAI (100.00%)" in output
     assert "Done" in output
     assert "Created: 1" in output
     assert "Updated: 0" in output

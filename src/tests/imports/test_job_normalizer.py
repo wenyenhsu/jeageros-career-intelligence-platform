@@ -271,19 +271,20 @@ def test_canonical_payload_validation_rejects_missing_required_fields():
 
 def test_source_config_can_supply_company_name():
     source = JobSource(
-        name="OpenAI Greenhouse",
-        resource=JobSource.ResourceChoices.GREENHOUSE,
-        base_url="https://boards.greenhouse.io/openai",
+        name="OpenAI LinkedIn",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
         filter_config={"company_name": "OpenAI"},
     )
 
     payload = JobNormalizer.normalize(
         {
-            "title": "Platform Engineer",
-            "absolute_url": "https://boards.greenhouse.io/openai/jobs/100",
+            "jobTitle": "Platform Engineer",
+            "jobUrl": "https://www.linkedin.com/jobs/view/100",
+            "jobPostingId": "100",
         },
         source=source,
     )
 
-    assert payload.source == "greenhouse"
+    assert payload.source == "linkedin"
     assert payload.company_name == "OpenAI"
