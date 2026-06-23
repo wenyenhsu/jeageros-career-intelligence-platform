@@ -26,8 +26,9 @@ JägerOS is a Django-based career intelligence platform for job tracking, applic
   - Visualizes career insights and application progress through an interactive dashboard.
 ![dashboard](docs/dashboard.png)
 - Resume Analysis Engine
-  - Implements an Ollama-powered skill extraction pipeline: Extract → Verify → SkillSet Mapping → Scoring.
+  - Implements an Ollama-powered skill extraction pipeline: Extract → Verify → SkillSet Mapping → RAG (pgvector retrieval for unresolved skills).
   - Integrates the ESCO knowledge base and business/market taxonomies for skill normalization and career intelligence.
+  - Resume RAG uses `SkillSet` pgvector embeddings; new skills from crawling are backfilled automatically (see [Celery Background Tasks](#celery-background-tasks)).
 ![reusme_1](docs/resume_analysis.png)
 ![reusme_2](docs/resume_pipeline_show.png)
 - Job Matching
@@ -159,7 +160,7 @@ This starts:
 | `db` | PostgreSQL 15 + pgvector | `5432` |
 | `redis` | Celery broker | `6379` |
 | `celery-worker` | Background tasks | — |
-| `celery-beat` | Scheduler (default: crawl every 15 min) | — |
+| `celery-beat` | Scheduler (crawl + skill embedding sync) | — |
 | `nginx` | Reverse proxy | `80` |
 
 Check container status:
@@ -245,6 +246,10 @@ Additional variables from `docker-compose.yml` (defaults apply when not set in `
 | `OLLAMA_EMBEDDING_MODEL` | `mxbai-embed-large` | Embedding model |
 | `CRAWL_SCHEDULE_SECONDS` | `900` | Celery Beat crawl interval (seconds) |
 | `CRAWL_SKILL_PIPELINE_ENABLED` | `true` | Run skill pipeline after crawl |
+| `SKILL_EMBEDDING_SCHEDULE_SECONDS` | `3600` | Celery Beat interval for `generate_skill_embeddings` (seconds) |
+| `SKILL_EMBEDDING_BATCH_LIMIT` | `100` | Max SkillSets embedded per scheduled run |
+| `SKILL_EMBEDDING_SYNC_ENABLED` | `true` | Enable automatic embedding sync (Beat + post-crawl) |
+| `SKILL_EMBEDDING_SYNC_AFTER_CRAWL` | `true` | Queue embedding sync after a successful crawl |
 | `USE_SQLITE` | `0` | Set `1` for SQLite (not recommended; no pgvector) |
 
 ---
@@ -553,7 +558,15 @@ docker compose exec web python manage.py validate_skill_normalization
 
 #### `generate_skill_embeddings`
 
-Generates pgvector embeddings for `SkillSet` records (default: Ollama `mxbai-embed-large`).
+Generates pgvector embeddings for `SkillSet` records (default: Ollama `mxbai-embed-large`).  
+Embeddings power **resume RAG** (`SkillRAGPipeline` vector retrieval) and **Market Fit** cosine similarity.
+
+**Automatic sync** (no manual command required when Celery is running):
+
+- **Celery Beat** task `generate-skill-embeddings` — processes skills missing embeddings every `SKILL_EMBEDDING_SCHEDULE_SECONDS` (default: 1 hour), up to `SKILL_EMBEDDING_BATCH_LIMIT` per run.
+- **After crawl** — a successful `crawl_all_sources` run queues the same sync (when `SKILL_EMBEDDING_SYNC_AFTER_CRAWL=true`).
+
+Job crawl may `auto_create` new `SkillSet` rows without embeddings; scheduled sync backfills them so resume analysis RAG does not rely only on alias/exact/catalog text matching.
 
 ```bash
 # Process skills without embeddings only
@@ -562,16 +575,22 @@ docker compose exec web python manage.py generate_skill_embeddings
 # Force regenerate all
 docker compose exec web python manage.py generate_skill_embeddings --force
 
-# Limit count (testing)
+# Limit count (testing or one-off batch)
 docker compose exec web python manage.py generate_skill_embeddings --limit 100
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--force` | Overwrite existing embeddings |
-| `--limit <int>` | Maximum records to process |
+| `--limit <int>` | Maximum records to process (overrides default batch limit for this run) |
 
-**Prerequisites**: Ollama running with the embedding model pulled; `skills.0008` migration (pgvector column).
+**Prerequisites**: Ollama running with the embedding model pulled; `skills.0008` migration (pgvector column); `celery-beat` + `celery-worker` for scheduled sync.
+
+**Trigger via Celery** (optional):
+
+```bash
+docker compose exec celery-worker celery -A config call apps.skills.tasks.generate_skill_embeddings
+```
 
 ---
 
@@ -655,10 +674,11 @@ docker compose exec web python manage.py seed_market_taxonomy
 # 6. Normalization check
 docker compose exec web python manage.py validate_skill_normalization
 
-# 7. Generate embeddings (requires Ollama)
+# 7. Generate embeddings (requires Ollama; also runs automatically via Celery Beat)
 docker compose exec web python manage.py generate_skill_embeddings
 
 # 8. Create JobSources in Admin, then crawl
+#    (crawl may auto_create new SkillSets; post-crawl embedding sync runs if enabled)
 docker compose exec web python manage.py crawl_job_sources
 
 # 9. Refresh market demand aggregates
@@ -757,8 +777,8 @@ curl http://localhost:11434/api/tags
 Features that depend on Ollama:
 
 - Post-crawl skill Extract / Verify / Mapping
-- `generate_skill_embeddings`
-- Resume analysis and `eval_resume_ollama`
+- `generate_skill_embeddings` (scheduled + post-crawl, and manual command)
+- Resume analysis RAG vector retrieval and `eval_resume_ollama`
 
 ---
 
@@ -772,12 +792,26 @@ docker compose logs -f celery-worker
 docker compose logs -f celery-beat
 ```
 
-Default Beat task: `crawl-enabled-job-sources` (interval: `CRAWL_SCHEDULE_SECONDS`, default 900 seconds).
+### Scheduled tasks (Celery Beat)
+
+| Beat key | Task | Default interval | Purpose |
+|----------|------|------------------|---------|
+| `crawl-enabled-job-sources` | `apps.imports.tasks.crawl_all_sources` | `CRAWL_SCHEDULE_SECONDS` (900 s) | Crawl enabled JobSources, sync jobs, run skill pipeline |
+| `generate-skill-embeddings` | `apps.skills.tasks.generate_skill_embeddings` | `SKILL_EMBEDDING_SCHEDULE_SECONDS` (3600 s) | Backfill `SkillSet.embedding` for RAG / Market Fit |
+
+After a **successful** crawl, the worker also queues an embedding sync batch (when `SKILL_EMBEDDING_SYNC_AFTER_CRAWL=true`), so new skills from crawling enter the pgvector index without waiting for the next Beat tick.
 
 To trigger a crawl manually:
 
 ```bash
 docker compose exec web python manage.py crawl_job_sources
+```
+
+To tune embedding coverage for resume RAG (example: every 15 minutes, 200 skills per batch):
+
+```env
+SKILL_EMBEDDING_SCHEDULE_SECONDS=900
+SKILL_EMBEDDING_BATCH_LIMIT=200
 ```
 
 ---
@@ -820,7 +854,8 @@ print(f"Total Skills: {total}")
 print(f"Embedded Skills: {embedded}")
 ```
 
-After ESCO import, `total` should be > 0. After `generate_skill_embeddings`, `embedded` should increase.
+After ESCO import, `total` should be > 0. After `generate_skill_embeddings` (manual or Celery), `embedded` should increase.  
+If crawl creates many new skills, run Beat/worker and wait for batches to complete, or run `generate_skill_embeddings --limit N` manually.
 
 ### 5. Market demand data
 

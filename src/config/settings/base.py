@@ -120,10 +120,26 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 CRAWL_SCHEDULE_SECONDS = int(os.getenv("CRAWL_SCHEDULE_SECONDS", "900"))
+SKILL_EMBEDDING_SCHEDULE_SECONDS = int(
+    os.getenv("SKILL_EMBEDDING_SCHEDULE_SECONDS", "3600")
+)
+SKILL_EMBEDDING_BATCH_LIMIT = int(os.getenv("SKILL_EMBEDDING_BATCH_LIMIT", "100"))
+SKILL_EMBEDDING_SYNC_ENABLED = (
+    os.getenv("SKILL_EMBEDDING_SYNC_ENABLED", "true").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
+SKILL_EMBEDDING_SYNC_AFTER_CRAWL = (
+    os.getenv("SKILL_EMBEDDING_SYNC_AFTER_CRAWL", "true").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
 CELERY_BEAT_SCHEDULE = {
     "crawl-enabled-job-sources": {
         "task": "apps.imports.tasks.crawl_all_sources",
         "schedule": CRAWL_SCHEDULE_SECONDS,
+    },
+    "generate-skill-embeddings": {
+        "task": "apps.skills.tasks.generate_skill_embeddings",
+        "schedule": SKILL_EMBEDDING_SCHEDULE_SECONDS,
     },
 }
 

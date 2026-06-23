@@ -1,6 +1,7 @@
 import logging
 
 from celery import shared_task
+from django.conf import settings
 
 from .models import JobSource, PipelineLog
 from .services import CrawlService, MonitoringService
@@ -64,6 +65,19 @@ def crawl_all_sources(crawl_run_id=None, source_ids=None):
                 summary["skill_demand_update"] = demand_stats
             except Exception as exc:
                 logger.warning("Skill demand update after crawl failed: %s", exc)
+            if settings.SKILL_EMBEDDING_SYNC_AFTER_CRAWL:
+                try:
+                    from apps.skills.tasks import schedule_skill_embedding_sync
+
+                    embedding_result = schedule_skill_embedding_sync()
+                    if embedding_result is not None:
+                        summary["skill_embedding_sync"] = (
+                            embedding_result
+                            if isinstance(embedding_result, dict)
+                            else {"task_id": getattr(embedding_result, "id", None)}
+                        )
+                except Exception as exc:
+                    logger.warning("Skill embedding sync after crawl failed: %s", exc)
         return summary
     except Exception as exc:
         MonitoringService.log_failure(
