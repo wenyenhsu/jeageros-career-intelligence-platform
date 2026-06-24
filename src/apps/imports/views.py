@@ -20,6 +20,7 @@ from django.views.generic import (
 
 from .forms import JobSourceForm
 from .models import CrawlRun, JobArchiveRun, JobSource, PipelineLog
+from .search import filter_job_sources_for_search
 from .services import JobArchiveService, MonitoringService
 
 
@@ -400,8 +401,16 @@ class JobSourceListView(ListView):
     template_name = "imports/job_source_list.html"
     context_object_name = "sources"
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        query = self.request.GET.get("q", "").strip()
+        if not query:
+            return queryset
+        return filter_job_sources_for_search(queryset, query)
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        context["search_query"] = self.request.GET.get("q", "").strip()
         active_crawl_run_id = self.request.GET.get("crawl_run_id") or ""
         context["active_crawl_run_id"] = active_crawl_run_id
         context["crawl_status_url_template"] = reverse(

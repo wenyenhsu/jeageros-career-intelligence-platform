@@ -32,6 +32,8 @@ def test_source_list_view(client):
     assert response.status_code == 200
     content = response.content.decode()
     assert "LinkedIn" in content
+    assert "data-auto-search-form" in content
+    assert "data-auto-search-input" in content
     assert "Run all sources" in content
     assert f'action="{reverse("source-run-all")}"' in content
     assert "Live Pipeline Status" in content

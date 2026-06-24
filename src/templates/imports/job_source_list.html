@@ -99,7 +99,30 @@
 </div>
 
 <div class="card shadow-sm border-0">
-  <div class="table-responsive">
+  <div class="card-body">
+    <form class="row g-2 mb-3" method="get" data-auto-search-form data-auto-search-delay="450">
+      <div class="col-12 col-md">
+        <label class="visually-hidden" for="source-search">Search job sources</label>
+        <input
+          class="form-control"
+          id="source-search"
+          name="q"
+          value="{{ search_query }}"
+          placeholder="Search name, type, URL, status, keywords, or notes"
+          data-auto-search-input
+        >
+      </div>
+      <div class="col-12 col-md-auto">
+        <button class="btn btn-outline-primary w-100" type="submit">Search</button>
+      </div>
+      {% if search_query %}
+        <div class="col-12 col-md-auto">
+          <a class="btn btn-outline-secondary w-100" href="{% url 'source-list' %}">Clear</a>
+        </div>
+      {% endif %}
+    </form>
+
+    <div class="table-responsive">
     <table class="table align-middle mb-0 table-hover">
       <thead class="table-light">
         <tr>
@@ -150,14 +173,20 @@
             <td colspan="6">
               <div class="empty-state py-5 text-center">
                 <i class="bi bi-plug fs-1"></i>
-                <p class="mb-2 mt-2">No sources yet.</p>
-                <a href="{% url 'source-create' %}" class="btn btn-primary">Create your first source</a>
+                {% if search_query %}
+                  <p class="mb-2 mt-2">No sources match "{{ search_query }}".</p>
+                  <a href="{% url 'source-list' %}" class="btn btn-outline-secondary">Clear search</a>
+                {% else %}
+                  <p class="mb-2 mt-2">No sources yet.</p>
+                  <a href="{% url 'source-create' %}" class="btn btn-primary">Create your first source</a>
+                {% endif %}
               </div>
             </td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
+    </div>
   </div>
 </div>
 
