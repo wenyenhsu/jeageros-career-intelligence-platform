@@ -597,13 +597,15 @@ class CrawlService:
             or config.get("keyword")
         )
         if include_keywords and not any(
-            keyword.casefold() in searchable_text for keyword in include_keywords
+            cls._keyword_in_text(keyword, searchable_text)
+            for keyword in include_keywords
         ):
             return False
 
         exclude_keywords = cls._coerce_text_values(config.get("exclude_keywords"))
         if exclude_keywords and any(
-            keyword.casefold() in searchable_text for keyword in exclude_keywords
+            cls._keyword_in_text(keyword, searchable_text)
+            for keyword in exclude_keywords
         ):
             return False
 
@@ -659,6 +661,16 @@ class CrawlService:
             *sections.values(),
         ]
         return " ".join(str(part or "") for part in parts).casefold()
+
+    @staticmethod
+    def _keyword_in_text(keyword, text):
+        key = " ".join(str(keyword or "").casefold().split())
+        if not key or not text:
+            return False
+        if key == "co-op":
+            return bool(re.search(r"\bco[\s-]?op\b", text, flags=re.IGNORECASE))
+        pattern = rf"\b{re.escape(key)}\b"
+        return bool(re.search(pattern, text, flags=re.IGNORECASE))
 
     @classmethod
     def _job_matches_location_filter(cls, job_data, config):

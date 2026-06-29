@@ -8,6 +8,7 @@ from .models import JobSource
 class JobSourceForm(forms.ModelForm):
     DEFAULT_BASE_URLS = {
         JobSource.ResourceChoices.LINKEDIN: "https://www.linkedin.com/jobs/search/",
+        JobSource.ResourceChoices.GREENHOUSE: "https://my.greenhouse.io/",
         # JobSource.ResourceChoices.HANDSHAKE: "https://app.joinhandshake.com/stu/postings",
         # JobSource.ResourceChoices.GENERIC_HTML: "",
     }
@@ -22,6 +23,17 @@ class JobSourceForm(forms.ModelForm):
             "rolling_search": True,
             "rate_limit_cooldown_minutes": 60,
             "sort_by": "DD",
+            "date_posted": "r604800",
+            "default_job_type": "",
+        },
+        JobSource.ResourceChoices.GREENHOUSE: {
+            "max_pages": 1,
+            "fetch_details": "new_or_missing",
+            "max_search_requests": 8,
+            "max_detail_requests": 5,
+            "request_delay_seconds": 2,
+            "rolling_search": True,
+            "rate_limit_cooldown_minutes": 60,
             "date_posted": "r604800",
             "default_job_type": "",
         },
@@ -57,6 +69,17 @@ class JobSourceForm(forms.ModelForm):
             "include_keywords": [],
             "exclude_keywords": [],
             "target_companies": [],
+        },
+        JobSource.ResourceChoices.GREENHOUSE: {
+            "location": ["United States"],
+            "remote_only": False,
+            "workplace_types": ["Remote", "Hybrid", "On-site"],
+            "job_types": [],
+            "search_keywords": [],
+            "include_keywords": [],
+            "exclude_keywords": ["intern", "internship", "co-op"],
+            "target_companies": [],
+            "board_tokens": [],
         },
         # JobSource.ResourceChoices.HANDSHAKE: {
         #     "location": [],
@@ -102,6 +125,7 @@ class JobSourceForm(forms.ModelForm):
         "include_keywords",
         "exclude_keywords",
         "target_companies",
+        "board_tokens",
     }
 
     FETCH_DETAIL_CHOICES = (
@@ -259,6 +283,18 @@ class JobSourceForm(forms.ModelForm):
             attrs={"class": "form-control", "rows": 2, "placeholder": "OpenAI, Google"}
         ),
     )
+    board_tokens = forms.CharField(
+        required=False,
+        label="Board tokens",
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control",
+                "rows": 2,
+                "placeholder": "stripe, databricks, anthropic",
+            }
+        ),
+        help_text="Greenhouse board tokens to query. Leave empty to use the default tech-company list.",
+    )
 
     class Meta:
         model = JobSource
@@ -368,6 +404,7 @@ class JobSourceForm(forms.ModelForm):
             "include_keywords",
             "exclude_keywords",
             "target_companies",
+            "board_tokens",
         ):
             values = self._split_values(cleaned_data.get(key))
             if values:

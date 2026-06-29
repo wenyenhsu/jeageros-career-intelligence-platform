@@ -26,7 +26,11 @@ class SourceDetector:
     DOMAIN_PARSER_TYPES = {
         LINKEDIN: ("linkedin.com",),
         HANDSHAKE: ("joinhandshake.com", "handshake.com"),
-        GREENHOUSE: ("boards.greenhouse.io",),
+        GREENHOUSE: (
+            "my.greenhouse.io",
+            "boards.greenhouse.io",
+            "job-boards.greenhouse.io",
+        ),
         LEVER: ("jobs.lever.co",),
     }
 

@@ -63,6 +63,7 @@
               {% include 'imports/partials/source_form_field.html' with field=form.include_keywords classes='col-12 col-md-6' %}
               {% include 'imports/partials/source_form_field.html' with field=form.exclude_keywords classes='col-12 col-md-6' %}
               {% include 'imports/partials/source_form_field.html' with field=form.target_companies classes='col-12 col-md-6' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.board_tokens classes='col-12 col-md-6' %}
             </div>
           </section>
 
@@ -111,6 +112,7 @@
       "include_keywords",
       "exclude_keywords",
       "target_companies",
+      "board_tokens",
     ];
 
     let defaultBaseUrls = {};

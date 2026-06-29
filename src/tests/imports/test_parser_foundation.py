@@ -1,4 +1,5 @@
 import pytest
+from django.urls import reverse
 from types import SimpleNamespace
 from urllib.error import HTTPError, URLError
 
@@ -25,6 +26,10 @@ def test_source_detector_detects_supported_job_boards():
     )
     assert (
         SourceDetector.detect_parser_type("https://boards.greenhouse.io/openai")
+        == SourceDetector.GREENHOUSE
+    )
+    assert (
+        SourceDetector.detect_parser_type("https://my.greenhouse.io/")
         == SourceDetector.GREENHOUSE
     )
     assert (
@@ -715,3 +720,122 @@ def _linkedin_detail_html(
       </body>
     </html>
     """
+
+
+def test_greenhouse_parser_filters_jobs_by_search_keyword(monkeypatch):
+    source = JobSource(
+        name="Greenhouse Data Engineer",
+        resource=JobSource.ResourceChoices.GREENHOUSE,
+        base_url="https://my.greenhouse.io/",
+        crawl_config={"max_search_requests": 1, "fetch_details": "false"},
+        filter_config={
+            "search_keywords": ["data engineer"],
+            "job_types": ["Full-time"],
+            "board_tokens": ["acme"],
+        },
+    )
+    parser = GreenhouseParser(source=source)
+
+    def fake_fetch_json(url):
+        assert "boards/acme/jobs" in url
+        return {
+            "jobs": [
+                {
+                    "id": 1,
+                    "title": "Data Engineer",
+                    "absolute_url": "https://boards.greenhouse.io/acme/jobs/1",
+                    "location": {"name": "Remote"},
+                    "company_name": "Acme",
+                    "updated_at": "2026-06-20T10:00:00-04:00",
+                },
+                {
+                    "id": 2,
+                    "title": "Account Executive",
+                    "absolute_url": "https://boards.greenhouse.io/acme/jobs/2",
+                    "location": {"name": "Remote"},
+                    "company_name": "Acme",
+                    "updated_at": "2026-06-20T10:00:00-04:00",
+                },
+            ]
+        }
+
+    monkeypatch.setattr(parser, "_fetch_json", fake_fetch_json)
+
+    jobs = parser.extract_jobs(SimpleNamespace(url=source.base_url))
+
+    assert len(jobs) == 1
+    assert jobs[0]["title"] == "Data Engineer"
+    assert jobs[0]["company_name"] == "Acme"
+
+
+@pytest.mark.django_db
+def test_greenhouse_parser_rotates_board_tokens(monkeypatch):
+    source = JobSource.objects.create(
+        name="Greenhouse Rotating Boards",
+        resource=JobSource.ResourceChoices.GREENHOUSE,
+        base_url="https://my.greenhouse.io/",
+        crawl_config={
+            "max_search_requests": 1,
+            "fetch_details": "false",
+            "rolling_search": True,
+        },
+        filter_config={
+            "search_keywords": ["engineer"],
+            "board_tokens": ["alpha", "beta", "gamma"],
+        },
+    )
+    parser = GreenhouseParser(source=source)
+    fetched_tokens = []
+
+    def fake_fetch_json(url):
+        token = url.split("/boards/")[1].split("/jobs")[0]
+        fetched_tokens.append(token)
+        return {"jobs": []}
+
+    monkeypatch.setattr(parser, "_fetch_json", fake_fetch_json)
+
+    parser.extract_jobs(SimpleNamespace(url=source.base_url))
+    parser.extract_jobs(SimpleNamespace(url=source.base_url))
+
+    assert fetched_tokens == ["alpha", "beta"]
+    source.refresh_from_db()
+    assert source.crawl_config["rolling_state"]["greenhouse_board_offset"] == 2
+
+
+@pytest.mark.django_db
+def test_source_create_view_supports_greenhouse_resource(client):
+    payload = {
+        "name": "Greenhouse Data Analyst",
+        "resource": JobSource.ResourceChoices.GREENHOUSE,
+        "base_url": "https://my.greenhouse.io/",
+        "enabled": True,
+        "crawl_interval_minutes": 1440,
+        "max_pages": 1,
+        "fetch_details": "new_or_missing",
+        "max_search_requests": 8,
+        "max_detail_requests": 5,
+        "request_delay_seconds": 2,
+        "rolling_search": "on",
+        "rate_limit_cooldown_minutes": 60,
+        "sort_by": "",
+        "date_posted": "r604800",
+        "default_job_type": "",
+        "location": "United States",
+        "job_types": "Full-time",
+        "workplace_types": "Remote, Hybrid, On-site",
+        "search_keywords": "data analyst",
+        "include_keywords": "data analyst",
+        "exclude_keywords": "",
+        "target_companies": "",
+        "board_tokens": "stripe, databricks",
+        "notes": "MyGreenhouse-style source",
+    }
+
+    response = client.post(reverse("source-create"), data=payload)
+
+    assert response.status_code in (302, 303)
+    source = JobSource.objects.get(name="Greenhouse Data Analyst")
+    assert source.resource == JobSource.ResourceChoices.GREENHOUSE
+    assert source.filter_config["search_keywords"] == ["data analyst"]
+    assert source.filter_config["board_tokens"] == ["stripe", "databricks"]
+

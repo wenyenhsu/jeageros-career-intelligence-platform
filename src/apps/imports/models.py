@@ -5,8 +5,8 @@ class JobSource(models.Model):
     class ResourceChoices(models.TextChoices):
         # import resources check
         LINKEDIN = "LINKEDIN", "LinkedIn"
+        GREENHOUSE = "GREENHOUSE", "Greenhouse"
         # HANDSHAKE = "HANDSHAKE", "Handshake"
-        # GREENHOUSE = "GREENHOUSE", "Greenhouse"
         # LEVER = "LEVER", "Lever"
         # CAREER_SITE = "CAREER_SITE", "Career Site"
         # RSS = "RSS", "RSS"
