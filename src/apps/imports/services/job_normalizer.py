@@ -1,8 +1,9 @@
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import date, datetime
 from typing import Any
 
+from .internship_schedule_extractor import InternshipScheduleExtractor
 from .source_detector import SourceDetector
 
 
@@ -21,6 +22,13 @@ class CanonicalJobPayload:
     sections: dict[str, str | None] = field(default_factory=dict)
     posted_at: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    starts_on: str | None = None
+    ends_on: str | None = None
+    start_precision: str | None = None
+    end_precision: str | None = None
+    season: str | None = None
+    duration_weeks: int | None = None
+    schedule_raw: str | None = None
 
     def as_dict(self):
         return asdict(self)
@@ -41,6 +49,29 @@ class CanonicalJobPayload:
                 "Canonical job payload missing required field(s): " + ", ".join(missing)
             )
         return self
+
+    @classmethod
+    def field_names(cls):
+        return {item.name for item in fields(cls)}
+
+    @classmethod
+    def coerce_dict(cls, value, error_prefix="canonical job payload"):
+        if isinstance(value, cls):
+            return value.validate().as_dict()
+        if not isinstance(value, dict):
+            raise TypeError(
+                f"{error_prefix} requires a CanonicalJobPayload or canonical dict."
+            )
+        unexpected_keys = set(value) - cls.field_names()
+        if unexpected_keys:
+            raise ValueError(
+                f"{error_prefix} fields only; unexpected field(s): "
+                + ", ".join(sorted(unexpected_keys))
+            )
+        data = {name: value.get(name) for name in cls.field_names()}
+        data["sections"] = data.get("sections") or {}
+        data["metadata"] = data.get("metadata") or {}
+        return cls(**data).validate().as_dict()
 
 
 class JobNormalizer:
@@ -213,6 +244,11 @@ class JobNormalizer:
             or job_type
         )
 
+        schedule = InternshipScheduleExtractor.extract(
+            title=title,
+            description=description,
+            sections=sections,
+        )
         payload = CanonicalJobPayload(
             source=source_type,
             source_url=cls._clean_text(
@@ -238,6 +274,7 @@ class JobNormalizer:
                 cls._first_value(raw, cls.FIELD_ALIASES["posted_at"])
             ),
             metadata=cls._metadata(raw, source_type),
+            **schedule.as_canonical_fields(),
         )
         return payload.validate() if validate else payload
 

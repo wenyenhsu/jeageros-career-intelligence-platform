@@ -1,3 +1,4 @@
+from .internship_schedule_extractor import InternshipScheduleExtractor
 from .job_extractor import ExtractedJob, JobExtractor
 from .company_upsert_service import CompanyUpsertService
 from .crawl_service import CrawlService
@@ -38,6 +39,7 @@ __all__ = [
     "GenericHTMLParser",
     "GreenhouseParser",
     "HandshakeParser",
+    "InternshipScheduleExtractor",
     "JobNormalizer",
     "JobArchiveService",
     "JobSyncService",

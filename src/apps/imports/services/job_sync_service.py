@@ -5,6 +5,7 @@ from apps.imports.models import PipelineLog
 from apps.jobs.models import JobPost
 
 from .company_upsert_service import CompanyUpsertService
+from .internship_schedule_extractor import parse_iso_date
 from .job_normalizer import CanonicalJobPayload
 from .monitoring_service import MonitoringService
 from .source_detector import SourceDetector
@@ -12,76 +13,6 @@ from .sync_result import JobUpsertResult, SyncResult
 
 
 class JobSyncService:
-    # Auto close detection is disabled; status is manual-only for now.
-    # Restore the three categories below when re-enabling automatic closed/active sync.
-    # CLOSED_METADATA_BOOLEAN_KEYS = {
-    #     "closed_by_source",
-    #     "is_closed",
-    #     "job_closed",
-    #     "job_removed",
-    #     "job_expired",
-    #     "job_url_invalid",
-    #     "link_invalid",
-    #     "no_longer_accepting",
-    #     "no_longer_accepting_applications",
-    #     "no_longer_recruiting",
-    #     "not_accepting_applications",
-    #     "posting_removed",
-    #     "source_confirms_closed",
-    #     "source_reports_closed",
-    #     "source_url_invalid",
-    #     "url_invalid",
-    # }
-    # CLOSED_POSTING_STATUS_KEYS = {
-    #     "availability",
-    #     "job_status",
-    #     "posting_status",
-    #     "status",
-    # }
-    # CLOSED_POSTING_STATUS_VALUES = {
-    #     "closed",
-    #     "expired",
-    #     "inactive",
-    #     "no longer accepting",
-    #     "no longer accepting applications",
-    #     "no longer recruiting",
-    #     "not accepting",
-    #     "not accepting applications",
-    #     "posting removed",
-    #     "removed",
-    # }
-    # CLOSED_LINK_STATUS_KEYS = {
-    #     "job_url_status",
-    #     "link_status",
-    #     "source_url_status",
-    #     "url_status",
-    # }
-    # CLOSED_LINK_STATUS_VALUES = {
-    #     "404",
-    #     "410",
-    #     "gone",
-    #     "invalid",
-    #     "link invalid",
-    #     "not found",
-    #     "removed",
-    #     "url invalid",
-    # }
-    CANONICAL_KEYS = {
-        "source",
-        "source_url",
-        "external_id",
-        "company_name",
-        "title",
-        "job_type",
-        "employment_type",
-        "remote_type",
-        "location",
-        "description",
-        "sections",
-        "posted_at",
-        "metadata",
-    }
-
     @classmethod
     def upsert_job(cls, canonical_job_payload):
         data = cls._canonical_job_data(canonical_job_payload)
@@ -277,6 +208,13 @@ class JobSyncService:
             "employment_type": job_type,
             "description": data.get("description") or "",
             "last_synced_at": synced_at,
+            "starts_on": parse_iso_date(data.get("starts_on")),
+            "ends_on": parse_iso_date(data.get("ends_on")),
+            "start_precision": data.get("start_precision") or "",
+            "end_precision": data.get("end_precision") or "",
+            "season": data.get("season") or "",
+            "duration_weeks": cls._coerce_duration_weeks(data.get("duration_weeks")),
+            "schedule_raw": data.get("schedule_raw") or "",
         }
 
     @staticmethod
@@ -289,6 +227,13 @@ class JobSyncService:
             "job_type",
             "employment_type",
             "description",
+            "starts_on",
+            "ends_on",
+            "start_precision",
+            "end_precision",
+            "season",
+            "duration_weeks",
+            "schedule_raw",
         }
         fields = dict(fields)
         for field_name in preserved_fields:
@@ -302,35 +247,19 @@ class JobSyncService:
 
     @classmethod
     def _canonical_job_data(cls, canonical_job_payload):
-        if isinstance(canonical_job_payload, CanonicalJobPayload):
-            return canonical_job_payload.validate().as_dict()
-        if not isinstance(canonical_job_payload, dict):
-            raise TypeError("sync requires a CanonicalJobPayload or canonical dict.")
+        return CanonicalJobPayload.coerce_dict(canonical_job_payload)
 
-        unexpected_keys = set(canonical_job_payload) - cls.CANONICAL_KEYS
-        if unexpected_keys:
-            raise ValueError(
-                "sync requires canonical job payload fields only; unexpected "
-                f"field(s): {', '.join(sorted(unexpected_keys))}"
-            )
-
-        data = {
-            "source": canonical_job_payload.get("source"),
-            "source_url": canonical_job_payload.get("source_url"),
-            "external_id": canonical_job_payload.get("external_id"),
-            "company_name": canonical_job_payload.get("company_name"),
-            "title": canonical_job_payload.get("title"),
-            "job_type": canonical_job_payload.get("job_type"),
-            "employment_type": canonical_job_payload.get("employment_type"),
-            "remote_type": canonical_job_payload.get("remote_type"),
-            "location": canonical_job_payload.get("location"),
-            "description": canonical_job_payload.get("description"),
-            "sections": canonical_job_payload.get("sections") or {},
-            "posted_at": canonical_job_payload.get("posted_at"),
-            "metadata": canonical_job_payload.get("metadata") or {},
-        }
-        CanonicalJobPayload(**data).validate()
-        return data
+    @staticmethod
+    def _coerce_duration_weeks(value):
+        if value in (None, ""):
+            return None
+        try:
+            weeks = int(value)
+        except (TypeError, ValueError):
+            return None
+        if weeks < 1:
+            return None
+        return weeks
 
     @classmethod
     def _job_status_from_data(cls, data):

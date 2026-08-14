@@ -64,6 +64,8 @@
               {% include 'imports/partials/source_form_field.html' with field=form.exclude_keywords classes='col-12 col-md-6' %}
               {% include 'imports/partials/source_form_field.html' with field=form.target_companies classes='col-12 col-md-6' %}
               {% include 'imports/partials/source_form_field.html' with field=form.board_tokens classes='col-12 col-md-6' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.start_month classes='col-12 col-md-6' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.start_month_to classes='col-12 col-md-6' %}
             </div>
           </section>
 
@@ -113,6 +115,8 @@
       "exclude_keywords",
       "target_companies",
       "board_tokens",
+      "start_month",
+      "start_month_to",
     ];
 
     let defaultBaseUrls = {};

@@ -139,6 +139,7 @@ def test_source_help_view_explains_form_parameters(client):
     assert "Include keywords" in content
     assert "Exclude keywords" in content
     assert "Target companies" in content
+    assert "Internship start month" in content
     assert "LinkedIn" in content
     assert "Handshake" not in content
     assert "Generic HTML" not in content
@@ -224,6 +225,7 @@ def test_source_form_standardizes_filter_config_values():
             "include_keywords": "python\nDjango, python",
             "exclude_keywords": "senior",
             "target_companies": "",
+            "start_month": "2026-12",
             "notes": "",
         }
     )
@@ -238,6 +240,7 @@ def test_source_form_standardizes_filter_config_values():
     assert source.filter_config["job_types"] == ["Internship", "Full-time"]
     assert source.filter_config["include_keywords"] == ["python", "Django"]
     assert source.filter_config["remote_only"] is False
+    assert source.filter_config["start_month"] == "2026-12"
 
 
 @pytest.mark.django_db

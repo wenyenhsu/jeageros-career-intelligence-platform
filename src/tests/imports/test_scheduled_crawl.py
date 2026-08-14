@@ -255,6 +255,34 @@ def test_scheduled_crawl_filters_jobs_by_job_type(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_scheduled_crawl_filters_jobs_by_internship_start_month(monkeypatch):
+    source = JobSource.objects.create(
+        name="LinkedIn Winter Internships",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
+        enabled=True,
+        filter_config={"start_month": "2026-12"},
+    )
+    monkeypatch.setattr(
+        crawl_service.ParserRegistry,
+        "get_parser",
+        staticmethod(lambda parser_type, source=None: InternshipScheduleParser(source)),
+    )
+
+    summary = CrawlService.crawl_all_sources([source])
+
+    assert summary["success"] is True
+    assert summary["jobs_created"] == 2
+    assert summary["sources"][0]["jobs_found"] == 2
+    assert summary["sources"][0]["jobs_filtered"] == 1
+    titles = set(JobPost.objects.values_list("title", flat=True))
+    assert titles == {"Winter Intern", "Undated Intern"}
+    winter = JobPost.objects.get(title="Winter Intern")
+    assert winter.starts_on.isoformat() == "2026-12-01"
+    assert winter.season == "winter-2026"
+
+
+@pytest.mark.django_db
 def test_scheduled_crawl_dedupes_jobs_before_sync(monkeypatch):
     source = JobSource.objects.create(
         name="LinkedIn Duplicate Roles",
@@ -682,6 +710,39 @@ class JobTypeParser(FakeParser):
                 "source_url": f"{listing_page.url}/openai-intern",
                 "external_id": "openai-intern",
                 "location": "San Francisco, CA",
+                "employment_type": "Internship",
+                "description": "Build tools during an internship.",
+            },
+        ]
+
+
+class InternshipScheduleParser(FakeParser):
+    def extract_jobs(self, listing_page):
+        return [
+            {
+                "title": "Winter Intern",
+                "company_name": "OpenAI",
+                "source_url": f"{listing_page.url}/winter-intern",
+                "external_id": "winter-intern",
+                "location": "Remote",
+                "employment_type": "Internship",
+                "description": "Winter 2026 internship in San Francisco.",
+            },
+            {
+                "title": "Summer Intern",
+                "company_name": "OpenAI",
+                "source_url": f"{listing_page.url}/summer-intern",
+                "external_id": "summer-intern",
+                "location": "Remote",
+                "employment_type": "Internship",
+                "description": "Summer 2026 internship in San Francisco.",
+            },
+            {
+                "title": "Undated Intern",
+                "company_name": "OpenAI",
+                "source_url": f"{listing_page.url}/undated-intern",
+                "external_id": "undated-intern",
+                "location": "Remote",
                 "employment_type": "Internship",
                 "description": "Build tools during an internship.",
             },

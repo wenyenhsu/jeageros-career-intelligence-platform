@@ -54,6 +54,13 @@ class SkillScoringService:
         "sections",
         "posted_at",
         "metadata",
+        "starts_on",
+        "ends_on",
+        "start_precision",
+        "end_precision",
+        "season",
+        "duration_weeks",
+        "schedule_raw",
     }
 
     def score_canonical_payload(

@@ -3,6 +3,7 @@ import json
 from django import forms
 
 from .models import JobSource
+from .services.internship_schedule_extractor import parse_year_month
 
 
 class JobSourceForm(forms.ModelForm):
@@ -126,6 +127,8 @@ class JobSourceForm(forms.ModelForm):
         "exclude_keywords",
         "target_companies",
         "board_tokens",
+        "start_month",
+        "start_month_to",
     }
 
     FETCH_DETAIL_CHOICES = (
@@ -295,6 +298,32 @@ class JobSourceForm(forms.ModelForm):
         ),
         help_text="Greenhouse board tokens to query. Leave empty to use the default tech-company list.",
     )
+    start_month = forms.CharField(
+        required=False,
+        label="Internship start month",
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "type": "month",
+            }
+        ),
+        help_text=(
+            "Keep jobs that start in this month, including seasons that cover it "
+            "(Winter 2026 and Fall 2026 both match December). Jobs with no extracted "
+            "start date are still saved."
+        ),
+    )
+    start_month_to = forms.CharField(
+        required=False,
+        label="Internship start month to",
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "type": "month",
+            }
+        ),
+        help_text="Optional end of the start-month window.",
+    )
 
     class Meta:
         model = JobSource
@@ -343,6 +372,12 @@ class JobSourceForm(forms.ModelForm):
         self._normalized_crawl_config = self._build_crawl_config(cleaned_data)
         self._normalized_filter_config = self._build_filter_config(cleaned_data)
         return cleaned_data
+
+    def clean_start_month(self):
+        return self._clean_month_value(self.cleaned_data.get("start_month"))
+
+    def clean_start_month_to(self):
+        return self._clean_month_value(self.cleaned_data.get("start_month_to"))
 
     def save(self, commit=True):
         instance = super().save(commit=False)
@@ -409,7 +444,20 @@ class JobSourceForm(forms.ModelForm):
             values = self._split_values(cleaned_data.get(key))
             if values:
                 config[key] = values
+        for key in ("start_month", "start_month_to"):
+            value = cleaned_data.get(key)
+            if value:
+                config[key] = value
         return config
+
+    @staticmethod
+    def _clean_month_value(value):
+        text = " ".join(str(value or "").split()).strip()
+        if not text:
+            return ""
+        if parse_year_month(text) is None:
+            raise forms.ValidationError("Use YYYY-MM, for example 2026-12.")
+        return text
 
     @classmethod
     def _merged_config(cls, existing_config, normalized_config, managed_keys):

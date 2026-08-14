@@ -62,6 +62,23 @@ def test_handshake_payload_normalization():
     assert payload.description == "Python and SQL\n\nResearch experience"
 
 
+def test_internship_schedule_is_extracted_during_normalization():
+    payload = JobNormalizer.normalize(
+        {
+            "title": "Software Engineer Intern - Summer 2026",
+            "company_name": "OpenAI",
+            "url": "https://jobs.example.com/intern-summer",
+            "external_id": "intern-summer",
+            "description": "Start date: December 2026. 12-week internship.",
+        }
+    )
+
+    assert payload.starts_on == "2026-12-01"
+    assert payload.start_precision == "month"
+    assert payload.duration_weeks == 12
+    assert payload.schedule_raw
+
+
 def test_greenhouse_payload_normalization():
     payload = JobNormalizer.normalize(
         {

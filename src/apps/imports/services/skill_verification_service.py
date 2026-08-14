@@ -7,22 +7,6 @@ from .monitoring_service import MonitoringService
 
 
 class SkillVerificationService:
-    CANONICAL_KEYS = {
-        "source",
-        "source_url",
-        "external_id",
-        "company_name",
-        "title",
-        "job_type",
-        "employment_type",
-        "remote_type",
-        "location",
-        "description",
-        "sections",
-        "posted_at",
-        "metadata",
-    }
-
     def __init__(self, verifier=None):
         self.verifier = verifier or OllamaVerifier()
 
@@ -167,37 +151,7 @@ class SkillVerificationService:
 
     @classmethod
     def _canonical_job_data(cls, canonical_job_payload):
-        if isinstance(canonical_job_payload, CanonicalJobPayload):
-            return canonical_job_payload.validate().as_dict()
-        if not isinstance(canonical_job_payload, dict):
-            raise TypeError(
-                "skill verification requires a CanonicalJobPayload or canonical dict."
-            )
-
-        unexpected_keys = set(canonical_job_payload) - cls.CANONICAL_KEYS
-        if unexpected_keys:
-            raise ValueError(
-                "skill verification requires canonical job payload fields only; "
-                f"unexpected field(s): {', '.join(sorted(unexpected_keys))}"
-            )
-
-        data = {
-            "source": canonical_job_payload.get("source"),
-            "source_url": canonical_job_payload.get("source_url"),
-            "external_id": canonical_job_payload.get("external_id"),
-            "company_name": canonical_job_payload.get("company_name"),
-            "title": canonical_job_payload.get("title"),
-            "job_type": canonical_job_payload.get("job_type"),
-            "employment_type": canonical_job_payload.get("employment_type"),
-            "remote_type": canonical_job_payload.get("remote_type"),
-            "location": canonical_job_payload.get("location"),
-            "description": canonical_job_payload.get("description"),
-            "sections": canonical_job_payload.get("sections") or {},
-            "posted_at": canonical_job_payload.get("posted_at"),
-            "metadata": canonical_job_payload.get("metadata") or {},
-        }
-        CanonicalJobPayload(**data).validate()
-        return data
+        return CanonicalJobPayload.coerce_dict(canonical_job_payload)
 
     @staticmethod
     def _source_fragments_from_sections(sections):

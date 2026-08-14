@@ -228,6 +228,16 @@
             <td>Optional company allowlist.</td>
             <td>Leave empty to accept any company that matches the other filters.</td>
           </tr>
+          <tr>
+            <td><code>Internship start month</code></td>
+            <td>Keep jobs whose extracted start date is in this month, or whose season covers it. Jobs with no start date are still saved.</td>
+            <td><code>2026-12</code> matches December 2026, Winter 2026, and Fall 2026. It does not match Summer 2026.</td>
+          </tr>
+          <tr>
+            <td><code>Internship start month to</code></td>
+            <td>Optional end of the start-month window.</td>
+            <td>Use with start month to keep internships that begin anywhere in a range.</td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -260,6 +270,7 @@ Rolling search: Enabled</code></pre>
 Job types: Internship
 Workplace types: Remote, Hybrid, On-site
 Search keywords: data engineer, backend, internship
+Internship start month: 2026-12
 Target companies: leave empty for no company limit</code></pre>
         </div>
       </div>

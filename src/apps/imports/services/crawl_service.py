@@ -13,6 +13,10 @@ from apps.imports.models import CrawlRun, JobSource, PipelineLog
 from apps.jobs.models import JobPost
 
 from .company_upsert_service import CompanyUpsertService
+from .internship_schedule_extractor import (
+    InternshipSchedule,
+    start_window_from_config,
+)
 from .job_normalizer import JobNormalizer
 from .job_sync_service import JobSyncService
 from .monitoring_service import MonitoringService
@@ -468,6 +472,13 @@ class CrawlService:
             "description": job.description,
             "sections": {"description": job.description} if job.description else {},
             "posted_at": None,
+            "starts_on": job.starts_on.isoformat() if job.starts_on else None,
+            "ends_on": job.ends_on.isoformat() if job.ends_on else None,
+            "start_precision": job.start_precision or None,
+            "end_precision": job.end_precision or None,
+            "season": job.season or None,
+            "duration_weeks": job.duration_weeks,
+            "schedule_raw": job.schedule_raw or None,
             "metadata": {
                 "job_post_id": job.pk,
                 "job_source_id": getattr(source, "pk", None),
@@ -616,6 +627,9 @@ class CrawlService:
             return False
 
         if not cls._job_matches_job_type_filter(job_data, config):
+            return False
+
+        if not cls._job_matches_start_window_filter(job_data, config):
             return False
 
         return True
@@ -769,6 +783,18 @@ class CrawlService:
         }
         job_types.discard("")
         return bool(job_types & allowed_types)
+
+    @classmethod
+    def _job_matches_start_window_filter(cls, job_data, config):
+        window = start_window_from_config(config)
+        if window is None:
+            return True
+        window_start, window_end = window
+        return InternshipSchedule.from_mapping(job_data).matches_window(
+            window_start,
+            window_end,
+            keep_unknown=True,
+        )
 
     @staticmethod
     def _normalize_job_type_filter(value):

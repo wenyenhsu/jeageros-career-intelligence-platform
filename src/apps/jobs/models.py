@@ -1,3 +1,5 @@
+from datetime import date, datetime
+
 from django.db import models
 from apps.common.models import TimeStampedModel
 from apps.companies.models import Company
@@ -65,6 +67,13 @@ class JobPost(TimeStampedModel):
         blank=True,
     )
     last_synced_at = models.DateTimeField(null=True, blank=True)
+    starts_on = models.DateField(null=True, blank=True)
+    ends_on = models.DateField(null=True, blank=True)
+    start_precision = models.CharField(max_length=16, blank=True)
+    end_precision = models.CharField(max_length=16, blank=True)
+    season = models.CharField(max_length=32, blank=True)
+    duration_weeks = models.PositiveSmallIntegerField(null=True, blank=True)
+    schedule_raw = models.CharField(max_length=255, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -103,6 +112,31 @@ class JobPost(TimeStampedModel):
     @property
     def skill_set_display(self):
         return ", ".join(self.skill_set_names)
+
+    @property
+    def schedule_display(self):
+        starts_on = self._coerce_date(self.starts_on)
+        ends_on = self._coerce_date(self.ends_on)
+        if starts_on and ends_on:
+            return f"{starts_on:%b %Y} – {ends_on:%b %Y}"
+        if starts_on:
+            return f"{starts_on:%b %Y}"
+        if self.season:
+            return self.season.replace("-", " ").title()
+        return ""
+
+    @staticmethod
+    def _coerce_date(value):
+        if value in (None, ""):
+            return None
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        try:
+            return date.fromisoformat(str(value)[:10])
+        except ValueError:
+            return None
 
     @property
     def status_badge_class(self):

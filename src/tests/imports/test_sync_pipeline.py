@@ -103,6 +103,39 @@ def test_job_sync_accepts_canonical_payload_dataclass():
 
 
 @pytest.mark.django_db
+def test_job_sync_persists_extracted_internship_schedule():
+    payload = CanonicalJobPayload(
+        source="linkedin",
+        source_url="https://www.linkedin.com/jobs/view/intern-dec",
+        external_id="intern-dec",
+        company_name="OpenAI",
+        title="Software Engineer Intern",
+        job_type="INTERNSHIP",
+        employment_type="INTERNSHIP",
+        remote_type="Remote",
+        location="Remote",
+        description="Start date: December 2026",
+        starts_on="2026-12-01",
+        ends_on="2027-02-28",
+        start_precision="month",
+        end_precision="month",
+        season="winter-2026",
+        duration_weeks=12,
+        schedule_raw="Start date: December 2026",
+    )
+
+    result = JobSyncService.upsert_job(payload)
+
+    assert result.created is True
+    assert result.job.starts_on.isoformat() == "2026-12-01"
+    assert result.job.ends_on.isoformat() == "2027-02-28"
+    assert result.job.start_precision == "month"
+    assert result.job.season == "winter-2026"
+    assert result.job.duration_weeks == 12
+    assert result.job.schedule_display == "Dec 2026 – Feb 2027"
+
+
+@pytest.mark.django_db
 def test_job_sync_rejects_source_specific_parser_payload():
     with pytest.raises(ValueError, match="canonical job payload fields only"):
         JobSyncService.upsert_job(

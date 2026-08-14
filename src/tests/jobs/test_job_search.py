@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 from django.urls import reverse
@@ -175,3 +175,48 @@ def test_api_job_search_by_job_type_matches_list_behavior(
     assert response.status_code == 200
     payload = response.json()
     assert [job["title"] for job in payload] == ["Research Assistant"]
+
+
+@pytest.mark.django_db
+def test_job_list_filters_by_internship_start_month(client, company):
+    december = JobPost.objects.create(
+        company=company,
+        title="December Intern",
+        employment_type="Internship",
+        starts_on=date(2026, 12, 1),
+        start_precision="month",
+    )
+    JobPost.objects.create(
+        company=company,
+        title="Winter Intern",
+        employment_type="Internship",
+        starts_on=date(2026, 12, 1),
+        ends_on=date(2027, 2, 28),
+        start_precision="season",
+        season="winter-2026",
+    )
+    JobPost.objects.create(
+        company=company,
+        title="Summer Intern",
+        employment_type="Internship",
+        starts_on=date(2026, 5, 1),
+        ends_on=date(2026, 8, 31),
+        start_precision="season",
+        season="summer-2026",
+    )
+    JobPost.objects.create(
+        company=company,
+        title="Undated Intern",
+        employment_type="Internship",
+    )
+
+    response = client.get(reverse("job-list"), {"starts_month": "2026-12"})
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "December Intern" in content
+    assert "Winter Intern" in content
+    assert "Summer Intern" not in content
+    assert "Undated Intern" not in content
+    assert 'name="starts_month"' in content
+    assert december.schedule_display == "Dec 2026"

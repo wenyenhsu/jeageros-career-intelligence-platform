@@ -7,6 +7,10 @@ from apps.common.search import (
     combine_token_filters,
     search_tokens,
 )
+from apps.imports.services.internship_schedule_extractor import (
+    filter_queryset_for_start_window,
+    parse_year_month,
+)
 from apps.skills.models import SkillKeyword
 
 from .models import JobPost
@@ -65,3 +69,10 @@ def build_job_search_filter(query):
         )
 
     return filters
+
+
+def filter_jobs_for_start_month(queryset, month_token):
+    window = parse_year_month(month_token)
+    if window is None:
+        return queryset
+    return filter_queryset_for_start_window(queryset, *window)

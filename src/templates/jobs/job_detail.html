@@ -69,6 +69,16 @@
                         <td>{{ job.job_type_display|default:"-" }}</td>
                     </tr>
                     <tr>
+                        <th>Starts</th>
+                        <td>{{ job.schedule_display|default:"-" }}</td>
+                    </tr>
+                    {% if job.schedule_raw %}
+                    <tr>
+                        <th>Schedule text</th>
+                        <td>{{ job.schedule_raw }}</td>
+                    </tr>
+                    {% endif %}
+                    <tr>
                         <th>Status</th>
                         <td>{{ job.get_status_display }}</td>
                     </tr>

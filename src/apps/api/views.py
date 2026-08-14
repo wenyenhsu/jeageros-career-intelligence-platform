@@ -18,7 +18,7 @@ from apps.companies.search import filter_companies_for_search
 from apps.imports.models import CrawlRun, JobSource
 from apps.imports.services import JobSyncService, MonitoringService
 from apps.jobs.models import JobPost
-from apps.jobs.search import filter_jobs_for_search
+from apps.jobs.search import filter_jobs_for_search, filter_jobs_for_start_month
 from apps.skills.models import SkillKeyword
 from .serializers import (
     ApplicationSerializer,
@@ -66,10 +66,12 @@ class JobPostViewSet(viewsets.ModelViewSet):
             "skill_sets",
             "skill_sets__keywords",
         )
+        starts_month = self.request.query_params.get("starts_month", "").strip()
+        if starts_month:
+            queryset = filter_jobs_for_start_month(queryset, starts_month)
         query = self.request.query_params.get("q", "").strip()
         if not query:
             return queryset
-
         return filter_jobs_for_search(queryset, query)
 
 

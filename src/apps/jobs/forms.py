@@ -42,6 +42,10 @@ class JobPostForm(forms.ModelForm):
             "location",
             "remote_type",
             "employment_type",
+            "starts_on",
+            "ends_on",
+            "season",
+            "duration_weeks",
             "salary_min",
             "salary_max",
             "description",
@@ -57,6 +61,17 @@ class JobPostForm(forms.ModelForm):
             "status": forms.Select(attrs={"class": "form-select"}),
             "location": forms.TextInput(attrs={"class": "form-control"}),
             "remote_type": forms.TextInput(attrs={"class": "form-control"}),
+            "employment_type": forms.Select(attrs={"class": "form-select"}),
+            "starts_on": forms.DateInput(
+                attrs={"class": "form-control", "type": "date"}
+            ),
+            "ends_on": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+            "season": forms.TextInput(
+                attrs={"class": "form-control", "placeholder": "winter-2026"}
+            ),
+            "duration_weeks": forms.NumberInput(
+                attrs={"class": "form-control", "min": 1}
+            ),
             "salary_min": forms.NumberInput(attrs={"class": "form-control"}),
             "salary_max": forms.NumberInput(attrs={"class": "form-control"}),
             "description": forms.Textarea(attrs={"class": "form-control", "rows": 6}),

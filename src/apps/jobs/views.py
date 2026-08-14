@@ -17,7 +17,7 @@ from apps.skills.models import SkillKeyword
 from apps.skills.models import ApplicationSkill
 from .forms import JobPostForm
 from .models import JobPost
-from .search import filter_jobs_for_search
+from .search import filter_jobs_for_search, filter_jobs_for_start_month
 
 
 class JobListView(ListView):
@@ -30,15 +30,18 @@ class JobListView(ListView):
             "skill_sets",
             "skill_sets__keywords",
         )
+        starts_month = self.request.GET.get("starts_month", "").strip()
+        if starts_month:
+            queryset = filter_jobs_for_start_month(queryset, starts_month)
         query = self.request.GET.get("q", "").strip()
         if not query:
             return queryset
-
         return filter_jobs_for_search(queryset, query)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["search_query"] = self.request.GET.get("q", "").strip()
+        context["starts_month"] = self.request.GET.get("starts_month", "").strip()
         return context
 
 
