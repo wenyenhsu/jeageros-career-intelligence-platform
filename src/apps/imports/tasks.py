@@ -4,7 +4,7 @@ from celery import shared_task
 from django.conf import settings
 
 from .models import JobSource, PipelineLog
-from .services import CrawlService, MonitoringService
+from .services import CrawlService, JobUrlRefreshService, MonitoringService
 
 logger = logging.getLogger(__name__)
 
@@ -91,3 +91,49 @@ def crawl_all_sources(crawl_run_id=None, source_ids=None):
 
 
 crawl_enabled_job_sources = crawl_all_sources
+
+
+@shared_task(name="apps.imports.tasks.refresh_job_from_url")
+def refresh_job_from_url(job_id):
+    from apps.jobs.models import JobPost
+
+    MonitoringService.log_event(
+        step_name="celery_task",
+        status=PipelineLog.StatusChoices.STARTED,
+        message="refresh_job_from_url task started.",
+        service_name="apps.imports.tasks.refresh_job_from_url",
+        metadata={"job_id": job_id},
+    )
+    try:
+        job = JobPost.objects.select_related("company").get(pk=job_id)
+    except JobPost.DoesNotExist:
+        MonitoringService.log_failure(
+            step_name="celery_task",
+            message="refresh_job_from_url task failed; job was not found.",
+            service_name="apps.imports.tasks.refresh_job_from_url",
+            metadata={"job_id": job_id},
+        )
+        return {"success": False, "error": "Job not found.", "job_id": job_id}
+
+    result = JobUrlRefreshService.refresh(job)
+    payload = result.as_dict()
+    if result.error:
+        MonitoringService.log_failure(
+            step_name="celery_task",
+            message="refresh_job_from_url task finished with errors.",
+            service_name="apps.imports.tasks.refresh_job_from_url",
+            job=result.job,
+            company=getattr(result.job, "company", None),
+            metadata=payload,
+        )
+        return payload
+
+    MonitoringService.log_success(
+        step_name="celery_task",
+        message="refresh_job_from_url task finished.",
+        service_name="apps.imports.tasks.refresh_job_from_url",
+        job=result.job,
+        company=getattr(result.job, "company", None),
+        metadata=payload,
+    )
+    return payload

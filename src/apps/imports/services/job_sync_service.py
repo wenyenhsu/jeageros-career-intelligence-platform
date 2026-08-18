@@ -14,7 +14,7 @@ from .sync_result import JobUpsertResult, SyncResult
 
 class JobSyncService:
     @classmethod
-    def upsert_job(cls, canonical_job_payload):
+    def upsert_job(cls, canonical_job_payload, job=None):
         data = cls._canonical_job_data(canonical_job_payload)
         cls._validate_job_data(data)
 
@@ -22,10 +22,11 @@ class JobSyncService:
             data["company_name"],
             cls._company_website(data),
         )
-        job = cls._find_existing_job(
-            external_id=data.get("external_id", ""),
-            source_url=data.get("source_url", ""),
-        )
+        if job is None:
+            job = cls._find_existing_job(
+                external_id=data.get("external_id", ""),
+                source_url=data.get("source_url", ""),
+            )
         synced_at = timezone.now()
         fields = cls._job_fields(data, company_result.company, synced_at)
 

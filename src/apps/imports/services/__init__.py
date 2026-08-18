@@ -3,6 +3,11 @@ from .job_extractor import ExtractedJob, JobExtractor
 from .company_upsert_service import CompanyUpsertService
 from .crawl_service import CrawlService
 from .job_sync_service import JobSyncService
+from .job_url_refresh_service import (
+    JobUrlRefreshError,
+    JobUrlRefreshResult,
+    JobUrlRefreshService,
+)
 from .job_archive_service import JobArchiveService
 from .job_normalizer import CanonicalJobPayload, JobNormalizer
 from .listing_finder import ListingFinder, ListingPage
@@ -43,6 +48,9 @@ __all__ = [
     "JobNormalizer",
     "JobArchiveService",
     "JobSyncService",
+    "JobUrlRefreshError",
+    "JobUrlRefreshResult",
+    "JobUrlRefreshService",
     "JobUpsertResult",
     "JobExtractor",
     "LeverParser",

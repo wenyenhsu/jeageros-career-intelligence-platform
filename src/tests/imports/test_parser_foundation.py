@@ -802,6 +802,56 @@ def test_greenhouse_parser_rotates_board_tokens(monkeypatch):
     assert source.crawl_config["rolling_state"]["greenhouse_board_offset"] == 2
 
 
+def test_greenhouse_parser_fetches_single_job_url(monkeypatch):
+    parser = GreenhouseParser(source="https://boards.greenhouse.io/acme/jobs/42")
+
+    def fake_fetch_json(url):
+        assert url.endswith("/acme/jobs/42?content=true")
+        return {
+            "id": 42,
+            "title": "Data Engineer",
+            "location": {"name": "New York, NY"},
+            "absolute_url": "https://boards.greenhouse.io/acme/jobs/42",
+            "content": "<p>SQL and Python</p>",
+            "company_name": "Acme",
+        }
+
+    monkeypatch.setattr(parser, "_fetch_json", fake_fetch_json)
+
+    jobs = parser.extract_jobs(parser.find_listing_pages()[0])
+
+    assert len(jobs) == 1
+    assert jobs[0]["title"] == "Data Engineer"
+    assert jobs[0]["location"] == "New York, NY"
+    assert jobs[0]["external_id"] == "42"
+    assert "SQL" in jobs[0]["description"]
+
+
+def test_greenhouse_parser_fetches_embed_job_url(monkeypatch):
+    parser = GreenhouseParser(
+        source="https://boards.greenhouse.io/embed/job_app?for=acme&token=99"
+    )
+
+    def fake_fetch_json(url):
+        assert "/acme/jobs/99?content=true" in url
+        return {
+            "id": 99,
+            "title": "Intern",
+            "location": {"name": "Remote"},
+            "absolute_url": "https://boards.greenhouse.io/acme/jobs/99",
+            "content": "<p>Internship in Python</p>",
+        }
+
+    monkeypatch.setattr(parser, "_fetch_json", fake_fetch_json)
+
+    jobs = parser.extract_single_job(
+        "https://boards.greenhouse.io/embed/job_app?for=acme&token=99"
+    )
+
+    assert jobs[0]["title"] == "Intern"
+    assert jobs[0]["location"] == "Remote"
+
+
 @pytest.mark.django_db
 def test_source_create_view_supports_greenhouse_resource(client):
     payload = {

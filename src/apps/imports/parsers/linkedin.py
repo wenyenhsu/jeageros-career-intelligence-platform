@@ -92,14 +92,9 @@ class LinkedInParser(BaseParser):
             return [self.extract_job(job) for job in configured_jobs]
 
         listing_url = getattr(listing_page, "url", "") or str(listing_page)
-        direct_job_id = self._job_id_from_url(listing_url)
-        if direct_job_id:
-            raw_job = self._fetch_job_detail(direct_job_id)
-            if not self._has_required_raw_fields(raw_job):
-                raise ValueError(
-                    f"LinkedIn job {direct_job_id} did not return usable job data."
-                )
-            return [raw_job]
+        direct_jobs = self.extract_single_job(listing_url)
+        if direct_jobs:
+            return direct_jobs
 
         raw_jobs = []
         for search_url in self._search_urls(listing_url):
@@ -107,6 +102,17 @@ class LinkedInParser(BaseParser):
             page_jobs = self.parse_listing_page(search_html, search_url)
             raw_jobs.extend(page_jobs)
         return self._dedupe_jobs(raw_jobs)
+
+    def extract_single_job(self, url):
+        job_id = self._job_id_from_url(url)
+        if not job_id:
+            return []
+        raw_job = self._fetch_job_detail(job_id)
+        if not self._has_required_raw_fields(raw_job):
+            raise ValueError(
+                f"LinkedIn job {job_id} did not return usable job data."
+            )
+        return [raw_job]
 
     def fetch_listing_page(self, listing_page):
         return self._fetch_url(getattr(listing_page, "url", listing_page))

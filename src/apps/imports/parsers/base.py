@@ -25,6 +25,9 @@ class BaseParser:
             listing_page=listing_page,
         )
 
+    def extract_single_job(self, url):
+        return []
+
     def fetch_listing_page(self, listing_page):
         return ""
 

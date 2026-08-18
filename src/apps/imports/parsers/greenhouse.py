@@ -4,6 +4,7 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
 
 from .base import BaseParser
@@ -72,11 +73,27 @@ class GreenhouseParser(BaseParser):
         if configured_jobs:
             return [self.extract_job(job) for job in configured_jobs]
 
+        listing_url = getattr(listing_page, "url", "") or str(listing_page)
+        direct_jobs = self.extract_single_job(listing_url)
+        if direct_jobs:
+            return direct_jobs
+
         raw_jobs = []
         for board_token in self._selected_board_tokens():
             board_jobs = self._fetch_board_jobs(board_token)
             raw_jobs.extend(board_jobs)
         return self._dedupe_jobs(raw_jobs)
+
+    def extract_single_job(self, url):
+        parts = self._job_url_parts(url)
+        if not parts:
+            return []
+        raw_job = self._fetch_single_job(parts["token"], parts["job_id"])
+        if not raw_job:
+            raise ValueError(
+                f"Greenhouse job {parts['job_id']} did not return usable job data."
+            )
+        return [raw_job]
 
     def extract_job(self, payload):
         raw = super().extract_job(payload)
@@ -110,6 +127,42 @@ class GreenhouseParser(BaseParser):
             if self._matches_parser_filters(raw_job):
                 raw_jobs.append(raw_job)
         return raw_jobs
+
+    def _fetch_single_job(self, board_token, job_id):
+        url = f"{self.BOARD_API_URL.format(token=board_token)}/{job_id}?content=true"
+        try:
+            payload = self._fetch_json(url)
+        except GreenhouseRateLimitError:
+            raise
+        except Exception:
+            return None
+        if not isinstance(payload, dict) or not payload.get("id"):
+            return None
+        return self._normalize_board_job(payload, board_token)
+
+    @classmethod
+    def _job_url_parts(cls, url):
+        url = str(url or "").strip()
+        if not url:
+            return None
+        match = re.search(
+            r"(?:job-)?boards\.greenhouse\.io/([^/?#]+)/jobs/(\d+)",
+            url,
+            flags=re.IGNORECASE,
+        )
+        if match:
+            return {"token": match.group(1), "job_id": match.group(2)}
+
+        parsed = urlparse(url)
+        host = parsed.netloc.lower()
+        if "greenhouse.io" not in host:
+            return None
+        query = parse_qs(parsed.query)
+        token = (query.get("for") or [""])[0].strip()
+        job_id = (query.get("gh_jid") or query.get("token") or [""])[0].strip()
+        if token and job_id.isdigit():
+            return {"token": token, "job_id": job_id}
+        return None
 
     def _normalize_board_job(self, job, board_token):
         location = job.get("location")

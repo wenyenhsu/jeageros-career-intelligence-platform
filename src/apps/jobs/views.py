@@ -75,6 +75,7 @@ class JobCreateView(CreateView):
     def form_valid(self, form):
         response = super().form_valid(form)
         _add_existing_keyword_warning(self.request, form)
+        _queue_job_url_refresh(self.request, self.object)
         return response
 
     def get_context_data(self, **kwargs):
@@ -92,6 +93,7 @@ class JobUpdateView(UpdateView):
     def form_valid(self, form):
         response = super().form_valid(form)
         _add_existing_keyword_warning(self.request, form)
+        _queue_job_url_refresh(self.request, self.object)
         return response
 
     def get_context_data(self, **kwargs):
@@ -206,3 +208,13 @@ def _add_existing_keyword_warning(request, form):
     warning = form.existing_keyword_warning
     if warning:
         messages.warning(request, warning)
+
+
+def _queue_job_url_refresh(request, job):
+    from apps.imports.services import JobUrlRefreshService
+    from apps.imports.tasks import refresh_job_from_url
+
+    if job is None or not JobUrlRefreshService.needs_refresh(job):
+        return
+    refresh_job_from_url.delay(job.id)
+    messages.info(request, "Fetching location and skills from the job URL.")

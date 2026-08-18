@@ -114,6 +114,20 @@
                             </time>
                         </td>
                     </tr>
+                    {% if job.last_synced_at %}
+                    <tr>
+                        <th>Last synced</th>
+                        <td>
+                            <time
+                                datetime="{{ job.last_synced_at|date:'c' }}"
+                                title="{{ job.last_synced_at|localtime|date:'Y-m-d H:i:s T' }}"
+                            >
+                                {{ job.last_synced_at|localtime|date:'M j, g:i A' }}
+                            </time>
+                            <div class="small text-muted">Details were filled from the source URL.</div>
+                        </td>
+                    </tr>
+                    {% endif %}
                 </tbody>
             </table>
 
