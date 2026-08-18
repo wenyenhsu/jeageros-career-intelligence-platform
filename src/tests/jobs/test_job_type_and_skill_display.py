@@ -8,6 +8,7 @@ from django.urls import reverse
 
 from apps.api.serializers import JobPostSerializer
 from apps.applications.models import Application, StatusHistory
+from apps.companies.models import Company
 from apps.jobs.forms import JobPostForm
 from apps.jobs.models import JobPost
 from apps.skills.models import (
@@ -310,7 +311,7 @@ def test_application_detail_renders_skill_sets_and_job_type(client, user, compan
 def test_job_type_is_present_in_form_and_survives_create_update(company):
     form = JobPostForm(
         data={
-            "company": company.id,
+            "company": company.name,
             "title": "ML Intern",
             "source_url": "",
             "external_id": "",
@@ -334,7 +335,7 @@ def test_job_type_is_present_in_form_and_survives_create_update(company):
 
     update_form = JobPostForm(
         data={
-            "company": company.id,
+            "company": company.name,
             "title": "ML Intern",
             "source_url": "",
             "external_id": "",
@@ -361,7 +362,7 @@ def test_job_type_is_present_in_form_and_survives_create_update(company):
 def test_job_form_creates_manual_skill_sets_from_keywords(company):
     form = JobPostForm(
         data={
-            "company": company.id,
+            "company": company.name,
             "title": "Backend Engineer",
             "source_url": "",
             "external_id": "",
@@ -401,7 +402,7 @@ def test_job_form_keyword_analysis_marks_existing_and_new_keywords(company):
     SkillSet.objects.create(name="Python", aliases=["Py"])
     form = JobPostForm(
         data={
-            "company": company.id,
+            "company": company.name,
             "title": "Backend Engineer",
             "source_url": "",
             "external_id": "",
@@ -467,7 +468,7 @@ def test_job_form_save_warns_for_existing_keywords_and_still_saves(client, compa
     response = client.post(
         reverse("job-create"),
         data={
-            "company": company.id,
+            "company": company.name,
             "title": "Backend Engineer",
             "source_url": "",
             "external_id": "",
@@ -511,7 +512,7 @@ def test_job_form_updates_manual_skill_keywords_without_touching_ollama_links(co
 
     form = JobPostForm(
         data={
-            "company": company.id,
+            "company": company.name,
             "title": "Platform Engineer",
             "source_url": "",
             "external_id": "",
@@ -559,6 +560,78 @@ def test_job_form_prefills_manual_skill_keywords(company):
     form = JobPostForm(instance=job)
 
     assert form.fields["skill_keywords"].initial == "Python"
+    assert form.initial["company"] == company.name
+
+
+@pytest.mark.django_db
+def test_job_form_renders_company_as_typeable_input(client, company):
+    response = client.get(reverse("job-create"))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert 'id="id_company"' in content
+    assert 'name="company"' in content
+    assert 'type="text"' in content
+    assert 'list="job-company-options"' in content
+    assert f'<option value="{company.name}"></option>' in content
+    assert re.search(
+        r'<input[^>]*id="id_company"[^>]*>',
+        content,
+    )
+
+
+@pytest.mark.django_db
+def test_job_form_creates_company_from_typed_name():
+    form = JobPostForm(
+        data={
+            "company": "  New Labs  ",
+            "title": "Backend Engineer",
+            "source_url": "",
+            "external_id": "",
+            "source_type": JobPost.SourceType.MANUAL,
+            "status": JobPost.StatusChoices.ACTIVE,
+            "location": "",
+            "remote_type": "",
+            "employment_type": "",
+            "salary_min": "",
+            "salary_max": "",
+            "description": "",
+            "tags": "",
+        }
+    )
+
+    assert form.is_valid(), form.errors
+    job = form.save()
+
+    assert job.company.name == "New Labs"
+    assert Company.objects.filter(name="New Labs").count() == 1
+
+
+@pytest.mark.django_db
+def test_job_form_reuses_existing_company_when_name_is_typed(company):
+    form = JobPostForm(
+        data={
+            "company": company.name.lower(),
+            "title": "Backend Engineer",
+            "source_url": "",
+            "external_id": "",
+            "source_type": JobPost.SourceType.MANUAL,
+            "status": JobPost.StatusChoices.ACTIVE,
+            "location": "",
+            "remote_type": "",
+            "employment_type": "",
+            "salary_min": "",
+            "salary_max": "",
+            "description": "",
+            "tags": "",
+        }
+    )
+
+    assert form.is_valid(), form.errors
+    job = form.save()
+
+    assert job.company_id == company.id
+    assert Company.objects.count() == 1
 
 
 @pytest.mark.django_db

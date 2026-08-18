@@ -53,7 +53,7 @@ def test_job_form_keyword_uses_existing_skill_keyword_alias(company):
 
     form = JobPostForm(
         data={
-            "company": company.id,
+            "company": company.name,
             "title": "Backend Engineer",
             "source_url": "",
             "external_id": "",

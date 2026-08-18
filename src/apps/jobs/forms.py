@@ -1,6 +1,9 @@
 from django import forms
 from django.db import transaction
+from django.utils.html import format_html, format_html_join
 
+from apps.companies.models import Company
+from apps.imports.services.company_upsert_service import CompanyUpsertService
 from apps.skills.models import (
     JobPostSkill,
     SkillAttachmentSource,
@@ -11,7 +14,40 @@ from apps.skills.models import (
 from .models import JobPost
 
 
+class CompanyNameInput(forms.TextInput):
+    def __init__(self, attrs=None, company_names=()):
+        super().__init__(attrs)
+        self.company_names = company_names
+
+    def render(self, name, value, attrs=None, renderer=None):
+        attrs = {} if attrs is None else dict(attrs)
+        list_id = attrs.get("list") or self.attrs.get("list") or "job-company-options"
+        attrs["list"] = list_id
+        html = super().render(name, value, attrs=attrs, renderer=renderer)
+        options = format_html_join(
+            "",
+            '<option value="{}"></option>',
+            ((company_name,) for company_name in self.company_names),
+        )
+        return format_html('{}<datalist id="{}">{}</datalist>', html, list_id, options)
+
+
 class JobPostForm(forms.ModelForm):
+    company = forms.CharField(
+        label="Company",
+        help_text=(
+            "Type a company name. Existing companies can be chosen from the list; "
+            "a new name creates the company."
+        ),
+        widget=CompanyNameInput(
+            attrs={
+                "class": "form-control",
+                "list": "job-company-options",
+                "placeholder": "Type a company name",
+                "autocomplete": "off",
+            }
+        ),
+    )
     employment_type = forms.ChoiceField(
         label="Job Type",
         required=False,
@@ -33,7 +69,6 @@ class JobPostForm(forms.ModelForm):
     class Meta:
         model = JobPost
         fields = [
-            "company",
             "title",
             "source_url",
             "external_id",
@@ -53,7 +88,6 @@ class JobPostForm(forms.ModelForm):
             "skill_keywords",
         ]
         widgets = {
-            "company": forms.Select(attrs={"class": "form-select"}),
             "title": forms.TextInput(attrs={"class": "form-control"}),
             "source_url": forms.URLInput(attrs={"class": "form-control"}),
             "external_id": forms.TextInput(attrs={"class": "form-control"}),
@@ -78,9 +112,35 @@ class JobPostForm(forms.ModelForm):
             "tags": forms.TextInput(attrs={"class": "form-control"}),
         }
 
+    field_order = [
+        "company",
+        "title",
+        "source_url",
+        "external_id",
+        "source_type",
+        "status",
+        "location",
+        "remote_type",
+        "employment_type",
+        "starts_on",
+        "ends_on",
+        "season",
+        "duration_weeks",
+        "salary_min",
+        "salary_max",
+        "description",
+        "tags",
+        "skill_keywords",
+    ]
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.keyword_analysis = []
+        self.fields["company"].widget.company_names = list(
+            Company.objects.order_by("name").values_list("name", flat=True)
+        )
+        if self.instance and getattr(self.instance, "company_id", None):
+            self.initial["company"] = self.instance.company.name
         current_value = (
             self.initial.get("employment_type")
             or getattr(self.instance, "employment_type", "")
@@ -99,6 +159,12 @@ class JobPostForm(forms.ModelForm):
             self.fields["skill_keywords"].initial = ", ".join(
                 link.skill_set.name for link in manual_skills
             )
+
+    def clean_company(self):
+        name = " ".join(str(self.cleaned_data.get("company") or "").split())
+        if not name:
+            raise forms.ValidationError("This field is required.")
+        return name
 
     def clean_skill_keywords(self):
         value = self.cleaned_data.get("skill_keywords", "")
@@ -130,8 +196,11 @@ class JobPostForm(forms.ModelForm):
 
     @transaction.atomic
     def save(self, commit=True):
-        job = super().save(commit=commit)
+        job = super().save(commit=False)
+        job.company = CompanyUpsertService.upsert(self.cleaned_data["company"]).company
         if commit:
+            job.save()
+            self.save_m2m()
             self._sync_manual_skill_sets(job)
         return job
 
