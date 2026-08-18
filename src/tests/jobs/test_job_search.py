@@ -220,3 +220,70 @@ def test_job_list_filters_by_internship_start_month(client, company):
     assert "Undated Intern" not in content
     assert 'name="starts_month"' in content
     assert december.schedule_display == "Dec 2026"
+
+
+@pytest.mark.django_db
+def test_job_list_renders_job_type_filter(client, searchable_jobs):
+    response = client.get(reverse("job-list"))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert 'name="job_type"' in content
+    assert "All job types" in content
+    assert "Full Time" in content
+    assert "Internship" in content
+
+
+@pytest.mark.django_db
+def test_job_list_filters_by_job_type_dropdown(client, searchable_jobs):
+    response = client.get(reverse("job-list"), {"job_type": "Internship"})
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "Research Assistant" in content
+    assert "Backend Engineer" not in content
+    assert 'option value="Internship" selected' in content
+    assert 'href="/jobs/"' in content or "Clear" in content
+
+
+@pytest.mark.django_db
+def test_job_list_job_type_filter_normalizes_aliases(client, searchable_jobs):
+    response = client.get(reverse("job-list"), {"job_type": "Full Time"})
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "Backend Engineer" in content
+    assert "Research Assistant" not in content
+    assert 'option value="Full-time" selected' in content
+
+
+@pytest.mark.django_db
+def test_job_list_combines_job_type_and_search_query(client, searchable_jobs):
+    JobPost.objects.create(
+        company=searchable_jobs["backend"].company,
+        title="Research Intern",
+        employment_type="Internship",
+        location="San Francisco",
+    )
+
+    response = client.get(
+        reverse("job-list"),
+        {"q": "Research", "job_type": "Internship"},
+    )
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "Research Assistant" in content
+    assert "Research Intern" in content
+    assert "Backend Engineer" not in content
+
+
+@pytest.mark.django_db
+def test_api_job_search_filters_by_job_type(client, user, searchable_jobs):
+    client.force_login(user)
+
+    response = client.get("/api/jobs/", {"job_type": "Internship"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [job["title"] for job in payload] == ["Research Assistant"]

@@ -76,3 +76,10 @@ def filter_jobs_for_start_month(queryset, month_token):
     if window is None:
         return queryset
     return filter_queryset_for_start_window(queryset, *window)
+
+
+def filter_jobs_for_job_type(queryset, job_type):
+    normalized = JobPost.normalize_job_type(job_type)
+    if not normalized:
+        return queryset
+    return queryset.filter(Q(job_type=normalized) | Q(employment_type=normalized))

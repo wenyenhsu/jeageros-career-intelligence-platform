@@ -73,7 +73,20 @@ body {
 .form-control,
 .form-select {
   border-radius: 0.9rem;
+}
+
+.form-control {
   padding: 0.75rem 1rem;
+}
+
+.form-select {
+  padding: 0.75rem 2.75rem 0.75rem 1rem;
+  background-position: right 1rem center;
+}
+
+#job-type-filter {
+  width: 16rem;
+  min-width: 16rem;
 }
 
 .form-control:focus,
