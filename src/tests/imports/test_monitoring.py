@@ -2,13 +2,20 @@ from datetime import timedelta
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.contrib.messages import get_messages
 from django.urls import reverse
 from django.utils import timezone
 
 import apps.imports.services.crawl_service as crawl_service
 from apps.imports.models import CrawlRun, JobSource, PipelineLog
-from apps.imports.services import CrawlService, ListingPage, MonitoringService
+from apps.imports.services import (
+    CrawlService,
+    JobUrlRefreshService,
+    ListingPage,
+    MonitoringService,
+)
 from apps.jobs.models import JobPost
+from apps.skills.models import JobPostSkill, SkillSet
 
 
 @pytest.mark.django_db
@@ -225,7 +232,8 @@ def test_monitoring_page_shows_recent_failures(client):
     assert "+00:00" not in content
     assert content.index("Latest Crawl Run") < content.index("Pipeline Flow")
     assert content.index("Pipeline Flow") < content.index("Analysis Pipeline")
-    assert content.index("Analysis Pipeline") < content.index("Top Error Sources")
+    assert content.index("Analysis Pipeline") < content.index("Job Skill Analysis")
+    assert content.index("Job Skill Analysis") < content.index("Top Error Sources")
     assert content.index("Top Error Sources") < content.index("Recent Failures")
 
 
@@ -305,6 +313,8 @@ def test_monitoring_page_links_to_parameter_guide(client):
     content = response.content.decode()
     assert "Parameter guide" in content
     assert reverse("monitoring-help") in content
+    assert "Missing skills" in content
+    assert reverse("monitoring-missing-skills") in content
 
 
 @pytest.mark.django_db
@@ -608,3 +618,239 @@ class FakeParser:
                 "description": "Build services.",
             }
         ]
+
+
+@pytest.mark.django_db
+def test_missing_skill_job_list_shows_only_jobs_without_skills(client, company):
+    missing = JobPost.objects.create(
+        company=company,
+        title="Machine Learning Software Engineer Intern",
+        source_url="https://www.linkedin.com/jobs/view/987654/",
+    )
+    skilled = JobPost.objects.create(
+        company=company,
+        title="Staff Backend Engineer",
+        source_url="https://www.linkedin.com/jobs/view/111111/",
+    )
+    JobPostSkill.objects.create(
+        job_post=skilled,
+        skill_set=SkillSet.objects.create(name="Python"),
+        score=90,
+    )
+    archived = JobPost.objects.create(
+        company=company,
+        title="Archived Intern",
+        status=JobPost.StatusChoices.ARCHIVED,
+    )
+
+    response = client.get(reverse("monitoring-missing-skills"))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "Run Analysis" in content
+    assert "Create Job" not in content
+    assert missing.title in content
+    assert skilled.title not in content
+    assert archived.title not in content
+    assert reverse("monitoring-missing-skills-run") in content
+
+
+@pytest.mark.django_db
+def test_analytics_missing_skill_job_list_reuses_the_same_page(client, company):
+    missing = JobPost.objects.create(
+        company=company,
+        title="Machine Learning Software Engineer Intern",
+    )
+
+    response = client.get(reverse("analytics-missing-skills"))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert missing.title in content
+    assert "Run Analysis" in content
+    assert "Create Job" not in content
+    assert reverse("analytics-missing-skills-run") in content
+    assert reverse("analytics-dashboard") in content
+    assert reverse("monitoring-missing-skills-run") not in content
+
+
+@pytest.mark.django_db
+def test_jobs_missing_skills_queryset_excludes_jobs_with_skill_links(company):
+    missing = JobPost.objects.create(company=company, title="No Skills Yet")
+    skilled = JobPost.objects.create(company=company, title="Has Skills")
+    JobPostSkill.objects.create(
+        job_post=skilled,
+        skill_set=SkillSet.objects.create(name="SQL"),
+        score=80,
+    )
+
+    ids = list(JobUrlRefreshService.jobs_missing_skills().values_list("id", flat=True))
+
+    assert missing.id in ids
+    assert skilled.id not in ids
+
+
+@pytest.mark.django_db
+def test_run_missing_skill_analysis_queues_jobs_with_source_url(
+    client, company, monkeypatch
+):
+    queued = []
+    monkeypatch.setattr(
+        "apps.imports.tasks.refresh_job_from_url.delay",
+        lambda job_id, analysis_run_id=None: queued.append(job_id),
+    )
+    with_url = JobPost.objects.create(
+        company=company,
+        title="Intern With URL",
+        source_url="https://www.linkedin.com/jobs/view/987654/",
+        job_type="Internship",
+        employment_type="Internship",
+    )
+    without_url = JobPost.objects.create(
+        company=company,
+        title="Intern Without URL",
+        job_type="Internship",
+        employment_type="Internship",
+    )
+    skilled = JobPost.objects.create(
+        company=company,
+        title="Intern Already Analyzed",
+        source_url="https://www.linkedin.com/jobs/view/222222/",
+        job_type="Internship",
+        employment_type="Internship",
+    )
+    JobPostSkill.objects.create(
+        job_post=skilled,
+        skill_set=SkillSet.objects.create(name="Python"),
+        score=90,
+    )
+
+    response = client.post(
+        reverse("monitoring-missing-skills-run"),
+        data={"q": "Intern", "job_type": "Internship"},
+    )
+
+    assert response.status_code == 302
+    assert response.url == (
+        f"{reverse('monitoring-missing-skills')}?q=Intern&job_type=Internship"
+    )
+    assert queued == [with_url.id]
+    messages = [str(message) for message in get_messages(response.wsgi_request)]
+    assert "Queued analysis for 1 job(s) with a source URL." in messages
+    assert "Skipped 1 job(s) without a source URL." in messages
+
+
+@pytest.mark.django_db
+def test_run_missing_skill_analysis_skips_jobs_without_url(client, company, monkeypatch):
+    queued = []
+    monkeypatch.setattr(
+        "apps.imports.tasks.refresh_job_from_url.delay",
+        lambda job_id, analysis_run_id=None: queued.append(job_id),
+    )
+    JobPost.objects.create(company=company, title="Manual Job")
+
+    response = client.post(reverse("monitoring-missing-skills-run"))
+
+    assert response.status_code == 302
+    assert queued == []
+    messages = [str(message) for message in get_messages(response.wsgi_request)]
+    assert "Skipped 1 job(s) without a source URL." in messages
+
+
+@pytest.mark.django_db
+def test_run_missing_skill_analysis_from_analytics_stays_under_analytics(
+    client, company, monkeypatch
+):
+    queued = []
+    monkeypatch.setattr(
+        "apps.imports.tasks.refresh_job_from_url.delay",
+        lambda job_id, analysis_run_id=None: queued.append(job_id),
+    )
+    job = JobPost.objects.create(
+        company=company,
+        title="Intern With URL",
+        source_url="https://www.linkedin.com/jobs/view/987654/",
+    )
+
+    response = client.post(reverse("analytics-missing-skills-run"))
+
+    assert response.status_code == 302
+    assert response.url == reverse("analytics-missing-skills")
+    assert queued == [job.id]
+
+
+@pytest.mark.django_db
+def test_run_missing_skill_analysis_tracks_progress_on_monitoring(
+    client, company, monkeypatch
+):
+    queued = []
+    monkeypatch.setattr(
+        "apps.imports.tasks.refresh_job_from_url.delay",
+        lambda job_id, analysis_run_id=None: queued.append((job_id, analysis_run_id)),
+    )
+    job = JobPost.objects.create(
+        company=company,
+        title="Intern With URL",
+        source_url="https://www.linkedin.com/jobs/view/987654/",
+    )
+
+    response = client.post(reverse("monitoring-missing-skills-run"))
+    run_id = response.wsgi_request.session.get("skill_analysis_run_id")
+
+    assert response.status_code == 302
+    assert run_id
+    assert queued == [(job.id, run_id)]
+    assert PipelineLog.objects.filter(
+        step_name="job_skill_analysis",
+        status=PipelineLog.StatusChoices.STARTED,
+        metadata__analysis_run_id=run_id,
+    ).exists()
+
+    list_response = client.get(reverse("monitoring-missing-skills"))
+    list_content = list_response.content.decode()
+    assert "Job skill analysis progress" in list_content
+    assert "0 of 1 jobs" in list_content
+    assert "Queued, waiting for worker." in list_content
+
+    MonitoringService.log_event(
+        step_name="job_url_refresh",
+        status=PipelineLog.StatusChoices.SUCCESS,
+        message="Refreshed job details from source URL.",
+        job=job,
+        metadata=MonitoringService.analysis_metadata(
+            run_id, {"job_id": job.id, "skills_attached": 3}
+        ),
+    )
+    progress = MonitoringService.record_job_skill_analysis_progress(run_id)
+
+    assert progress["status"] == PipelineLog.StatusChoices.SUCCESS
+    assert progress["processed"] == 1
+    assert progress["total"] == 1
+    assert progress["progress"] == 100
+    assert progress["skills_attached"] == 3
+
+    monitoring = client.get(
+        reverse("monitoring-dashboard"),
+        {"skill_analysis_run_id": run_id},
+    )
+    content = monitoring.content.decode()
+    assert monitoring.status_code == 200
+    assert "Job Skill Analysis" in content
+    assert "Job skill analysis progress" in content
+    assert "1 / 1" in content
+    assert "100%" in content
+    assert content.index("Analysis Pipeline") < content.index("Job Skill Analysis")
+    assert content.index("Job Skill Analysis") < content.index("Job Archive")
+
+    status_response = client.get(
+        reverse("job-skill-analysis-status"),
+        {"skill_analysis_run_id": run_id},
+    )
+    payload = status_response.json()
+    assert status_response.status_code == 200
+    assert payload["run_id"] == run_id
+    assert payload["progress"] == 100
+    assert payload["processed"] == 1
+    assert payload["skills_attached"] == 3
+    assert "#job-skill-analysis" in payload["monitoring_url"]
+

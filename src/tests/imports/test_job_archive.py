@@ -80,7 +80,8 @@ def test_monitoring_page_shows_job_archive_controls(client):
     assert "Archive jobs" in content
     assert "Created before" in content
     assert reverse("job-archive-create") in content
-    assert content.index("Analysis Pipeline") < content.index("Job Archive")
+    assert content.index("Analysis Pipeline") < content.index("Job Skill Analysis")
+    assert content.index("Job Skill Analysis") < content.index("Job Archive")
     assert content.index("Job Archive") < content.index("Top Error Sources")
 
 

@@ -94,15 +94,21 @@ crawl_enabled_job_sources = crawl_all_sources
 
 
 @shared_task(name="apps.imports.tasks.refresh_job_from_url")
-def refresh_job_from_url(job_id):
+def refresh_job_from_url(job_id, analysis_run_id=None):
     from apps.jobs.models import JobPost
+
+    task_metadata = {"job_id": job_id}
+    if analysis_run_id:
+        task_metadata = MonitoringService.analysis_metadata(
+            analysis_run_id, task_metadata
+        )
 
     MonitoringService.log_event(
         step_name="celery_task",
         status=PipelineLog.StatusChoices.STARTED,
         message="refresh_job_from_url task started.",
         service_name="apps.imports.tasks.refresh_job_from_url",
-        metadata={"job_id": job_id},
+        metadata=task_metadata,
     )
     try:
         job = JobPost.objects.select_related("company").get(pk=job_id)
@@ -111,12 +117,23 @@ def refresh_job_from_url(job_id):
             step_name="celery_task",
             message="refresh_job_from_url task failed; job was not found.",
             service_name="apps.imports.tasks.refresh_job_from_url",
-            metadata={"job_id": job_id},
+            metadata=task_metadata,
         )
+        if analysis_run_id:
+            MonitoringService.log_failure(
+                step_name="job_url_refresh",
+                message="refresh_job_from_url task failed; job was not found.",
+                service_name="apps.imports.tasks.refresh_job_from_url",
+                job_id=job_id,
+                metadata=task_metadata,
+            )
+            MonitoringService.record_job_skill_analysis_progress(analysis_run_id)
         return {"success": False, "error": "Job not found.", "job_id": job_id}
 
-    result = JobUrlRefreshService.refresh(job)
+    result = JobUrlRefreshService.refresh(job, analysis_run_id=analysis_run_id)
     payload = result.as_dict()
+    if analysis_run_id:
+        payload = MonitoringService.analysis_metadata(analysis_run_id, payload)
     if result.error:
         MonitoringService.log_failure(
             step_name="celery_task",
@@ -126,6 +143,8 @@ def refresh_job_from_url(job_id):
             company=getattr(result.job, "company", None),
             metadata=payload,
         )
+        if analysis_run_id:
+            MonitoringService.record_job_skill_analysis_progress(analysis_run_id)
         return payload
 
     MonitoringService.log_success(
@@ -136,4 +155,6 @@ def refresh_job_from_url(job_id):
         company=getattr(result.job, "company", None),
         metadata=payload,
     )
+    if analysis_run_id:
+        MonitoringService.record_job_skill_analysis_progress(analysis_run_id)
     return payload

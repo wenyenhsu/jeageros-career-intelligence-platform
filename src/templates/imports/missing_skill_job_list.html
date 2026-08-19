@@ -1,0 +1,273 @@
+{% extends 'base.html' %}
+{% load tz %}
+
+{% block title %}Missing Skills · {{ section_label }} · JaegerOS{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h1 class="h2 mb-1">Jobs</h1>
+    <p class="text-muted mb-0">Jobs with empty SkillSets. Run analysis to fill skills from each job URL.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="{% url parent_url_name %}">{{ parent_label }}</a>
+    <form method="post" action="{% url run_url_name %}">
+      {% csrf_token %}
+      <input type="hidden" name="q" value="{{ search_query }}">
+      <input type="hidden" name="job_type" value="{{ selected_job_type }}">
+      <input type="hidden" name="starts_month" value="{{ starts_month }}">
+      <button class="btn btn-primary" type="submit"{% if not jobs %} disabled{% endif %}>
+        Run Analysis
+      </button>
+    </form>
+  </div>
+</div>
+
+<div
+  id="skillAnalysisProgress"
+  class="card shadow-sm border-0 mb-4{% if skill_analysis.status != 'STARTED' %} d-none{% endif %}"
+  data-status-url="{% url 'job-skill-analysis-status' %}"
+  data-run-id="{{ skill_analysis.run_id|default:'' }}"
+  data-status="{{ skill_analysis.status|default:'' }}"
+  aria-live="polite"
+>
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center gap-3 mb-2">
+      <div>
+        <span id="missingSkillAnalysisBadge" class="badge {% if skill_analysis.status == 'FAILED' %}text-bg-danger{% elif skill_analysis.status == 'SUCCESS' %}text-bg-success{% else %}text-bg-primary{% endif %}">
+          {{ skill_analysis.status|default:"STARTED" }}
+        </span>
+        <span id="missingSkillAnalysisStep" class="small fw-semibold text-secondary ms-2">
+          {{ skill_analysis.message|default:"Skill analysis is running" }}
+        </span>
+      </div>
+      <span id="missingSkillAnalysisPercent" class="small text-secondary">{{ skill_analysis.progress|default:0 }}%</span>
+    </div>
+    <div class="progress" role="progressbar" aria-label="Job skill analysis progress" aria-valuemin="0" aria-valuemax="100" style="height: 10px;">
+      <div id="missingSkillAnalysisProgressBar" class="progress-bar{% if skill_analysis.status == 'STARTED' %} progress-bar-striped progress-bar-animated{% endif %}{% if skill_analysis.status == 'FAILED' %} bg-danger{% endif %}" style="width: {{ skill_analysis.progress|default:0 }}%"></div>
+    </div>
+    <div id="missingSkillAnalysisDetail" class="small text-secondary mt-2">
+      {% if skill_analysis.run_id %}
+        {{ skill_analysis.processed|default:0 }} of {{ skill_analysis.total|default:0 }} jobs ·
+        <a href="{% url 'monitoring-dashboard' %}?skill_analysis_run_id={{ skill_analysis.run_id }}#job-skill-analysis">View on Monitoring</a>
+      {% else %}
+        You can leave this page. Analysis will continue in the background.
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm border-0">
+  <div class="card-body">
+    <form class="row g-2 mb-3" method="get" data-auto-search-form data-auto-search-delay="450">
+      <div class="col-12 col-md">
+        <label class="visually-hidden" for="missing-skill-job-search">Search jobs</label>
+        <input
+          class="form-control"
+          id="missing-skill-job-search"
+          name="q"
+          value="{{ search_query }}"
+          placeholder="Search title, company, status, date, or skill keyword"
+          data-auto-search-input
+        >
+      </div>
+      <div class="col-12 col-sm-6 col-md-auto flex-md-grow-0">
+        <label class="visually-hidden" for="missing-skill-job-type-filter">Job type</label>
+        <select
+          class="form-select"
+          id="missing-skill-job-type-filter"
+          name="job_type"
+          title="Job type"
+          data-auto-search-change
+        >
+          <option value="">All job types</option>
+          {% for value, label in job_type_choices %}
+            <option value="{{ value }}"{% if selected_job_type == value %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-auto">
+        <label class="visually-hidden" for="missing-skill-starts-month">Starts month</label>
+        <input
+          class="form-control"
+          id="missing-skill-starts-month"
+          type="month"
+          name="starts_month"
+          value="{{ starts_month }}"
+          title="Internship start month"
+        >
+      </div>
+      <div class="col-12 col-md-auto">
+        <button class="btn btn-outline-primary w-100" type="submit">Search</button>
+      </div>
+      {% if search_query or starts_month or selected_job_type %}
+        <div class="col-12 col-md-auto">
+          <a class="btn btn-outline-secondary w-100" href="{% url list_url_name %}">Clear</a>
+        </div>
+      {% endif %}
+    </form>
+
+    {% if jobs %}
+      <div class="table-responsive">
+        <table class="table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Company</th>
+              <th>Job Type</th>
+              <th>Starts</th>
+              <th>Location</th>
+              <th>Skills</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th>Updated</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for job in jobs %}
+              <tr>
+                <td class="fw-semibold">
+                  {% if job.source_url_display %}
+                    <a
+                      href="{{ job.source_url_display }}"
+                      target="_blank"
+                      rel="noopener"
+                      class="link-dark text-decoration-none"
+                    >
+                      {{ job.title_display }}
+                    </a>
+                  {% else %}
+                    {{ job.title_display }}
+                  {% endif %}
+                </td>
+                <td>{{ job.company }}</td>
+                <td>{{ job.job_type_display|default:"-" }}</td>
+                <td>{{ job.schedule_display|default:"-" }}</td>
+                <td>{{ job.location|default:"-" }}</td>
+                <td><span class="text-muted">-</span></td>
+                <td>
+                  <span class="badge {{ job.status_badge_class }}">
+                    {{ job.get_status_display|default:job.status }}
+                  </span>
+                </td>
+                <td class="text-nowrap">
+                  <time
+                    datetime="{{ job.created_at|date:'c' }}"
+                    title="{{ job.created_at|localtime|date:'Y-m-d H:i:s T' }}"
+                  >
+                    {{ job.created_at|localtime|date:'M j, g:i A' }}
+                  </time>
+                </td>
+                <td class="text-nowrap">
+                  <time
+                    datetime="{{ job.updated_at|date:'c' }}"
+                    title="{{ job.updated_at|localtime|date:'Y-m-d H:i:s T' }}"
+                  >
+                    {{ job.updated_at|localtime|date:'M j, g:i A' }}
+                  </time>
+                </td>
+                <td class="text-end">
+                  <a href="{% url 'job-detail' job.id %}" class="btn btn-sm btn-outline-secondary">View</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="text-center py-5">
+        {% if search_query or starts_month or selected_job_type %}
+          <h3 class="h5 mb-2">No jobs match this filter</h3>
+          <p class="text-muted mb-4">Try another title, company, job type, or start month.</p>
+          <a href="{% url list_url_name %}" class="btn btn-outline-secondary">Clear search</a>
+        {% else %}
+          <h3 class="h5 mb-2">No jobs missing skills</h3>
+          <p class="text-muted mb-4">Every stored job already has SkillSets attached.</p>
+          <a href="{% url parent_url_name %}" class="btn btn-outline-secondary">Back to {{ parent_label }}</a>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+</div>
+<script>
+  (() => {
+    const panel = document.getElementById("skillAnalysisProgress");
+    if (!panel) return;
+
+    const storageKey = "jaegeros.activeSkillAnalysisRunId";
+    const terminalStatuses = new Set(["SUCCESS", "FAILED"]);
+    const statusUrlBase = panel.dataset.statusUrl || "";
+    const badge = document.getElementById("missingSkillAnalysisBadge");
+    const step = document.getElementById("missingSkillAnalysisStep");
+    const percent = document.getElementById("missingSkillAnalysisPercent");
+    const bar = document.getElementById("missingSkillAnalysisProgressBar");
+    const detail = document.getElementById("missingSkillAnalysisDetail");
+    let pollTimer = null;
+
+    function badgeClass(status) {
+      if (status === "FAILED") return "badge text-bg-danger";
+      if (status === "SUCCESS") return "badge text-bg-success";
+      if (status === "STARTED") return "badge text-bg-primary";
+      return "badge text-bg-secondary";
+    }
+
+    function statusUrl(runId) {
+      const separator = statusUrlBase.includes("?") ? "&" : "?";
+      return `${statusUrlBase}${separator}skill_analysis_run_id=${encodeURIComponent(runId)}`;
+    }
+
+    function monitoringUrl(runId) {
+      return `{% url 'monitoring-dashboard' %}?skill_analysis_run_id=${encodeURIComponent(runId)}#job-skill-analysis`;
+    }
+
+    function render(payload) {
+      if (!payload || !payload.run_id) return;
+      const status = payload.status || "STARTED";
+      const progress = Math.max(0, Math.min(100, Number(payload.progress || 0)));
+      panel.classList.remove("d-none");
+      badge.className = badgeClass(status);
+      badge.textContent = status;
+      percent.textContent = `${progress}%`;
+      bar.className = `progress-bar ${status === "FAILED" ? "bg-danger" : ""} ${terminalStatuses.has(status) ? "" : "progress-bar-striped progress-bar-animated"}`;
+      bar.style.width = `${progress}%`;
+      step.textContent = payload.message
+        || (payload.current_job ? `Analyzing ${payload.current_job}` : "Skill analysis is running");
+      detail.innerHTML = `${payload.processed || 0} of ${payload.total || 0} jobs · <a href="${payload.monitoring_url || monitoringUrl(payload.run_id)}">View on Monitoring</a>`;
+
+      if (terminalStatuses.has(status)) {
+        window.localStorage.removeItem(storageKey);
+        if (pollTimer) window.clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }
+
+    async function poll(runId) {
+      const response = await fetch(statusUrl(runId), {
+        headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" },
+      });
+      if (!response.ok) throw new Error(`Skill analysis status failed: ${response.status}`);
+      render(await response.json());
+    }
+
+    function start(runId) {
+      if (!runId) return;
+      window.localStorage.setItem(storageKey, runId);
+      if (pollTimer) window.clearInterval(pollTimer);
+      poll(runId).catch(() => {});
+      pollTimer = window.setInterval(() => {
+        poll(runId).catch(() => {});
+      }, 2500);
+    }
+
+    const pageRunId = panel.dataset.runId || "";
+    const pageStatus = panel.dataset.status || "";
+    const storedRunId = window.localStorage.getItem(storageKey) || "";
+    if (pageStatus === "STARTED" && pageRunId) {
+      start(pageRunId);
+    } else if (storedRunId) {
+      start(storedRunId);
+    }
+  })();
+</script>
+{% endblock %}

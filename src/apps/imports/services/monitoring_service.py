@@ -1,6 +1,7 @@
 import logging
 import json
 import traceback
+from uuid import uuid4
 
 from django.core.serializers.json import DjangoJSONEncoder
 
@@ -216,7 +217,13 @@ class MonitoringService:
         }
 
     @classmethod
-    def dashboard_summary(cls, recent_limit=20, crawl_run_id=None, resume_run_id=None):
+    def dashboard_summary(
+        cls,
+        recent_limit=20,
+        crawl_run_id=None,
+        resume_run_id=None,
+        skill_analysis_run_id=None,
+    ):
         selected_run = cls._crawl_run_for_filter(crawl_run_id)
         latest_run = selected_run or CrawlRun.objects.first()
         log_filters = {}
@@ -244,6 +251,9 @@ class MonitoringService:
                 crawl_run_id=selected_run.id if selected_run else None,
             ),
             "analysis_pipeline": cls.analysis_pipeline(resume_run_id=resume_run_id),
+            "skill_analysis": cls.job_skill_analysis_status(
+                skill_analysis_run_id
+            ),
             "job_archives": cls.job_archives(limit=10),
             "recent_failures": cls._logs_to_dicts(list(recent_failures)),
             "top_error_sources": [
@@ -400,6 +410,245 @@ class MonitoringService:
                 "job_match_count": metadata.get("job_match_count", 0),
                 "market_fit_percent": market_fit,
             },
+        }
+
+    JOB_SKILL_ANALYSIS_KIND = "job_skill_analysis"
+    JOB_SKILL_ANALYSIS_TERMINAL = {
+        PipelineLog.StatusChoices.SUCCESS,
+        PipelineLog.StatusChoices.FAILED,
+        PipelineLog.StatusChoices.SKIPPED,
+    }
+
+    @classmethod
+    def start_job_skill_analysis(cls, job_ids):
+        job_ids = [int(job_id) for job_id in job_ids]
+        run_id = uuid4().hex
+        cls.log_event(
+            step_name="job_skill_analysis",
+            status=PipelineLog.StatusChoices.STARTED,
+            message=f"Queued skill analysis for {len(job_ids)} job(s).",
+            service_name=cls.__name__,
+            metadata={
+                "pipeline_kind": cls.JOB_SKILL_ANALYSIS_KIND,
+                "analysis_run_id": run_id,
+                "total_jobs": len(job_ids),
+                "job_ids": job_ids,
+            },
+        )
+        return run_id
+
+    @classmethod
+    def analysis_metadata(cls, analysis_run_id, extra=None):
+        metadata = {
+            "pipeline_kind": cls.JOB_SKILL_ANALYSIS_KIND,
+            "analysis_run_id": analysis_run_id,
+        }
+        if extra:
+            metadata.update(extra)
+        return metadata
+
+    @classmethod
+    def record_job_skill_analysis_progress(cls, analysis_run_id):
+        if not analysis_run_id:
+            return {}
+        status = cls.job_skill_analysis_status(analysis_run_id)
+        if status.get("status") not in {
+            PipelineLog.StatusChoices.SUCCESS,
+            PipelineLog.StatusChoices.FAILED,
+        }:
+            return status
+        already_finished = PipelineLog.objects.filter(
+            step_name="job_skill_analysis",
+            status__in={
+                PipelineLog.StatusChoices.SUCCESS,
+                PipelineLog.StatusChoices.FAILED,
+            },
+            metadata__analysis_run_id=analysis_run_id,
+        ).exists()
+        if already_finished:
+            return status
+        cls.log_event(
+            step_name="job_skill_analysis",
+            status=status["status"],
+            message=(
+                "Skill analysis finished: "
+                f"{status['processed']} of {status['total']} job(s), "
+                f"{status['skills_attached']} skill(s) attached."
+            ),
+            service_name=cls.__name__,
+            metadata=cls.analysis_metadata(
+                analysis_run_id,
+                {
+                    "total_jobs": status["total"],
+                    "processed": status["processed"],
+                    "success_count": status["success_count"],
+                    "failure_count": status["failure_count"],
+                    "skills_attached": status["skills_attached"],
+                },
+            ),
+        )
+        return status
+
+    @classmethod
+    def job_skill_analysis_status(cls, analysis_run_id=None):
+        qs = PipelineLog.objects.filter(
+            metadata__pipeline_kind=cls.JOB_SKILL_ANALYSIS_KIND
+        )
+        if analysis_run_id:
+            logs = list(
+                qs.filter(metadata__analysis_run_id=analysis_run_id)
+                .select_related("job")
+                .order_by("created_at")
+            )
+        else:
+            latest = next(
+                (
+                    log
+                    for log in qs.order_by("-created_at")[:80]
+                    if isinstance(log.metadata, dict)
+                    and log.metadata.get("analysis_run_id")
+                ),
+                None,
+            )
+            if latest is None:
+                return {}
+            analysis_run_id = latest.metadata.get("analysis_run_id")
+            logs = list(
+                PipelineLog.objects.filter(
+                    metadata__pipeline_kind=cls.JOB_SKILL_ANALYSIS_KIND,
+                    metadata__analysis_run_id=analysis_run_id,
+                )
+                .select_related("job")
+                .order_by("created_at")
+            )
+        if not logs:
+            return {}
+
+        started = next(
+            (
+                log
+                for log in logs
+                if log.step_name == "job_skill_analysis"
+                and log.status == PipelineLog.StatusChoices.STARTED
+            ),
+            logs[0],
+        )
+        started_metadata = (
+            started.metadata if isinstance(started.metadata, dict) else {}
+        )
+        total = int(started_metadata.get("total_jobs") or 0)
+        outcomes = {}
+        skills_by_job = {}
+        current_job = ""
+        for log in logs:
+            metadata = log.metadata if isinstance(log.metadata, dict) else {}
+            job_id = metadata.get("job_id") or log.job_id
+            if (
+                log.step_name == "job_url_refresh"
+                and log.status == PipelineLog.StatusChoices.STARTED
+            ):
+                current_job = getattr(log.job, "title", None) or log.message or ""
+            if log.step_name != "job_url_refresh":
+                continue
+            if log.status not in cls.JOB_SKILL_ANALYSIS_TERMINAL or not job_id:
+                continue
+            outcomes[job_id] = log.status
+            skills_by_job[job_id] = int(metadata.get("skills_attached") or 0)
+        skills_attached = sum(skills_by_job.values())
+
+        processed = len(outcomes)
+        success_count = sum(
+            1
+            for status in outcomes.values()
+            if status
+            in {
+                PipelineLog.StatusChoices.SUCCESS,
+                PipelineLog.StatusChoices.SKIPPED,
+            }
+        )
+        failure_count = sum(
+            1
+            for status in outcomes.values()
+            if status == PipelineLog.StatusChoices.FAILED
+        )
+        finished_log = next(
+            (
+                log
+                for log in reversed(logs)
+                if log.step_name == "job_skill_analysis"
+                and log.status
+                in {
+                    PipelineLog.StatusChoices.SUCCESS,
+                    PipelineLog.StatusChoices.FAILED,
+                }
+            ),
+            None,
+        )
+        if total and processed >= total:
+            status = (
+                PipelineLog.StatusChoices.FAILED
+                if failure_count and success_count == 0
+                else PipelineLog.StatusChoices.SUCCESS
+            )
+        elif finished_log:
+            status = finished_log.status
+        else:
+            status = PipelineLog.StatusChoices.STARTED
+        if status in {
+            PipelineLog.StatusChoices.SUCCESS,
+            PipelineLog.StatusChoices.FAILED,
+        }:
+            current_job = ""
+
+        if total:
+            progress = min(100, round((processed / total) * 100, 2))
+        elif status in {
+            PipelineLog.StatusChoices.SUCCESS,
+            PipelineLog.StatusChoices.FAILED,
+        }:
+            progress = 100
+        else:
+            progress = 0
+
+        started_at = cls._display_timestamp(started.created_at)
+        finished_at = cls._display_timestamp(
+            finished_log.created_at
+            if finished_log
+            else (logs[-1].created_at if processed >= total and total else None)
+        )
+        return {
+            "run_id": analysis_run_id,
+            "status": status,
+            "progress": progress,
+            "processed": processed,
+            "total": total,
+            "success_count": success_count,
+            "failure_count": failure_count,
+            "skills_attached": skills_attached,
+            "current_job": current_job,
+            "message": (
+                "Queued, waiting for worker."
+                if status == PipelineLog.StatusChoices.STARTED and processed == 0
+                else (
+                    f"Analyzing {current_job}"
+                    if current_job
+                    else (
+                        "Skill analysis finished."
+                        if status == PipelineLog.StatusChoices.SUCCESS
+                        else (
+                            "Skill analysis failed."
+                            if status == PipelineLog.StatusChoices.FAILED
+                            else "Skill analysis is running."
+                        )
+                    )
+                )
+            ),
+            "started_at_datetime": started_at["datetime"],
+            "started_at_display": started_at["display"],
+            "started_at_title": started_at["title"],
+            "finished_at_datetime": finished_at["datetime"],
+            "finished_at_display": finished_at["display"],
+            "finished_at_title": finished_at["title"],
         }
 
     @classmethod

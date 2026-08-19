@@ -6,6 +6,7 @@
     <p class="text-secondary mb-0">Recent crawl runs, pipeline events, and failures.</p>
   </div>
   <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-secondary" href="{% url 'monitoring-missing-skills' %}">Missing skills</a>
     <a class="btn btn-outline-secondary" href="{% url 'monitoring-help' %}">Parameter guide</a>
     <a class="btn btn-outline-secondary" href="{% url 'source-list' %}">Sources</a>
   </div>
@@ -263,6 +264,93 @@
   {% endif %}
 </section>
 
+<section
+  id="job-skill-analysis"
+  class="mb-5"
+  data-status-url="{% url 'job-skill-analysis-status' %}"
+  data-run-id="{{ skill_analysis.run_id|default:'' }}"
+  data-status="{{ skill_analysis.status|default:'' }}"
+>
+  <h2 class="h5 mb-3">Job Skill Analysis</h2>
+  <div id="skillAnalysisBody"{% if not skill_analysis.run_id %} class="d-none"{% endif %}>
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+      <span id="skillAnalysisBadge" class="badge {% if skill_analysis.status == 'FAILED' %}text-bg-danger{% elif skill_analysis.status == 'SUCCESS' %}text-bg-success{% elif skill_analysis.status == 'STARTED' %}text-bg-primary{% else %}text-bg-secondary{% endif %}">
+        {{ skill_analysis.status|default:"STARTED" }}
+      </span>
+      <span id="skillAnalysisMeta" class="text-secondary small">
+        {% if skill_analysis.run_id %}Run {{ skill_analysis.run_id|slice:":8" }} · {{ skill_analysis.processed }} of {{ skill_analysis.total }} jobs · {{ skill_analysis.progress }}%{% endif %}
+      </span>
+    </div>
+    <div class="row g-3 mb-3">
+      <div class="col-12 col-md-6">
+        <div class="border rounded-2 p-3 h-100">
+          <div class="text-secondary small">Started</div>
+          <div id="skillAnalysisStarted" class="fw-bold">
+            {% if skill_analysis.started_at_datetime %}
+              <time datetime="{{ skill_analysis.started_at_datetime }}" title="{{ skill_analysis.started_at_title }}">
+                {{ skill_analysis.started_at_display }}
+              </time>
+            {% else %}
+              -
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-md-6">
+        <div class="border rounded-2 p-3 h-100">
+          <div class="text-secondary small">Finished</div>
+          <div id="skillAnalysisFinished" class="fw-bold">
+            {% if skill_analysis.finished_at_datetime %}
+              <time datetime="{{ skill_analysis.finished_at_datetime }}" title="{{ skill_analysis.finished_at_title }}">
+                {{ skill_analysis.finished_at_display }}
+              </time>
+            {% else %}
+              -
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="progress mb-3" role="progressbar" aria-label="Job skill analysis progress" aria-valuemin="0" aria-valuemax="100">
+      <div id="skillAnalysisProgressBar" class="progress-bar{% if skill_analysis.status == 'STARTED' %} progress-bar-striped progress-bar-animated{% endif %}{% if skill_analysis.status == 'FAILED' %} bg-danger{% endif %}" style="width: {{ skill_analysis.progress|default:0 }}%">
+        {{ skill_analysis.progress|default:0 }}%
+      </div>
+    </div>
+    <div class="row g-3 mb-3">
+      <div class="col-6 col-lg">
+        <div class="border rounded-2 p-3 h-100">
+          <div class="text-secondary small">Processed</div>
+          <div id="skillAnalysisProcessed" class="fw-bold">{{ skill_analysis.processed|default:0 }} / {{ skill_analysis.total|default:0 }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg">
+        <div class="border rounded-2 p-3 h-100">
+          <div class="text-secondary small">Succeeded</div>
+          <div id="skillAnalysisSuccess" class="fw-bold">{{ skill_analysis.success_count|default:0 }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg">
+        <div class="border rounded-2 p-3 h-100">
+          <div class="text-secondary small">Failed</div>
+          <div id="skillAnalysisFailed" class="fw-bold">{{ skill_analysis.failure_count|default:0 }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg">
+        <div class="border rounded-2 p-3 h-100">
+          <div class="text-secondary small">Skills attached</div>
+          <div id="skillAnalysisSkills" class="fw-bold">{{ skill_analysis.skills_attached|default:0 }}</div>
+        </div>
+      </div>
+    </div>
+    <p id="skillAnalysisCurrent" class="text-secondary small mb-0">
+      {{ skill_analysis.message|default:"" }}
+    </p>
+  </div>
+  <p id="skillAnalysisEmpty" class="text-secondary{% if skill_analysis.run_id %} d-none{% endif %}">
+    No job skill analysis has been recorded yet. Use Run Analysis on missing-skill jobs to start one.
+  </p>
+</section>
+
 <section id="job-archive" class="mb-5">
   <div class="d-flex flex-column flex-md-row justify-content-between gap-3 align-items-md-end mb-3">
     <div>
@@ -426,4 +514,111 @@
     </table>
   </div>
 </section>
+<script>
+  (() => {
+    const section = document.getElementById("job-skill-analysis");
+    if (!section) return;
+
+    const storageKey = "jaegeros.activeSkillAnalysisRunId";
+    const terminalStatuses = new Set(["SUCCESS", "FAILED"]);
+    const statusUrlBase = section.dataset.statusUrl || "";
+    const body = document.getElementById("skillAnalysisBody");
+    const empty = document.getElementById("skillAnalysisEmpty");
+    const badge = document.getElementById("skillAnalysisBadge");
+    const meta = document.getElementById("skillAnalysisMeta");
+    const started = document.getElementById("skillAnalysisStarted");
+    const finished = document.getElementById("skillAnalysisFinished");
+    const progressBar = document.getElementById("skillAnalysisProgressBar");
+    const processed = document.getElementById("skillAnalysisProcessed");
+    const success = document.getElementById("skillAnalysisSuccess");
+    const failed = document.getElementById("skillAnalysisFailed");
+    const skills = document.getElementById("skillAnalysisSkills");
+    const current = document.getElementById("skillAnalysisCurrent");
+    let pollTimer = null;
+
+    function badgeClass(status) {
+      if (status === "FAILED") return "badge text-bg-danger";
+      if (status === "SUCCESS") return "badge text-bg-success";
+      if (status === "STARTED") return "badge text-bg-primary";
+      return "badge text-bg-secondary";
+    }
+
+    function timestampHtml(datetime, display, title) {
+      if (!datetime) return "-";
+      const time = document.createElement("time");
+      time.setAttribute("datetime", datetime);
+      time.setAttribute("title", title || "");
+      time.textContent = display || "-";
+      return time.outerHTML;
+    }
+
+    function statusUrl(runId) {
+      const separator = statusUrlBase.includes("?") ? "&" : "?";
+      return `${statusUrlBase}${separator}skill_analysis_run_id=${encodeURIComponent(runId)}`;
+    }
+
+    function render(payload) {
+      if (!payload || !payload.run_id) return;
+      const status = payload.status || "STARTED";
+      const progress = Math.max(0, Math.min(100, Number(payload.progress || 0)));
+      body.classList.remove("d-none");
+      empty.classList.add("d-none");
+      badge.className = badgeClass(status);
+      badge.textContent = status;
+      meta.textContent = `Run ${String(payload.run_id).slice(0, 8)} · ${payload.processed || 0} of ${payload.total || 0} jobs · ${progress}%`;
+      started.innerHTML = timestampHtml(
+        payload.started_at_datetime,
+        payload.started_at_display,
+        payload.started_at_title
+      );
+      finished.innerHTML = timestampHtml(
+        payload.finished_at_datetime,
+        payload.finished_at_display,
+        payload.finished_at_title
+      );
+      progressBar.className = `progress-bar ${status === "FAILED" ? "bg-danger" : ""} ${terminalStatuses.has(status) ? "" : "progress-bar-striped progress-bar-animated"}`;
+      progressBar.style.width = `${progress}%`;
+      progressBar.textContent = `${progress}%`;
+      processed.textContent = `${payload.processed || 0} / ${payload.total || 0}`;
+      success.textContent = payload.success_count || 0;
+      failed.textContent = payload.failure_count || 0;
+      skills.textContent = payload.skills_attached || 0;
+      current.textContent = payload.message
+        || (payload.current_job ? `Analyzing ${payload.current_job}` : "");
+
+      if (terminalStatuses.has(status)) {
+        window.localStorage.removeItem(storageKey);
+        if (pollTimer) window.clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }
+
+    async function poll(runId) {
+      const response = await fetch(statusUrl(runId), {
+        headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" },
+      });
+      if (!response.ok) throw new Error(`Skill analysis status failed: ${response.status}`);
+      render(await response.json());
+    }
+
+    function start(runId) {
+      if (!runId) return;
+      if (pollTimer) window.clearInterval(pollTimer);
+      poll(runId).catch(() => {});
+      pollTimer = window.setInterval(() => {
+        poll(runId).catch(() => {});
+      }, 2500);
+    }
+
+    const pageRunId = section.dataset.runId || "";
+    const pageStatus = section.dataset.status || "";
+    const storedRunId = window.localStorage.getItem(storageKey) || "";
+    if (pageStatus === "STARTED" && pageRunId) {
+      window.localStorage.setItem(storageKey, pageRunId);
+      start(pageRunId);
+    } else if (storedRunId && storedRunId !== pageRunId) {
+      start(storedRunId);
+    }
+  })();
+</script>
 {% endblock %}

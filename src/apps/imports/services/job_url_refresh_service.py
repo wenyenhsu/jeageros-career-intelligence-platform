@@ -56,6 +56,20 @@ class JobUrlRefreshService:
     )
 
     @classmethod
+    def jobs_missing_skills(cls):
+        return (
+            JobPost.objects.select_related("company")
+            .prefetch_related(
+                "skill_sets",
+                "skill_sets__keywords",
+                "skill_links",
+            )
+            .filter(skill_links__isnull=True)
+            .exclude(status=JobPost.StatusChoices.ARCHIVED)
+            .distinct()
+        )
+
+    @classmethod
     def needs_refresh(cls, job):
         if not cls._source_url(job):
             return False
@@ -64,7 +78,7 @@ class JobUrlRefreshService:
         return not (has_location and has_skills)
 
     @classmethod
-    def refresh(cls, job):
+    def refresh(cls, job, analysis_run_id=None):
         if job is None or not getattr(job, "pk", None):
             raise JobUrlRefreshError("A saved job is required.")
 
@@ -75,7 +89,7 @@ class JobUrlRefreshService:
             service_name=cls.__name__,
             job=job,
             company=job.company,
-            metadata={"source_url": cls._source_url(job)},
+            metadata=cls._refresh_metadata(job, analysis_run_id),
         )
 
         if not cls.needs_refresh(job):
@@ -85,6 +99,9 @@ class JobUrlRefreshService:
                 service_name=cls.__name__,
                 job=job,
                 company=job.company,
+                metadata=cls._refresh_metadata(
+                    job, analysis_run_id, {"skipped": True}
+                ),
             )
             return JobUrlRefreshResult(job=job, skipped=True)
 
@@ -102,7 +119,7 @@ class JobUrlRefreshService:
                 job=job,
                 company=getattr(job, "company", None),
                 error=exc,
-                metadata={"source_url": cls._source_url(job)},
+                metadata=cls._refresh_metadata(job, analysis_run_id),
             )
             return JobUrlRefreshResult(job=job, error=str(exc))
 
@@ -112,10 +129,14 @@ class JobUrlRefreshService:
             service_name=cls.__name__,
             job=job,
             company=job.company,
-            metadata={
-                "source_url": job.source_url,
-                "skills_attached": skills_attached,
-            },
+            metadata=cls._refresh_metadata(
+                job,
+                analysis_run_id,
+                {
+                    "source_url": job.source_url,
+                    "skills_attached": skills_attached,
+                },
+            ),
         )
         return JobUrlRefreshResult(
             job=job,
@@ -177,6 +198,18 @@ class JobUrlRefreshService:
         if not result.success:
             raise JobUrlRefreshError(result.error or "Skill pipeline failed.")
         return result.attached_count
+
+    @classmethod
+    def _refresh_metadata(cls, job, analysis_run_id=None, extra=None):
+        metadata = {
+            "source_url": cls._source_url(job),
+            "job_id": getattr(job, "id", None),
+        }
+        if extra:
+            metadata.update(extra)
+        if analysis_run_id:
+            return MonitoringService.analysis_metadata(analysis_run_id, metadata)
+        return metadata
 
     @staticmethod
     def _source_url(job):

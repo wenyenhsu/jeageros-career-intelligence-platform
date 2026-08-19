@@ -7,16 +7,19 @@ from .views import (
     JobSourceHelpView,
     JobSourceListView,
     JobSourceUpdateView,
+    MissingSkillJobListView,
     MonitoringHelpView,
     abort_crawl_run,
     archive_jobs,
     copy_source,
     crawl_run_status,
     download_job_archive,
+    job_skill_analysis_status,
     job_url_import,
     monitoring_dashboard,
     restore_job_archive,
     run_all_sources,
+    run_missing_skill_analysis,
     run_source,
 )
 
@@ -28,6 +31,21 @@ urlpatterns = [
     path("runs/<int:pk>/abort/", abort_crawl_run, name="source-run-abort"),
     path("runs/<int:pk>/status/", crawl_run_status, name="source-run-status"),
     path("monitoring/help/", MonitoringHelpView.as_view(), name="monitoring-help"),
+    path(
+        "monitoring/missing-skills/",
+        MissingSkillJobListView.as_view(),
+        name="monitoring-missing-skills",
+    ),
+    path(
+        "monitoring/missing-skills/run/",
+        run_missing_skill_analysis,
+        name="monitoring-missing-skills-run",
+    ),
+    path(
+        "monitoring/missing-skills/status/",
+        job_skill_analysis_status,
+        name="job-skill-analysis-status",
+    ),
     path("monitoring/archive/jobs/", archive_jobs, name="job-archive-create"),
     path(
         "monitoring/archive/<int:pk>/restore/",

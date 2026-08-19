@@ -47,6 +47,54 @@ def test_source_detector_uses_generic_career_site_for_unknown_urls():
         SourceDetector.detect_parser_type("https://careers.example.com/jobs")
         == SourceDetector.CAREER_SITE
     )
+    assert (
+        SourceDetector.detect_parser_type(
+            "https://ats.rippling.com/rippling/jobs/82c13e8f-ae96-4c60-a872-c0ddf9eb0781"
+        )
+        == SourceDetector.CAREER_SITE
+    )
+
+
+def test_career_site_parser_extracts_json_ld_job_posting(monkeypatch):
+    parser = CareerSiteParser(
+        source="https://ats.rippling.com/rippling/jobs/82c13e8f-ae96-4c60-a872-c0ddf9eb0781"
+    )
+    page_html = """
+    <html><head>
+      <script type="application/ld+json">{"@type":"WebSite","name":"Rippling"}</script>
+      <script type="application/ld+json">
+        {
+          "@type": "JobPosting",
+          "title": "Machine Learning Software Engineer Intern - Winter 2027",
+          "description": "<p>Build Python models &amp; pipelines</p>",
+          "url": "https://ats.rippling.com/rippling/jobs/82c13e8f-ae96-4c60-a872-c0ddf9eb0781",
+          "identifier": {"@type": "PropertyValue", "value": "82c13e8f-ae96-4c60-a872-c0ddf9eb0781"},
+          "hiringOrganization": {"@type": "Organization", "name": "Rippling"},
+          "jobLocation": [{
+            "@type": "Place",
+            "address": {
+              "@type": "PostalAddress",
+              "addressLocality": "San Francisco",
+              "addressRegion": "CA",
+              "addressCountry": "US"
+            }
+          }]
+        }
+      </script>
+    </head></html>
+    """
+    monkeypatch.setattr(parser, "_fetch_url", lambda url: page_html)
+
+    jobs = parser.extract_single_job(
+        "https://ats.rippling.com/rippling/jobs/82c13e8f-ae96-4c60-a872-c0ddf9eb0781"
+    )
+
+    assert jobs[0]["title"] == "Machine Learning Software Engineer Intern - Winter 2027"
+    assert jobs[0]["company_name"] == "Rippling"
+    assert jobs[0]["location"] == "San Francisco, CA, US"
+    assert "Build Python models & pipelines" in jobs[0]["description"]
+    assert "<p>" not in jobs[0]["description"]
+    assert jobs[0]["external_id"] == "82c13e8f-ae96-4c60-a872-c0ddf9eb0781"
 
 
 def test_source_detector_falls_back_to_job_source_resource_without_url():

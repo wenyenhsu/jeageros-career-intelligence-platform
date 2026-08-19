@@ -1,4 +1,5 @@
 from copy import deepcopy
+from urllib.parse import urlencode
 import json
 
 from django.contrib import messages
@@ -18,10 +19,17 @@ from django.views.generic import (
     UpdateView,
 )
 
+from apps.jobs.models import JobPost
+from apps.jobs.search import (
+    filter_jobs_for_job_type,
+    filter_jobs_for_search,
+    filter_jobs_for_start_month,
+)
+
 from .forms import JobSourceForm
 from .models import CrawlRun, JobArchiveRun, JobSource, PipelineLog
 from .search import filter_job_sources_for_search
-from .services import JobArchiveService, MonitoringService
+from .services import JobArchiveService, JobUrlRefreshService, MonitoringService
 
 
 def job_url_import(request):
@@ -33,14 +41,159 @@ def monitoring_dashboard(request):
     resume_run_id = request.GET.get("resume_run_id") or request.session.get(
         "resume_analysis_run_id"
     )
+    skill_analysis_run_id = request.GET.get(
+        "skill_analysis_run_id"
+    ) or request.session.get("skill_analysis_run_id")
     return render(
         request,
         "imports/monitoring_dashboard.html",
         MonitoringService.dashboard_summary(
             crawl_run_id=crawl_run_id,
             resume_run_id=resume_run_id,
+            skill_analysis_run_id=skill_analysis_run_id,
         ),
     )
+
+
+class MissingSkillJobListView(ListView):
+    model = JobPost
+    template_name = "imports/missing_skill_job_list.html"
+    context_object_name = "jobs"
+
+    def get_queryset(self):
+        return _filtered_missing_skill_jobs(self.request)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["search_query"] = self.request.GET.get("q", "").strip()
+        context["starts_month"] = self.request.GET.get("starts_month", "").strip()
+        context["selected_job_type"] = JobPost.normalize_job_type(
+            self.request.GET.get("job_type", "").strip()
+        )
+        context["job_type_choices"] = JobPost.JOB_TYPE_CHOICES
+        context["queued_count"] = sum(
+            1 for job in context["jobs"] if JobUrlRefreshService.needs_refresh(job)
+        )
+        run_id = self.request.GET.get(
+            "skill_analysis_run_id"
+        ) or self.request.session.get("skill_analysis_run_id")
+        context["skill_analysis"] = MonitoringService.job_skill_analysis_status(
+            run_id
+        )
+        context.update(_missing_skill_nav(self.request))
+        return context
+
+
+@require_POST
+def run_missing_skill_analysis(request):
+    from apps.imports.tasks import refresh_job_from_url
+
+    jobs = list(_filtered_missing_skill_jobs(request))
+    queued_ids = []
+    skipped_without_url = 0
+    for job in jobs:
+        if JobUrlRefreshService.needs_refresh(job):
+            queued_ids.append(job.id)
+        elif not (job.source_url or "").strip():
+            skipped_without_url += 1
+
+    if queued_ids:
+        run_id = MonitoringService.start_job_skill_analysis(queued_ids)
+        request.session["skill_analysis_run_id"] = run_id
+        for job_id in queued_ids:
+            refresh_job_from_url.delay(job_id, analysis_run_id=run_id)
+        messages.info(
+            request,
+            f"Queued analysis for {len(queued_ids)} job(s) with a source URL.",
+        )
+    if skipped_without_url:
+        messages.warning(
+            request,
+            f"Skipped {skipped_without_url} job(s) without a source URL.",
+        )
+    if not queued_ids and not skipped_without_url:
+        messages.info(request, "No jobs needed skill analysis.")
+
+    query = {}
+    for key in ("q", "job_type", "starts_month"):
+        value = request.POST.get(key, "").strip()
+        if value:
+            query[key] = value
+    nav = _missing_skill_nav(request)
+    url = reverse(nav["list_url_name"])
+    if query:
+        url = f"{url}?{urlencode(query)}"
+    return redirect(url)
+
+
+def job_skill_analysis_status(request):
+    run_id = request.GET.get("skill_analysis_run_id") or request.session.get(
+        "skill_analysis_run_id"
+    )
+    status = MonitoringService.job_skill_analysis_status(run_id)
+    if not status:
+        return JsonResponse(
+            {
+                "success": False,
+                "status": "",
+                "progress": 0,
+                "detail": "No skill analysis run is active.",
+            },
+            status=404,
+        )
+
+    run_id = status.get("run_id") or run_id
+    return JsonResponse(
+        {
+            "success": status.get("status") != PipelineLog.StatusChoices.FAILED,
+            "skill_analysis_run_id": run_id,
+            "monitoring_url": (
+                f"{reverse('monitoring-dashboard')}?skill_analysis_run_id={run_id}"
+                "#job-skill-analysis"
+            ),
+            **status,
+        }
+    )
+
+
+_ANALYTICS_MISSING_SKILL_URLS = {
+    "analytics-missing-skills",
+    "analytics-missing-skills-run",
+}
+
+
+def _missing_skill_nav(request):
+    url_name = getattr(request.resolver_match, "url_name", "")
+    if url_name in _ANALYTICS_MISSING_SKILL_URLS:
+        return {
+            "list_url_name": "analytics-missing-skills",
+            "run_url_name": "analytics-missing-skills-run",
+            "parent_url_name": "analytics-dashboard",
+            "parent_label": "Analytics",
+            "section_label": "Analytics",
+        }
+    return {
+        "list_url_name": "monitoring-missing-skills",
+        "run_url_name": "monitoring-missing-skills-run",
+        "parent_url_name": "monitoring-dashboard",
+        "parent_label": "Monitoring",
+        "section_label": "Monitoring",
+    }
+
+
+def _filtered_missing_skill_jobs(request):
+    queryset = JobUrlRefreshService.jobs_missing_skills()
+    params = request.POST if request.method == "POST" else request.GET
+    job_type = params.get("job_type", "").strip()
+    if job_type:
+        queryset = filter_jobs_for_job_type(queryset, job_type)
+    starts_month = params.get("starts_month", "").strip()
+    if starts_month:
+        queryset = filter_jobs_for_start_month(queryset, starts_month)
+    query = params.get("q", "").strip()
+    if query:
+        queryset = filter_jobs_for_search(queryset, query)
+    return queryset
 
 
 @require_POST

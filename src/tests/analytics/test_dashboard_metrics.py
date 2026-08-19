@@ -191,6 +191,8 @@ def test_analytics_page_keeps_filters_and_market_analysis_sections(client):
     content = response.content.decode()
     assert "Market signals, skill demand, company trends, and gap analysis." in content
     assert "Analysis Filters" in content
+    assert "Missing skills" in content
+    assert reverse("analytics-missing-skills") in content
     assert "Top Skill Demand" in content
     assert "Skill Demand Trends" in content
     assert "Company Skill Breakdown" in content
@@ -216,5 +218,6 @@ def test_dashboard_and_analytics_navbar_links_resolve(client):
     assert f'href="{reverse("analytics-dashboard")}"' in dashboard_content
     assert f'href="{reverse("dashboard")}"' in analytics_content
     assert f'href="{reverse("analytics-dashboard")}"' in analytics_content
+    assert f'href="{reverse("analytics-missing-skills")}"' in analytics_content
     assert 'id="globalResumeStatus"' in dashboard_content
     assert 'id="globalResumeStatus"' in analytics_content
