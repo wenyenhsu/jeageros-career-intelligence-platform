@@ -60,6 +60,18 @@ class ApplicationCreateView(CreateView):
     template_name = "applications/application_form.html"
     success_url = reverse_lazy("application-list")
 
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["allow_manual_job"] = True
+        return kwargs
+
+    def get_initial(self):
+        initial = super().get_initial()
+        user = getattr(self.request, "user", None)
+        if user is not None and user.is_authenticated:
+            initial["user"] = user
+        return initial
+
 
 class ApplicationUpdateView(UpdateView):
     model = Application

@@ -37,6 +37,48 @@
                             <div class="text-danger small">{{ form.job_post.errors }}</div>
                         </div>
 
+                        {% if form.company %}
+                            <div class="border rounded-3 p-3 p-md-4 mb-4 bg-light">
+                                <h2 class="h6 fw-semibold mb-1">New job</h2>
+                                <p class="text-muted small mb-3">
+                                    Fill these in if the job is not already in the list.
+                                </p>
+
+                                <div class="mb-3">
+                                    <label class="form-label">{{ form.company.label }}</label>
+                                    {{ form.company }}
+                                    {% if form.company.help_text %}
+                                        <div class="form-text">{{ form.company.help_text }}</div>
+                                    {% endif %}
+                                    <div class="text-danger small">{{ form.company.errors }}</div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">{{ form.job_title.label }}</label>
+                                    {{ form.job_title }}
+                                    <div class="text-danger small">{{ form.job_title.errors }}</div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">{{ form.source_url.label }}</label>
+                                    {{ form.source_url }}
+                                    <div class="text-danger small">{{ form.source_url.errors }}</div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">{{ form.location.label }}</label>
+                                    {{ form.location }}
+                                    <div class="text-danger small">{{ form.location.errors }}</div>
+                                </div>
+
+                                <div class="mb-0">
+                                    <label class="form-label">{{ form.job_type.label }}</label>
+                                    {{ form.job_type }}
+                                    <div class="text-danger small">{{ form.job_type.errors }}</div>
+                                </div>
+                            </div>
+                        {% endif %}
+
                         <div class="mb-3">
                             <label class="form-label">{{ form.status.label }}</label>
                             {{ form.status }}
