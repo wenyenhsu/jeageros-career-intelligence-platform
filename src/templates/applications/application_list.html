@@ -45,6 +45,7 @@
                         <th>Job Skills</th>
                         <th>Status</th>
                         <th>Applied At</th>
+                        <th>Materials</th>
                         <th class="text-end pe-4">Actions</th>
                     </tr>
                 </thead>
@@ -99,6 +100,20 @@
                                 -
                             {% endif %}
                         </td>
+                        <td>
+                            {% if application.has_materials %}
+                                <a
+                                    href="{{ application.materials_url_display }}"
+                                    target="_blank"
+                                    rel="noopener"
+                                    class="badge text-bg-light border text-decoration-none"
+                                >
+                                    Drive
+                                </a>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
                         <td class="text-end pe-4">
                             <div class="d-inline-flex gap-1">
                                 <a href="{% url 'application-detail' application.pk %}" class="btn btn-outline-secondary btn-sm">
@@ -119,7 +134,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="8" class="text-center text-muted py-5">
+                        <td colspan="9" class="text-center text-muted py-5">
                             {% if search_query %}
                                 No applications match "{{ search_query }}".
                             {% else %}

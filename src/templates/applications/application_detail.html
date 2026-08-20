@@ -135,6 +135,21 @@
                                 </td>
                             </tr>
                             <tr>
+                                <th colspan="2" class="text-uppercase small text-muted pt-4">Materials</th>
+                            </tr>
+                            <tr>
+                                <th>Google Drive folder</th>
+                                <td>
+                                    {% if application.has_materials %}
+                                        <a href="{{ application.materials_url_display }}" target="_blank" rel="noopener">
+                                            Open folder
+                                        </a>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
                                 <th>Last Updated</th>
                                 <td>{{ application.last_updated_at|date:"Y-m-d H:i" }}</td>
                             </tr>

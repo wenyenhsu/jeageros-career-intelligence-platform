@@ -1,7 +1,26 @@
+from urllib.parse import urlparse
+
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from apps.common.models import TimeStampedModel
 from apps.jobs.models import JobPost
+
+GOOGLE_DRIVE_HOSTS = ("drive.google.com", "docs.google.com")
+
+
+def normalize_materials_url(value):
+    url = " ".join(str(value or "").split()).strip()
+    if not url:
+        return ""
+    if "://" not in url:
+        url = f"https://{url}"
+    host = urlparse(url).netloc.casefold()
+    if host.startswith("www."):
+        host = host[4:]
+    if host not in GOOGLE_DRIVE_HOSTS:
+        raise ValidationError("Enter a Google Drive folder URL.")
+    return url
 
 
 class Application(TimeStampedModel):
@@ -30,6 +49,11 @@ class Application(TimeStampedModel):
         through="skills.ApplicationSkill",
         related_name="applications",
         blank=True,
+    )
+    materials_url = models.URLField(
+        max_length=500,
+        blank=True,
+        help_text="Google Drive folder that contains this job's cover letter and resume.",
     )
     last_updated_at = models.DateTimeField(auto_now=True)
 
@@ -131,6 +155,14 @@ class Application(TimeStampedModel):
     @property
     def skill_set_display(self):
         return ", ".join(self.skill_set_names)
+
+    @property
+    def has_materials(self):
+        return bool(self.materials_url_display)
+
+    @property
+    def materials_url_display(self):
+        return (self.materials_url or "").strip()
 
 
 class StatusHistory(TimeStampedModel):

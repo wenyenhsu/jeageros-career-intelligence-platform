@@ -1,11 +1,34 @@
 from django import forms
-from .models import Application
+
+from .models import Application, normalize_materials_url
 
 
 class ApplicationForm(forms.ModelForm):
+    materials_url = forms.CharField(
+        required=False,
+        max_length=500,
+        label="Google Drive folder",
+        help_text="Folder that contains this job's cover letter and resume.",
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "https://drive.google.com/drive/folders/...",
+                "autocomplete": "off",
+            }
+        ),
+    )
+
     class Meta:
         model = Application
-        fields = ["user", "job_post", "status", "applied_at", "priority", "referral"]
+        fields = [
+            "user",
+            "job_post",
+            "status",
+            "applied_at",
+            "priority",
+            "referral",
+            "materials_url",
+        ]
         widgets = {
             "user": forms.Select(attrs={"class": "form-select"}),
             "job_post": forms.Select(attrs={"class": "form-select"}),
@@ -42,3 +65,6 @@ class ApplicationForm(forms.ModelForm):
             self.initial["applied_at"] = self.instance.applied_at.strftime(
                 "%Y-%m-%dT%H:%M"
             )
+
+    def clean_materials_url(self):
+        return normalize_materials_url(self.cleaned_data.get("materials_url"))

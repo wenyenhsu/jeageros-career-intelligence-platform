@@ -1,4 +1,5 @@
 from django.contrib import admin
+from .forms import ApplicationForm
 from .models import Application, StatusHistory
 
 
@@ -17,12 +18,14 @@ class StatusHistoryInline(admin.TabularInline):
 
 @admin.register(Application)
 class ApplicationAdmin(admin.ModelAdmin):
+    form = ApplicationForm
     list_display = (
         "job_post",
         "user",
         "status",
         "priority",
         "referral",
+        "has_materials",
         "last_updated_at",
     )
     list_filter = ("status", "referral")
@@ -36,6 +39,10 @@ class ApplicationAdmin(admin.ModelAdmin):
         "job_post__skill_sets__keywords__normalized_text",
     )
     inlines = [StatusHistoryInline]
+
+    @admin.display(boolean=True, description="Drive folder")
+    def has_materials(self, obj):
+        return obj.has_materials
 
 
 @admin.register(StatusHistory)
