@@ -56,6 +56,7 @@
             <h2 class="h5 fw-bold mb-3">Filter config</h2>
             <div class="row g-3">
               {% include 'imports/partials/source_form_field.html' with field=form.location classes='col-12 col-md-6' %}
+              {% include 'imports/partials/source_form_field.html' with field=form.location_aliases classes='col-12 col-md-6' %}
               {% include 'imports/partials/source_form_field.html' with field=form.job_types classes='col-12 col-md-6' %}
               {% include 'imports/partials/source_form_field.html' with field=form.workplace_types classes='col-12 col-md-6' %}
               {% include 'imports/partials/source_form_field.html' with field=form.remote_only classes='col-12 col-md-6' %}
@@ -107,6 +108,7 @@
       "date_posted",
       "default_job_type",
       "location",
+      "location_aliases",
       "job_types",
       "workplace_types",
       "remote_only",

@@ -56,7 +56,7 @@ def test_application_helpers_return_linked_job_data(shared_application, company)
 
 
 @pytest.mark.django_db
-def test_application_list_displays_linked_job_info_and_job_skills(
+def test_application_list_displays_linked_job_info(
     client,
     shared_application,
     company,
@@ -69,8 +69,9 @@ def test_application_list_displays_linked_job_info_and_job_skills(
     assert "Machine Learning Intern" in content
     assert "Internship" in content
     assert "Remote" in content
-    assert "Python" in content
-    assert "Interview Prep" in content
+    assert "Job Skills" not in content
+    assert "Python" not in content
+    assert "Interview Prep" not in content
     assert 'href="https://example.com/jobs/ml-intern"' in content
     assert 'target="_blank"' in content
     assert 'rel="noopener"' in content
@@ -94,7 +95,8 @@ def test_application_list_does_not_duplicate_copied_job_skills(client, user, com
 
     assert response.status_code == 200
     content = response.content.decode()
-    assert content.count(">SQL<") == 1
+    assert "SQL" not in content
+    assert "Job Skills" not in content
     assert "Application</div>" not in content
 
 

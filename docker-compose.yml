@@ -20,6 +20,7 @@ services:
 
     volumes:
       - .:/app
+      - ${APPLICATION_MATERIALS_ROOT:-./media/applications}:${APPLICATION_MATERIALS_ROOT:-/app/media/applications}
 
     ports:
       - "8000:8000"
@@ -49,6 +50,7 @@ services:
 
     volumes:
       - .:/app
+      - ${APPLICATION_MATERIALS_ROOT:-./media/applications}:${APPLICATION_MATERIALS_ROOT:-/app/media/applications}
 
     depends_on:
       - db
@@ -75,6 +77,7 @@ services:
 
     volumes:
       - .:/app
+      - ${APPLICATION_MATERIALS_ROOT:-./media/applications}:${APPLICATION_MATERIALS_ROOT:-/app/media/applications}
 
     depends_on:
       - db

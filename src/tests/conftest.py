@@ -23,3 +23,15 @@ def job(db, company):
 @pytest.fixture
 def application(db, user, job):
     return Application.objects.create(user=user, job_post=job)
+
+
+@pytest.fixture(autouse=True)
+def application_materials_root(settings, tmp_path):
+    root = tmp_path / "applications"
+    root.mkdir()
+    settings.APPLICATION_MATERIALS_ROOT = root
+    settings.RESUME_TEMPLATE_ROOT = tmp_path / "resume_golden_template"
+    settings.RESUME_TEMPLATE_ROOT.mkdir(exist_ok=True)
+    settings.GOOGLE_DRIVE_SERVICE_ACCOUNT_FILE = ""
+    settings.GOOGLE_DRIVE_PARENT_FOLDER_ID = ""
+    return root

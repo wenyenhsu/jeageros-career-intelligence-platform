@@ -71,7 +71,8 @@ class JobUrlRefreshService:
 
     @classmethod
     def needs_refresh(cls, job):
-        if not cls._source_url(job):
+        url = cls._source_url(job)
+        if not url or cls._is_drive_url(url):
             return False
         has_location = not cls._is_blank(getattr(job, "location", ""))
         has_skills = job.skill_links.exists()
@@ -107,6 +108,23 @@ class JobUrlRefreshService:
 
         try:
             payload = cls._fetch_canonical_payload(job)
+            if payload is None:
+                MonitoringService.log_event(
+                    step_name="job_url_refresh",
+                    status=PipelineLog.StatusChoices.SKIPPED,
+                    message=cls.UNSUPPORTED_MESSAGE,
+                    service_name=cls.__name__,
+                    job=job,
+                    company=job.company,
+                    metadata=cls._refresh_metadata(
+                        job, analysis_run_id, {"skipped": True, "unsupported": True}
+                    ),
+                )
+                return JobUrlRefreshResult(
+                    job=job,
+                    skipped=True,
+                    error="",
+                )
             merged = cls._merge_existing(job, payload)
             upsert_result = JobSyncService.upsert_job(merged, job=job)
             job = upsert_result.job
@@ -150,7 +168,7 @@ class JobUrlRefreshService:
         parser = ParserRegistry.get_parser_for_url(url)
         raw_jobs = parser.extract_single_job(url)
         if not raw_jobs:
-            raise JobUrlRefreshError(cls.UNSUPPORTED_MESSAGE)
+            return None
         payload = JobNormalizer.normalize(raw_jobs[0], source=url)
         return payload.as_dict() if isinstance(payload, CanonicalJobPayload) else payload
 
@@ -214,6 +232,15 @@ class JobUrlRefreshService:
     @staticmethod
     def _source_url(job):
         return (getattr(job, "source_url", "") or "").strip()
+
+    @staticmethod
+    def _is_drive_url(url):
+        from urllib.parse import urlparse
+
+        host = urlparse(url).netloc.casefold()
+        if host.startswith("www."):
+            host = host[4:]
+        return host in {"drive.google.com", "docs.google.com"}
 
     @staticmethod
     def _is_blank(value):

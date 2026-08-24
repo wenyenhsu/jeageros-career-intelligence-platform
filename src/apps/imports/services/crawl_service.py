@@ -688,9 +688,10 @@ class CrawlService:
 
     @classmethod
     def _job_matches_location_filter(cls, job_data, config):
-        locations = cls._coerce_text_values(
-            config.get("locations") or config.get("location")
-        )
+        locations = cls._coerce_text_values(config.get("locations"))
+        if not locations:
+            locations = cls._coerce_text_values(config.get("location"))
+        locations.extend(cls._coerce_text_values(config.get("location_aliases")))
         if not locations:
             return True
 

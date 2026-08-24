@@ -1,4 +1,7 @@
-from django.urls import reverse_lazy
+from django.contrib import messages
+from django.shortcuts import get_object_or_404, redirect
+from django.urls import reverse, reverse_lazy
+from django.views.decorators.http import require_POST
 from django.views.generic import (
     CreateView,
     DetailView,
@@ -9,6 +12,8 @@ from django.views.generic import (
 from .forms import ApplicationForm
 from .models import Application
 from .search import filter_applications_for_search
+from .services.ats_scan_service import AtsScanError, AtsScanService
+from .services.materials_pack_service import MaterialsPackError, MaterialsPackService
 
 
 class ApplicationListView(ListView):
@@ -35,6 +40,7 @@ class ApplicationListView(ListView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["search_query"] = self.request.GET.get("q", "").strip()
+        context["materials_pack_choices"] = Application.MaterialsPack.choices
         return context
 
 
@@ -52,6 +58,11 @@ class ApplicationDetailView(DetailView):
         "job_post__skill_sets__keywords",
         "history",
     )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["materials_pack_choices"] = Application.MaterialsPack.choices
+        return context
 
 
 class ApplicationCreateView(CreateView):
@@ -83,3 +94,68 @@ class ApplicationUpdateView(UpdateView):
 class ApplicationDeleteView(DeleteView):
     model = Application
     success_url = reverse_lazy("application-list")
+
+
+@require_POST
+def run_application_ats_scan(request, pk):
+    application = get_object_or_404(
+        Application.objects.select_related("job_post__company"),
+        pk=pk,
+    )
+    try:
+        result = AtsScanService().scan(application, write_drafts=True)
+    except AtsScanError as exc:
+        messages.error(request, str(exc))
+        return redirect("application-detail", pk=pk)
+
+    score = result.get("score")
+    target = result.get("target") or AtsScanService.target_score
+    matched = result.get("matched_count")
+    total = result.get("keyword_count")
+    if result.get("meets_target"):
+        messages.success(
+            request,
+            f"ATS score {score} ({matched}/{total}) meets the {target}% target.",
+        )
+    else:
+        tailored = result.get("tailored_score")
+        extra = ""
+        if tailored is not None:
+            extra = f" Tailored Resume.pdf scores {tailored}."
+        messages.warning(
+            request,
+            f"ATS score {score} ({matched}/{total}) is below the {target}% target.{extra}",
+        )
+    return redirect("application-detail", pk=pk)
+
+
+@require_POST
+def apply_application_materials_pack(request, pk):
+    application = get_object_or_404(
+        Application.objects.select_related("job_post__company"),
+        pk=pk,
+    )
+    next_url = request.POST.get("next") or ""
+    if not (next_url.startswith("/") and not next_url.startswith("//")):
+        next_url = reverse("application-list")
+    try:
+        result = MaterialsPackService().apply_pack(
+            application, request.POST.get("pack")
+        )
+    except MaterialsPackError as exc:
+        messages.error(request, str(exc))
+        return redirect(next_url)
+
+    copied = ", ".join(result["copied"])
+    missing = result.get("missing") or []
+    if missing:
+        messages.warning(
+            request,
+            f"Copied {result['pack']} files ({copied}). Missing: {', '.join(missing)}.",
+        )
+    else:
+        messages.success(
+            request,
+            f"Copied {result['pack']} materials into the local folder.",
+        )
+    return redirect(next_url)

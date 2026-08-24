@@ -229,6 +229,34 @@ def test_scheduled_crawl_filters_jobs_with_location_lists(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_scheduled_crawl_keeps_nearby_cities_from_location_aliases(monkeypatch):
+    source = JobSource.objects.create(
+        name="LinkedIn LA Internships",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
+        enabled=True,
+        filter_config={
+            "location": ["Los Angeles, CA", "Irvine, CA"],
+            "location_aliases": ["Burbank", "El Segundo", "Anaheim"],
+        },
+    )
+    monkeypatch.setattr(
+        crawl_service.ParserRegistry,
+        "get_parser",
+        staticmethod(lambda parser_type, source=None: NearbyCityParser(source)),
+    )
+
+    summary = CrawlService.crawl_all_sources([source])
+
+    assert summary["success"] is True
+    assert summary["jobs_created"] == 2
+    assert summary["sources"][0]["jobs_found"] == 2
+    assert summary["sources"][0]["jobs_filtered"] == 1
+    titles = set(JobPost.objects.values_list("title", flat=True))
+    assert titles == {"Burbank Intern", "Los Angeles Intern"}
+
+
+@pytest.mark.django_db
 def test_scheduled_crawl_filters_jobs_by_job_type(monkeypatch):
     source = JobSource.objects.create(
         name="LinkedIn Full-time Roles",
@@ -688,6 +716,39 @@ class LocationListParser(FakeParser):
                 "location": "Toronto, Canada",
                 "employment_type": "Full-time",
                 "description": "Build backend systems.",
+            },
+        ]
+
+
+class NearbyCityParser(FakeParser):
+    def extract_jobs(self, listing_page):
+        return [
+            {
+                "title": "Los Angeles Intern",
+                "company_name": "Acme",
+                "source_url": f"{listing_page.url}/la-intern",
+                "external_id": "la-intern",
+                "location": "Los Angeles, CA",
+                "employment_type": "Internship",
+                "description": "Internship in Los Angeles.",
+            },
+            {
+                "title": "Burbank Intern",
+                "company_name": "Studio Co",
+                "source_url": f"{listing_page.url}/burbank-intern",
+                "external_id": "burbank-intern",
+                "location": "Burbank, CA",
+                "employment_type": "Internship",
+                "description": "Internship in Burbank.",
+            },
+            {
+                "title": "Seattle Intern",
+                "company_name": "Rain Co",
+                "source_url": f"{listing_page.url}/seattle-intern",
+                "external_id": "seattle-intern",
+                "location": "Seattle, WA",
+                "employment_type": "Internship",
+                "description": "Internship in Seattle.",
             },
         ]
 

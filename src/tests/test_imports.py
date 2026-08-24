@@ -68,6 +68,7 @@ def test_source_create_view(client):
         "date_posted": "r604800",
         "default_job_type": "",
         "location": "United States, CA",
+        "location_aliases": "Burbank, Santa Monica",
         "job_types": "Full-time, Internship",
         "workplace_types": "Remote, Hybrid, On-site",
         "search_keywords": "data engineer\nbackend",
@@ -88,6 +89,7 @@ def test_source_create_view(client):
     assert source.crawl_config["sort_by"] == "DD"
     assert source.crawl_config["date_posted"] == "r604800"
     assert source.filter_config["location"] == ["United States", "CA"]
+    assert source.filter_config["location_aliases"] == ["Burbank", "Santa Monica"]
     assert source.filter_config["job_types"] == ["Full-time", "Internship"]
     assert source.filter_config["include_keywords"] == ["python", "django"]
     assert source.filter_config["target_companies"] == ["OpenAI", "Google"]
@@ -132,6 +134,7 @@ def test_source_help_view_explains_form_parameters(client):
     assert "Default job type" in content
     assert "Rolling search" in content
     assert "Location" in content
+    assert "Nearby cities" in content
     assert "Job types" in content
     assert "Workplace types" in content
     assert "Remote only" in content

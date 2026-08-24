@@ -150,6 +150,118 @@
                                 </td>
                             </tr>
                             <tr>
+                                <th>Local folder</th>
+                                <td>
+                                    {% if application.materials_local_path %}
+                                        <code>{{ application.materials_local_path }}</code>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                    <form
+                                        method="post"
+                                        action="{% url 'application-materials-pack' application.pk %}"
+                                        class="d-flex gap-2 align-items-center mt-2"
+                                        onsubmit="return confirm('Apply this materials pack to the application folder?');"
+                                    >
+                                        {% csrf_token %}
+                                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                        <select name="pack" class="form-select form-select-sm" style="max-width: 12rem;">
+                                            <option value="">Select pack</option>
+                                            {% for value, label in materials_pack_choices %}
+                                                <option
+                                                    value="{{ value }}"
+                                                    {% if application.materials_pack == value %}selected{% endif %}
+                                                >
+                                                    {{ label }}
+                                                </option>
+                                            {% endfor %}
+                                        </select>
+                                        <button type="submit" class="btn btn-sm btn-outline-primary">
+                                            Copy files
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th colspan="2" class="text-uppercase small text-muted pt-4">ATS scan</th>
+                            </tr>
+                            <tr>
+                                <th>Resume score</th>
+                                <td>
+                                    {% if application.ats_score is not None %}
+                                        <span class="fw-semibold">{{ application.ats_score }}</span>
+                                        / 100
+                                        {% if application.ats_meets_target %}
+                                            <span class="badge text-bg-success ms-2">Meets {{ application.ats_scan_display.target|default:70 }}% target</span>
+                                        {% else %}
+                                            <span class="badge text-bg-warning ms-2">Below {{ application.ats_scan_display.target|default:70 }}% target</span>
+                                        {% endif %}
+                                        <div class="text-muted small mt-1">
+                                            {{ application.ats_scan_display.matched_count }} /
+                                            {{ application.ats_scan_display.keyword_count }} keywords
+                                            {% if application.ats_scan_display.resume_file %}
+                                                · {{ application.ats_scan_display.resume_file }}
+                                            {% endif %}
+                                        </div>
+                                        {% if application.ats_tailored_score is not None %}
+                                            <div class="small mt-2">
+                                                Tailored <code>Resume.pdf</code>:
+                                                <span class="fw-semibold">{{ application.ats_tailored_score }}</span>
+                                                {% if application.ats_tailored_meets_target %}
+                                                    <span class="badge text-bg-success ms-1">Meets target</span>
+                                                {% else %}
+                                                    <span class="badge text-bg-warning ms-1">Below target</span>
+                                                {% endif %}
+                                            </div>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-muted">Not scanned yet.</span>
+                                    {% endif %}
+                                    <form method="post" action="{% url 'application-ats-scan' application.pk %}" class="mt-2">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-outline-primary">
+                                            Run ATS scan
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Matched</th>
+                                <td>
+                                    {% for keyword in application.ats_scan_display.matched %}
+                                        <span class="badge text-bg-success me-1 mb-1">{{ keyword }}</span>
+                                    {% empty %}
+                                        <span class="text-muted">-</span>
+                                    {% endfor %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Unmatched</th>
+                                <td>
+                                    {% for keyword in application.ats_scan_display.unmatched %}
+                                        <span class="badge text-bg-light border me-1 mb-1">{{ keyword }}</span>
+                                    {% empty %}
+                                        <span class="text-muted">-</span>
+                                    {% endfor %}
+                                </td>
+                            </tr>
+                            {% if application.ats_scan_display.drafts %}
+                            <tr>
+                                <th>ATS files in folder</th>
+                                <td>
+                                    {% if application.ats_scan_display.tailored_resume_file %}
+                                        <code class="d-block">{{ application.ats_scan_display.tailored_resume_file }}</code>
+                                    {% endif %}
+                                    {% if application.ats_scan_display.tailored_cover_letter_file %}
+                                        <code class="d-block">{{ application.ats_scan_display.tailored_cover_letter_file }}</code>
+                                    {% endif %}
+                                    {% for draft in application.ats_scan_display.drafts %}
+                                        <code class="d-block">{{ draft }}</code>
+                                    {% endfor %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            <tr>
                                 <th>Last Updated</th>
                                 <td>{{ application.last_updated_at|date:"Y-m-d H:i" }}</td>
                             </tr>

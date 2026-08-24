@@ -101,6 +101,20 @@ STATIC_ROOT = ROOT_DIR / "staticfiles"
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = ROOT_DIR / "media"
+_materials_root = os.getenv("APPLICATION_MATERIALS_ROOT", "").strip()
+APPLICATION_MATERIALS_ROOT = (
+    Path(_materials_root) if _materials_root else MEDIA_ROOT / "applications"
+)
+_resume_template_root = os.getenv("RESUME_TEMPLATE_ROOT", "").strip()
+RESUME_TEMPLATE_ROOT = (
+    Path(_resume_template_root)
+    if _resume_template_root
+    else APPLICATION_MATERIALS_ROOT / "resume_golden_template"
+)
+GOOGLE_DRIVE_SERVICE_ACCOUNT_FILE = os.getenv(
+    "GOOGLE_DRIVE_SERVICE_ACCOUNT_FILE", ""
+).strip()
+GOOGLE_DRIVE_PARENT_FOLDER_ID = os.getenv("GOOGLE_DRIVE_PARENT_FOLDER_ID", "").strip()
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

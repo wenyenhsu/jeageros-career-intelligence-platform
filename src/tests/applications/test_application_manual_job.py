@@ -96,6 +96,22 @@ def test_form_requires_company_and_title_when_job_post_is_blank(user):
 
 
 @pytest.mark.django_db
+def test_form_rejects_google_drive_url_as_job_url(user):
+    form = ApplicationForm(
+        data=_create_data(
+            user,
+            company="OpenAI",
+            job_title="Intern",
+            source_url="https://drive.google.com/drive/folders/abc123",
+        ),
+        allow_manual_job=True,
+    )
+
+    assert not form.is_valid()
+    assert "source_url" in form.errors
+
+
+@pytest.mark.django_db
 def test_create_view_saves_manual_job_application(client, user):
     response = client.post(
         reverse("application-create"),

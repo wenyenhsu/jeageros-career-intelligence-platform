@@ -1,3 +1,5 @@
+from urllib.parse import urlparse
+
 from django import forms
 from django.db import transaction
 
@@ -6,7 +8,8 @@ from apps.imports.services.company_upsert_service import CompanyUpsertService
 from apps.jobs.forms import CompanyNameInput
 from apps.jobs.models import JobPost
 
-from .models import Application, normalize_materials_url
+from .models import Application, GOOGLE_DRIVE_HOSTS, normalize_materials_url
+from .services.materials_folder_service import MaterialsFolderService
 
 
 class ApplicationForm(forms.ModelForm):
@@ -14,7 +17,10 @@ class ApplicationForm(forms.ModelForm):
         required=False,
         max_length=500,
         label="Google Drive folder",
-        help_text="Folder that contains this job's cover letter and resume.",
+        help_text=(
+            "Leave blank to create a Google Drive folder automatically. "
+            "Contains this job's cover letter and resume."
+        ),
         widget=forms.TextInput(
             attrs={
                 "class": "form-control",
@@ -115,6 +121,10 @@ class ApplicationForm(forms.ModelForm):
             required=False,
             assume_scheme="https",
             label="Job URL",
+            help_text=(
+                "Public job posting URL (LinkedIn job page, Greenhouse, or career site). "
+                "Do not paste a Google Drive folder here."
+            ),
             widget=forms.URLInput(
                 attrs={
                     "class": "form-control",
@@ -144,6 +154,19 @@ class ApplicationForm(forms.ModelForm):
 
     def clean_job_title(self):
         return " ".join(str(self.cleaned_data.get("job_title") or "").split())
+
+    def clean_source_url(self):
+        url = (self.cleaned_data.get("source_url") or "").strip()
+        if not url:
+            return ""
+        host = urlparse(url).netloc.casefold()
+        if host.startswith("www."):
+            host = host[4:]
+        if host in GOOGLE_DRIVE_HOSTS:
+            raise forms.ValidationError(
+                "Use the Google Drive folder field for cover letter and resume."
+            )
+        return url
 
     def clean_materials_url(self):
         return normalize_materials_url(self.cleaned_data.get("materials_url"))
@@ -186,6 +209,7 @@ class ApplicationForm(forms.ModelForm):
         if commit:
             application.save()
             self.save_m2m()
+            MaterialsFolderService().ensure_folders(application)
         return application
 
     def _find_existing_job(self, cleaned_data):

@@ -42,7 +42,6 @@
                         <th>Job</th>
                         <th>Job Type</th>
                         <th>Location</th>
-                        <th>Job Skills</th>
                         <th>Status</th>
                         <th>Applied At</th>
                         <th>Materials</th>
@@ -76,19 +75,6 @@
                             {{ application.location_display|default:"-" }}
                         </td>
                         <td>
-                            {% for skill in application.job_skill_set_list %}
-                                <span class="badge text-bg-light border me-1 mb-1">{{ skill.name }}</span>
-                            {% empty %}
-                                <span class="text-muted">-</span>
-                            {% endfor %}
-                            {% if application.application_only_skill_set_list %}
-                                <div class="small text-muted mt-1">Application</div>
-                                {% for skill in application.application_only_skill_set_list %}
-                                    <span class="badge text-bg-secondary me-1 mb-1">{{ skill.name }}</span>
-                                {% endfor %}
-                            {% endif %}
-                        </td>
-                        <td>
                             <span class="badge bg-primary">
                                 {{ application.get_status_display }}
                             </span>
@@ -101,18 +87,31 @@
                             {% endif %}
                         </td>
                         <td>
-                            {% if application.has_materials %}
-                                <a
-                                    href="{{ application.materials_url_display }}"
-                                    target="_blank"
-                                    rel="noopener"
-                                    class="badge text-bg-light border text-decoration-none"
+                            <form
+                                method="post"
+                                action="{% url 'application-materials-pack' application.pk %}"
+                                class="d-flex flex-column gap-1"
+                            >
+                                {% csrf_token %}
+                                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                <select
+                                    name="pack"
+                                    class="form-select form-select-sm"
+                                    data-previous-value="{{ application.materials_pack }}"
+                                    onchange="confirmMaterialsPack(this)"
+                                    aria-label="Materials pack"
                                 >
-                                    Drive
-                                </a>
-                            {% else %}
-                                <span class="text-muted">-</span>
-                            {% endif %}
+                                    <option value="">Select</option>
+                                    {% for value, label in materials_pack_choices %}
+                                        <option
+                                            value="{{ value }}"
+                                            {% if application.materials_pack == value %}selected{% endif %}
+                                        >
+                                            {{ label }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </form>
                         </td>
                         <td class="text-end pe-4">
                             <div class="d-inline-flex gap-1">
@@ -134,7 +133,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="9" class="text-center text-muted py-5">
+                        <td colspan="8" class="text-center text-muted py-5">
                             {% if search_query %}
                                 No applications match "{{ search_query }}".
                             {% else %}
@@ -148,4 +147,18 @@
         </div>
     </div>
 </div>
+<script>
+function confirmMaterialsPack(select) {
+    const previous = select.dataset.previousValue || "";
+    if (!select.value) {
+        select.value = previous;
+        return;
+    }
+    if (confirm("Apply this materials pack to the application folder?")) {
+        select.form.submit();
+        return;
+    }
+    select.value = previous;
+}
+</script>
 {% endblock %}

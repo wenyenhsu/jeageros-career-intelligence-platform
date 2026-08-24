@@ -34,6 +34,10 @@ class Application(TimeStampedModel):
         OFFER = "OFFER", "Offer"
         REJECTED = "REJECTED", "Rejected"
 
+    class MaterialsPack(models.TextChoices):
+        AI = "AI", "AI"
+        INFRA = "INFRA", "Infra"
+
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     job_post = models.ForeignKey(
         JobPost, on_delete=models.CASCADE, related_name="applications"
@@ -54,6 +58,17 @@ class Application(TimeStampedModel):
         max_length=500,
         blank=True,
         help_text="Google Drive folder that contains this job's cover letter and resume.",
+    )
+    ats_scan = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Latest Simplify-style ATS keyword scan for this application.",
+    )
+    materials_pack = models.CharField(
+        max_length=16,
+        blank=True,
+        choices=MaterialsPack.choices,
+        help_text="Golden resume pack copied into the local materials folder.",
     )
     last_updated_at = models.DateTimeField(auto_now=True)
 
@@ -163,6 +178,39 @@ class Application(TimeStampedModel):
     @property
     def materials_url_display(self):
         return (self.materials_url or "").strip()
+
+    @property
+    def materials_local_path(self):
+        from .services.materials_folder_service import MaterialsFolderService
+
+        path = MaterialsFolderService.local_path_for(self)
+        return str(path) if path is not None else ""
+
+    @property
+    def ats_scan_display(self):
+        return self.ats_scan if isinstance(self.ats_scan, dict) else {}
+
+    @property
+    def ats_score(self):
+        score = self.ats_scan_display.get("score")
+        return score if isinstance(score, (int, float)) else None
+
+    @property
+    def ats_meets_target(self):
+        score = self.ats_score
+        target = self.ats_scan_display.get("target") or 70
+        return score is not None and score >= target
+
+    @property
+    def ats_tailored_score(self):
+        score = self.ats_scan_display.get("tailored_score")
+        return score if isinstance(score, (int, float)) else None
+
+    @property
+    def ats_tailored_meets_target(self):
+        score = self.ats_tailored_score
+        target = self.ats_scan_display.get("target") or 70
+        return score is not None and score >= target
 
 
 class StatusHistory(TimeStampedModel):

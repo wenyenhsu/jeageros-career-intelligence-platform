@@ -70,6 +70,7 @@ class JobSourceForm(forms.ModelForm):
             "include_keywords": [],
             "exclude_keywords": [],
             "target_companies": [],
+            "location_aliases": [],
         },
         JobSource.ResourceChoices.GREENHOUSE: {
             "location": ["United States"],
@@ -81,6 +82,7 @@ class JobSourceForm(forms.ModelForm):
             "exclude_keywords": ["intern", "internship", "co-op"],
             "target_companies": [],
             "board_tokens": [],
+            "location_aliases": [],
         },
         # JobSource.ResourceChoices.HANDSHAKE: {
         #     "location": [],
@@ -127,6 +129,7 @@ class JobSourceForm(forms.ModelForm):
         "exclude_keywords",
         "target_companies",
         "board_tokens",
+        "location_aliases",
         "start_month",
         "start_month_to",
     }
@@ -227,6 +230,21 @@ class JobSourceForm(forms.ModelForm):
                 "class": "form-control",
                 "placeholder": "United States, CA, TX",
             }
+        ),
+    )
+    location_aliases = forms.CharField(
+        required=False,
+        label="Nearby cities",
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control",
+                "rows": 2,
+                "placeholder": "Burbank, Santa Monica, Anaheim, Irvine",
+            }
+        ),
+        help_text=(
+            "City names kept after crawl. These are not extra LinkedIn search "
+            "locations, so nearby jobs from a metro search are not dropped."
         ),
     )
     job_types = forms.CharField(
@@ -433,6 +451,7 @@ class JobSourceForm(forms.ModelForm):
         }
         for key in (
             "location",
+            "location_aliases",
             "job_types",
             "workplace_types",
             "search_keywords",

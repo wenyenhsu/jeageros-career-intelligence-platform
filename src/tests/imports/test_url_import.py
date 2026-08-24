@@ -210,7 +210,7 @@ def test_url_refresh_skips_job_without_source_url(company, monkeypatch):
 
 
 @pytest.mark.django_db
-def test_url_refresh_unsupported_url_keeps_job_and_logs_error(company, monkeypatch):
+def test_url_refresh_unsupported_url_keeps_job_and_skips(company, monkeypatch):
     job = JobPost.objects.create(
         company=company,
         title="Intern",
@@ -226,13 +226,25 @@ def test_url_refresh_unsupported_url_keeps_job_and_logs_error(company, monkeypat
 
     job.refresh_from_db()
     assert JobPost.objects.filter(pk=job.pk).exists()
-    assert result.error == JobUrlRefreshService.UNSUPPORTED_MESSAGE
+    assert result.skipped is True
+    assert result.error == ""
     assert job.location == ""
     assert PipelineLog.objects.filter(
         step_name="job_url_refresh",
-        status=PipelineLog.StatusChoices.FAILED,
+        status=PipelineLog.StatusChoices.SKIPPED,
         job=job,
     ).exists()
+
+
+@pytest.mark.django_db
+def test_url_refresh_does_not_run_for_google_drive_folder(company):
+    job = JobPost.objects.create(
+        company=company,
+        title="Intern",
+        source_url="https://drive.google.com/drive/folders/abc123",
+    )
+
+    assert JobUrlRefreshService.needs_refresh(job) is False
 
 
 @pytest.mark.django_db

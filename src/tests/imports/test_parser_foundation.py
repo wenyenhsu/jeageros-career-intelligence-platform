@@ -453,6 +453,28 @@ def test_linkedin_parser_expands_filter_config_into_search_urls():
     ]
 
 
+def test_linkedin_parser_does_not_search_location_aliases():
+    source = JobSource(
+        name="LinkedIn Nearby Cities",
+        resource=JobSource.ResourceChoices.LINKEDIN,
+        base_url="https://www.linkedin.com/jobs/search/",
+        crawl_config={"max_pages": 1},
+        filter_config={
+            "search_keywords": ["software engineer intern"],
+            "location": ["Los Angeles, CA", "Irvine, CA"],
+            "location_aliases": ["Burbank", "Santa Monica", "Anaheim"],
+        },
+    )
+    parser = LinkedInParser(source=source)
+
+    urls = parser._search_urls(source.base_url)
+
+    assert len(urls) == 2
+    assert all("location=Los+Angeles%2C+CA" in url or "location=Irvine%2C+CA" in url for url in urls)
+    assert all("Burbank" not in url for url in urls)
+    assert all("Anaheim" not in url for url in urls)
+
+
 def test_linkedin_parser_limits_expanded_search_combinations():
     source = JobSource(
         name="LinkedIn Limited Search",

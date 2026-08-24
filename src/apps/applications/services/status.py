@@ -1,4 +1,4 @@
-from .models import StatusHistory
+from ..models import StatusHistory
 
 
 def record_status_transition(application, old_status, new_status, user=None):
