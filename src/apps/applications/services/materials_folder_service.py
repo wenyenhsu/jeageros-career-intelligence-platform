@@ -1,4 +1,5 @@
 import logging
+import shutil
 from pathlib import Path
 
 from django.conf import settings
@@ -48,6 +49,42 @@ class MaterialsFolderService:
         application.save(update_fields=update_fields)
         return application
 
+    def delete_folders(self, application):
+        return {
+            "local": self._delete_local_folder(application),
+            "drive": self._delete_drive_folder(application),
+        }
+
+    def _delete_local_folder(self, application):
+        path = self.local_path_for(application)
+        if path is None or not self._is_safe_materials_path(path):
+            return False
+        if self._other_applications_use_path(application, path):
+            return False
+        try:
+            if path.is_dir():
+                shutil.rmtree(path)
+            self._remove_empty_parent(path)
+        except OSError:
+            logger.exception("Failed to delete local materials folder %s", path)
+            return False
+        return True
+
+    def _delete_drive_folder(self, application):
+        url = (getattr(application, "materials_url", "") or "").strip()
+        if not url:
+            return False
+        if self._other_applications_use_drive_url(application, url):
+            return False
+        try:
+            return bool(self.drive_client.delete_folder(url))
+        except Exception:
+            logger.exception(
+                "Failed to delete Google Drive folder for application %s",
+                getattr(application, "pk", None),
+            )
+            return False
+
     @classmethod
     def local_path_for(cls, application):
         job_post = cls._job_post(application)
@@ -63,6 +100,66 @@ class MaterialsFolderService:
         company = cls._company_name(job_post) or "Company"
         title = (getattr(job_post, "title", None) or "Job").strip() or "Job"
         return f"{company} - {title}"
+
+    @classmethod
+    def _is_safe_materials_path(cls, path):
+        root = Path(getattr(settings, "APPLICATION_MATERIALS_ROOT", "") or "")
+        if not str(root):
+            return False
+        try:
+            resolved = path.resolve()
+            root_resolved = root.resolve()
+        except OSError:
+            return False
+        if resolved == root_resolved:
+            return False
+        try:
+            resolved.relative_to(root_resolved)
+        except ValueError:
+            return False
+        return "golden" not in resolved.name.casefold()
+
+    @classmethod
+    def _other_applications_use_path(cls, application, path):
+        from ..models import Application
+
+        others = Application.objects.select_related("job_post__company").exclude(
+            pk=getattr(application, "pk", None)
+        )
+        for other in others:
+            other_path = cls.local_path_for(other)
+            if other_path is not None and other_path == path:
+                return True
+        return False
+
+    @staticmethod
+    def _other_applications_use_drive_url(application, url):
+        from ..models import Application
+
+        normalized = str(url or "").strip()
+        if not normalized:
+            return False
+        return (
+            Application.objects.exclude(pk=getattr(application, "pk", None))
+            .filter(materials_url=normalized)
+            .exists()
+        )
+
+    @classmethod
+    def _remove_empty_parent(cls, path):
+        root = Path(getattr(settings, "APPLICATION_MATERIALS_ROOT", "") or "")
+        parent = path.parent
+        try:
+            if (
+                parent.exists()
+                and parent.resolve() != root.resolve()
+                and cls._is_safe_materials_path(parent)
+                and parent.is_dir()
+                and not any(parent.iterdir())
+            ):
+                parent.rmdir()
+        except OSError:
+            logger.exception("Failed to remove empty materials parent %s", parent)
 
     @staticmethod
     def _job_post(application):

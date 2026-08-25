@@ -5,7 +5,7 @@ from django.db import transaction
 
 from apps.companies.models import Company
 from apps.imports.services.company_upsert_service import CompanyUpsertService
-from apps.jobs.forms import CompanyNameInput
+from apps.jobs.forms import CompanyNameInput, attach_job_url_preview_attrs
 from apps.jobs.models import JobPost
 
 from .models import Application, GOOGLE_DRIVE_HOSTS, normalize_materials_url
@@ -140,15 +140,21 @@ class ApplicationForm(forms.ModelForm):
             assume_scheme="https",
             label="Job URL",
             help_text=(
-                "Public job posting URL (LinkedIn job page, Greenhouse, or career site). "
+                "Paste a public job posting URL to fill company, title, location, "
+                "and job type. LinkedIn, Greenhouse, or a career site page. "
                 "Do not paste a Google Drive folder here."
             ),
             widget=forms.URLInput(
                 attrs={
                     "class": "form-control",
-                    "placeholder": "https://",
+                    "placeholder": "https://www.linkedin.com/jobs/view/...",
                 }
             ),
+        )
+        attach_job_url_preview_attrs(
+            self.fields["source_url"],
+            title_selector="#id_job_title",
+            job_type_selector="#id_job_type",
         )
         self.fields["location"] = forms.CharField(
             required=False,

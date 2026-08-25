@@ -1,4 +1,5 @@
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 class GoogleDriveFolderClient:
@@ -37,6 +38,33 @@ class GoogleDriveFolderClient:
         return created.get("webViewLink") or (
             f"https://drive.google.com/drive/folders/{folder_id}" if folder_id else ""
         )
+
+    def delete_folder(self, url):
+        folder_id = self.folder_id_from_url(url)
+        if not folder_id or not self.is_configured():
+            return False
+        self._build_service().files().update(
+            fileId=folder_id,
+            body={"trashed": True},
+            supportsAllDrives=True,
+        ).execute()
+        return True
+
+    @staticmethod
+    def folder_id_from_url(url):
+        parsed = urlparse(str(url or "").strip())
+        host = parsed.netloc.casefold()
+        if host.startswith("www."):
+            host = host[4:]
+        if host != "drive.google.com":
+            return ""
+        parts = [part for part in parsed.path.split("/") if part]
+        if "folders" not in parts:
+            return ""
+        index = parts.index("folders")
+        if index + 1 >= len(parts):
+            return ""
+        return parts[index + 1]
 
     def _build_service(self):
         from google.oauth2 import service_account

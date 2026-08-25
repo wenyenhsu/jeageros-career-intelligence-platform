@@ -18,6 +18,7 @@
   </div>
 </div>
 {{ skill_keyword_lookup|json_script:"skill-keyword-existing-data" }}
+{% include "shared/job_url_preview_script.html" %}
 <script>
   (() => {
     const input = document.getElementById("id_skill_keywords");

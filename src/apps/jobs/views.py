@@ -1,9 +1,10 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy
 from django.utils import timezone
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 from django.views.generic import (
     CreateView,
     DetailView,
@@ -185,6 +186,14 @@ def _skill_keyword_lookup():
             }
         )
     return lookup
+
+
+@require_GET
+def preview_job_url(request):
+    from apps.imports.services import JobUrlPreviewService
+
+    result = JobUrlPreviewService.preview(request.GET.get("url"))
+    return JsonResponse(result.as_dict())
 
 
 def _add_existing_keyword_warning(request, form):

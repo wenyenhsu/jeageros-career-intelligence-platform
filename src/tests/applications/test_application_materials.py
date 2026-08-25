@@ -1,5 +1,6 @@
 import pytest
 from django.urls import reverse
+from pathlib import Path
 
 from apps.applications.forms import ApplicationForm
 from apps.applications.models import Application
@@ -303,4 +304,99 @@ def test_ensure_application_materials_command_does_not_replace_existing_url(
     application.refresh_from_db()
     assert application.materials_url == DRIVE_FOLDER_URL
     assert (application_materials_root / "openai" / "backend-engineer").is_dir()
+
+
+@pytest.mark.django_db
+def test_delete_application_removes_local_materials_folder(
+    application, application_materials_root
+):
+    folder = Path(application.materials_local_path)
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "Cover_Letter_AI.pdf").write_text("cover", encoding="utf-8")
+    company_dir = folder.parent
+
+    application.delete()
+
+    assert not folder.exists()
+    assert not company_dir.exists()
+    assert application_materials_root.exists()
+
+
+@pytest.mark.django_db
+def test_delete_application_keeps_folder_when_another_application_shares_it(
+    application, application_materials_root, django_user_model
+):
+    folder = Path(application.materials_local_path)
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "Cover_Letter_AI.pdf").write_text("cover", encoding="utf-8")
+    other = django_user_model.objects.create_user("other", password="pass12345")
+    Application.objects.create(user=other, job_post=application.job_post)
+
+    application.delete()
+
+    assert folder.is_dir()
+    assert (folder / "Cover_Letter_AI.pdf").read_text(encoding="utf-8") == "cover"
+
+
+@pytest.mark.django_db
+def test_application_delete_view_removes_local_folder(
+    client, application, application_materials_root
+):
+    folder = Path(application.materials_local_path)
+    folder.mkdir(parents=True, exist_ok=True)
+
+    response = client.post(reverse("application-delete", args=[application.pk]))
+
+    assert response.status_code == 302
+    assert not Application.objects.filter(pk=application.pk).exists()
+    assert not folder.exists()
+
+
+@pytest.mark.django_db
+def test_job_delete_removes_application_materials_folder(
+    client, application, application_materials_root
+):
+    folder = Path(application.materials_local_path)
+    folder.mkdir(parents=True, exist_ok=True)
+    job_id = application.job_post_id
+
+    response = client.post(reverse("job-delete", args=[job_id]))
+
+    assert response.status_code == 302
+    assert not folder.exists()
+
+
+@pytest.mark.django_db
+def test_delete_application_trashes_drive_folder(application, monkeypatch):
+    from apps.applications.services.google_drive_folder_client import (
+        GoogleDriveFolderClient,
+    )
+
+    application.materials_url = DRIVE_FOLDER_URL
+    application.save(update_fields=["materials_url"])
+    deleted = []
+    monkeypatch.setattr(GoogleDriveFolderClient, "is_configured", lambda self: True)
+    monkeypatch.setattr(
+        GoogleDriveFolderClient,
+        "delete_folder",
+        lambda self, url: deleted.append(url) or True,
+    )
+
+    application.delete()
+
+    assert deleted == [DRIVE_FOLDER_URL]
+
+
+def test_drive_folder_id_is_parsed_from_folder_url():
+    from apps.applications.services.google_drive_folder_client import (
+        GoogleDriveFolderClient,
+    )
+
+    assert GoogleDriveFolderClient.folder_id_from_url(DRIVE_FOLDER_URL) == "abc123xyz"
+    assert (
+        GoogleDriveFolderClient.folder_id_from_url(
+            "https://docs.google.com/document/d/abc123/edit"
+        )
+        == ""
+    )
 

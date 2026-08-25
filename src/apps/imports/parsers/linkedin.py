@@ -522,16 +522,53 @@ class LinkedInParser(BaseParser):
 
     @classmethod
     def _extract_class_text(cls, content, class_name, preserve_breaks=False):
-        if not content:
+        inner_html = cls._extract_inner_html_by_class(content, class_name)
+        if not inner_html:
             return ""
-        pattern = re.compile(
-            rf'<[^>]+class=["\'][^"\']*{re.escape(class_name)}[^"\']*["\'][^>]*>(.*?)</[^>]+>',
-            re.IGNORECASE | re.DOTALL,
+        return cls._html_to_text(inner_html, preserve_breaks=preserve_breaks)
+
+    @classmethod
+    def _extract_inner_html_by_class(cls, content, class_name):
+        if not content or not class_name:
+            return ""
+        open_match = re.search(
+            rf'<([a-zA-Z][\w:-]*)\b([^>]*\bclass=["\'][^"\']*{re.escape(class_name)}[^"\']*["\'][^>]*)>',
+            content,
+            flags=re.IGNORECASE,
         )
-        match = pattern.search(content)
-        if not match:
+        if not open_match:
             return ""
-        return cls._html_to_text(match.group(1), preserve_breaks=preserve_breaks)
+        attrs = open_match.group(2) or ""
+        if attrs.rstrip().endswith("/"):
+            return ""
+        return cls._slice_until_matching_close(
+            content,
+            open_match.end(),
+            open_match.group(1),
+        )
+
+    @classmethod
+    def _slice_until_matching_close(cls, content, start, tag_name):
+        open_re = re.compile(rf"<{re.escape(tag_name)}\b([^>]*)>", re.IGNORECASE)
+        close_re = re.compile(rf"</{re.escape(tag_name)}\s*>", re.IGNORECASE)
+        depth = 1
+        pos = start
+        while pos < len(content) and depth > 0:
+            next_open = open_re.search(content, pos)
+            next_close = close_re.search(content, pos)
+            if next_close is None:
+                return content[start:].strip()
+            if next_open is not None and next_open.start() < next_close.start():
+                attrs = next_open.group(1) or ""
+                if not attrs.rstrip().endswith("/"):
+                    depth += 1
+                pos = next_open.end()
+                continue
+            depth -= 1
+            if depth == 0:
+                return content[start:next_close.start()].strip()
+            pos = next_close.end()
+        return content[start:].strip()
 
     @classmethod
     def _extract_tag_text(cls, content, tag_name):

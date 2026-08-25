@@ -1,5 +1,6 @@
 from django import forms
 from django.db import transaction
+from django.urls import reverse
 from django.utils.html import format_html, format_html_join
 
 from apps.companies.models import Company
@@ -12,6 +13,29 @@ from apps.skills.models import (
 )
 
 from .models import JobPost
+
+
+def attach_job_url_preview_attrs(
+    field,
+    *,
+    title_selector,
+    job_type_selector,
+    description_selector="",
+):
+    if field is None:
+        return
+    attrs = {
+        "data-job-url-preview": "true",
+        "data-preview-url": reverse("job-url-preview"),
+        "data-preview-company": "#id_company",
+        "data-preview-title": title_selector,
+        "data-preview-location": "#id_location",
+        "data-preview-job-type": job_type_selector,
+        "autocomplete": "off",
+    }
+    if description_selector:
+        attrs["data-preview-description"] = description_selector
+    field.widget.attrs.update(attrs)
 
 
 class CompanyNameInput(forms.TextInput):
@@ -113,9 +137,9 @@ class JobPostForm(forms.ModelForm):
         }
 
     field_order = [
+        "source_url",
         "company",
         "title",
-        "source_url",
         "external_id",
         "source_type",
         "status",
@@ -159,6 +183,12 @@ class JobPostForm(forms.ModelForm):
             self.fields["skill_keywords"].initial = ", ".join(
                 link.skill_set.name for link in manual_skills
             )
+        attach_job_url_preview_attrs(
+            self.fields["source_url"],
+            title_selector="#id_title",
+            job_type_selector="#id_employment_type",
+            description_selector="#id_description",
+        )
 
     def clean_company(self):
         name = " ".join(str(self.cleaned_data.get("company") or "").split())

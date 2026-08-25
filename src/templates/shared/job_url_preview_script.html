@@ -1,0 +1,132 @@
+<script>
+(() => {
+  const urlInput = document.querySelector("[data-job-url-preview]");
+  if (!urlInput) return;
+
+  const previewEndpoint = urlInput.getAttribute("data-preview-url");
+  if (!previewEndpoint) return;
+
+  const filledByPreview = new Set();
+  let lastPreviewedUrl = "";
+  let debounceTimer = 0;
+  let activeController = null;
+
+  const status = ensureStatus();
+
+  urlInput.addEventListener("input", () => schedulePreview(700));
+  urlInput.addEventListener("change", () => schedulePreview(0));
+  urlInput.addEventListener("blur", () => schedulePreview(0));
+  urlInput.addEventListener("paste", () => schedulePreview(50));
+
+  function schedulePreview(delayMs) {
+    window.clearTimeout(debounceTimer);
+    debounceTimer = window.setTimeout(runPreview, delayMs);
+  }
+
+  async function runPreview() {
+    const url = normalizeUrl(urlInput.value);
+    if (!url || url === lastPreviewedUrl) return;
+    if (!looksLikeJobUrl(url)) {
+      setStatus("");
+      return;
+    }
+
+    lastPreviewedUrl = url;
+    if (activeController) activeController.abort();
+    activeController = new AbortController();
+    setStatus("Fetching job details…", "muted");
+
+    try {
+      const response = await fetch(
+        `${previewEndpoint}?url=${encodeURIComponent(url)}`,
+        {
+          headers: { Accept: "application/json" },
+          signal: activeController.signal,
+        }
+      );
+      const payload = await response.json();
+      if (url !== normalizeUrl(urlInput.value)) return;
+      if (!payload || payload.ok === false) {
+        lastPreviewedUrl = "";
+        setStatus(payload && payload.error ? payload.error : "Could not read this job URL.", "danger");
+        return;
+      }
+      fillFields(payload);
+      setStatus("Filled company, title, location, and job type from the URL.", "success");
+    } catch (error) {
+      if (error && error.name === "AbortError") return;
+      lastPreviewedUrl = "";
+      setStatus("Could not read this job URL.", "danger");
+    }
+  }
+
+  function fillFields(payload) {
+    setField(urlInput.getAttribute("data-preview-company"), payload.company);
+    setField(urlInput.getAttribute("data-preview-title"), payload.title);
+    setField(urlInput.getAttribute("data-preview-location"), payload.location);
+    setField(urlInput.getAttribute("data-preview-job-type"), payload.job_type);
+    setField(urlInput.getAttribute("data-preview-description"), payload.description);
+  }
+
+  function setField(selector, value) {
+    if (!selector || value == null || String(value).trim() === "") return;
+    const el = document.querySelector(selector);
+    if (!el) return;
+    const current = String(el.value || "").trim();
+    if (current && !filledByPreview.has(el)) return;
+    if (el.tagName === "SELECT") {
+      const wanted = String(value).trim();
+      const match = Array.from(el.options).find(
+        (option) => option.value === wanted || option.textContent.trim() === wanted
+      );
+      if (!match) return;
+      el.value = match.value;
+    } else {
+      el.value = value;
+    }
+    filledByPreview.add(el);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function ensureStatus() {
+    const existing = document.querySelector("[data-job-url-preview-status]");
+    if (existing) return existing;
+    const node = document.createElement("div");
+    node.setAttribute("data-job-url-preview-status", "");
+    node.className = "form-text";
+    urlInput.insertAdjacentElement("afterend", node);
+    return node;
+  }
+
+  function setStatus(message, tone) {
+    status.textContent = message || "";
+    status.className = "form-text";
+    if (tone === "danger") status.classList.add("text-danger");
+    if (tone === "success") status.classList.add("text-success");
+    if (tone === "muted") status.classList.add("text-muted");
+  }
+
+  function normalizeUrl(raw) {
+    const value = String(raw || "").trim();
+    if (!value) return "";
+    if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value)) {
+      return `https://${value}`;
+    }
+    return value;
+  }
+
+  function looksLikeJobUrl(url) {
+    try {
+      const parsed = new URL(url);
+      return (
+        (parsed.protocol === "http:" || parsed.protocol === "https:")
+        && parsed.hostname.includes(".")
+        && parsed.pathname.length > 1
+      );
+    } catch (error) {
+      return false;
+    }
+  }
+})();
+</script>

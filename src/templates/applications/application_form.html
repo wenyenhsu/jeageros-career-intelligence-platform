@@ -41,8 +41,18 @@
                             <div class="border rounded-3 p-3 p-md-4 mb-4 bg-light">
                                 <h2 class="h6 fw-semibold mb-1">New job</h2>
                                 <p class="text-muted small mb-3">
-                                    Fill these in if the job is not already in the list.
+                                    Paste a job URL to fill the fields below, or enter them by hand.
                                 </p>
+
+                                <div class="mb-3">
+                                    <label class="form-label">{{ form.source_url.label }}</label>
+                                    {{ form.source_url }}
+                                    {% if form.source_url.help_text %}
+                                        <div class="form-text">{{ form.source_url.help_text }}</div>
+                                    {% endif %}
+                                    <div class="form-text" data-job-url-preview-status></div>
+                                    <div class="text-danger small">{{ form.source_url.errors }}</div>
+                                </div>
 
                                 <div class="mb-3">
                                     <label class="form-label">{{ form.company.label }}</label>
@@ -57,12 +67,6 @@
                                     <label class="form-label">{{ form.job_title.label }}</label>
                                     {{ form.job_title }}
                                     <div class="text-danger small">{{ form.job_title.errors }}</div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label class="form-label">{{ form.source_url.label }}</label>
-                                    {{ form.source_url }}
-                                    <div class="text-danger small">{{ form.source_url.errors }}</div>
                                 </div>
 
                                 <div class="mb-3">
@@ -194,4 +198,5 @@
   });
 })();
 </script>
+{% include "shared/job_url_preview_script.html" %}
 {% endblock %}

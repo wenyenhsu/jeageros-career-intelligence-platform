@@ -201,6 +201,48 @@ def test_url_refresh_does_not_overwrite_typed_location(company, monkeypatch):
 
 @pytest.mark.django_db
 @override_settings(CRAWL_SKILL_PIPELINE_ENABLED=True)
+def test_url_refresh_replaces_truncated_linkedin_description(company, monkeypatch):
+    stub = "Los Angeles, CA | 3 Month Internship | Path to Full Time"
+    full_jd = (
+        f"{stub}\n\n"
+        "Warp is building the agentic development environment. "
+        "Interns work with Python, TypeScript, and customer deployments."
+    )
+    job = JobPost.objects.create(
+        company=company,
+        title="Forward Deployed Engineering Intern",
+        source_url="https://www.linkedin.com/jobs/view/4457171685/",
+        location="Los Angeles, CA",
+        description=stub,
+    )
+    monkeypatch.setattr(
+        ParserRegistry,
+        "get_parser_for_url",
+        lambda url: _FakeParser(_fetched_raw_job(description=full_jd)),
+    )
+    pipeline_payloads = []
+
+    class FakePipeline:
+        def process_job_post(self, job_post, canonical_job_payload, auto_create=None):
+            pipeline_payloads.append(canonical_job_payload["description"])
+            return SkillPipelineResult(job_id=job_post.id, success=True)
+
+    monkeypatch.setattr(
+        "apps.imports.services.job_url_refresh_service.SkillPipelineService",
+        FakePipeline,
+    )
+
+    JobUrlRefreshService.refresh(job)
+
+    job.refresh_from_db()
+    assert "agentic development" in job.description
+    assert "Python" in job.description
+    assert pipeline_payloads
+    assert "agentic development" in pipeline_payloads[0]
+
+
+@pytest.mark.django_db
+@override_settings(CRAWL_SKILL_PIPELINE_ENABLED=True)
 def test_url_refresh_skips_ollama_when_manual_skills_exist(company, monkeypatch):
     job = JobPost.objects.create(
         company=company,
@@ -361,3 +403,107 @@ def test_job_create_skips_enqueue_when_location_and_skills_already_present(
 
     assert response.status_code == 302
     assert queued == []
+
+
+@pytest.mark.django_db
+def test_job_url_preview_returns_form_fields(client, monkeypatch):
+    monkeypatch.setattr(
+        ParserRegistry,
+        "get_parser_for_url",
+        lambda url: _FakeParser(_fetched_raw_job()),
+    )
+
+    response = client.get(
+        reverse("job-url-preview"),
+        {"url": "https://www.linkedin.com/jobs/view/987654/"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["company"] == "Fetched Co"
+    assert payload["title"] == "Fetched Title"
+    assert payload["location"] == "San Francisco, CA"
+    assert payload["job_type"] == "Internship"
+    assert "Python" in payload["description"]
+    assert payload["error"] == ""
+
+
+@pytest.mark.django_db
+def test_job_url_preview_uses_internship_when_title_says_intern(client, monkeypatch):
+    monkeypatch.setattr(
+        ParserRegistry,
+        "get_parser_for_url",
+        lambda url: _FakeParser(
+            _fetched_raw_job(
+                title="Site Digital IT Manager Internship",
+                employment_type="Full-time",
+            )
+        ),
+    )
+
+    response = client.get(
+        reverse("job-url-preview"),
+        {"url": "https://www.linkedin.com/jobs/view/4456520247/"},
+    )
+
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["title"] == "Site Digital IT Manager Internship"
+    assert payload["job_type"] == "Internship"
+
+
+@pytest.mark.django_db
+def test_job_url_preview_uses_existing_job_when_fetch_fails(
+    client, company, monkeypatch
+):
+    JobPost.objects.create(
+        company=company,
+        title="Stored Intern",
+        source_url="https://www.linkedin.com/jobs/view/4456520247/",
+        location="Los Angeles, CA",
+        employment_type="Internship",
+        description="Stored JD.",
+    )
+    monkeypatch.setattr(
+        ParserRegistry,
+        "get_parser_for_url",
+        lambda url: _EmptyParser(),
+    )
+
+    response = client.get(
+        reverse("job-url-preview"),
+        {"url": "https://www.linkedin.com/jobs/view/4456520247/"},
+    )
+
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["company"] == company.name
+    assert payload["title"] == "Stored Intern"
+    assert payload["location"] == "Los Angeles, CA"
+    assert payload["job_type"] == "Internship"
+    assert payload["existing_job_id"]
+
+
+@pytest.mark.django_db
+def test_job_url_preview_rejects_google_drive_folder(client):
+    response = client.get(
+        reverse("job-url-preview"),
+        {"url": "https://drive.google.com/drive/folders/abc123"},
+    )
+
+    payload = response.json()
+    assert payload["ok"] is False
+    assert "Google Drive" in payload["error"]
+
+
+@pytest.mark.django_db
+def test_job_create_page_wires_job_url_preview(client):
+    response = client.get(reverse("job-create"))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert 'data-job-url-preview="true"' in content
+    assert reverse("job-url-preview") in content
+    assert 'data-preview-title="#id_title"' in content
+    assert 'data-preview-job-type="#id_employment_type"' in content

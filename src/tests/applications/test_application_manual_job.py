@@ -26,6 +26,10 @@ def test_create_page_shows_manual_job_fields(client):
     assert "New job" in content
     assert 'name="company"' in content
     assert 'name="job_title"' in content
+    assert 'name="source_url"' in content
+    assert 'data-job-url-preview="true"' in content
+    assert reverse("job-url-preview") in content
+    assert "Paste a job URL to fill the fields below" in content
     assert "Type a company name" in content
     assert 'name="priority"' in content
     assert 'class="form-select"' in content

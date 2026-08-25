@@ -40,6 +40,7 @@ class JobUrlRefreshResult:
 
 class JobUrlRefreshService:
     UNSUPPORTED_MESSAGE = "This URL type does not support single-job fetch yet."
+    STUB_DESCRIPTION_MAX_CHARS = 200
     PRESERVED_FIELDS = (
         "title",
         "location",
@@ -190,6 +191,10 @@ class JobUrlRefreshService:
             existing = getattr(job, field_name, None)
             if cls._is_blank(existing):
                 continue
+            if field_name == "description" and cls._should_replace_stub_description(
+                existing, data.get("description")
+            ):
+                continue
             if field_name in {"starts_on", "ends_on", "duration_weeks"}:
                 data[field_name] = existing.isoformat() if hasattr(existing, "isoformat") else existing
             else:
@@ -248,6 +253,16 @@ class JobUrlRefreshService:
         if host.startswith("www."):
             host = host[4:]
         return host in {"drive.google.com", "docs.google.com"}
+
+    @classmethod
+    def _should_replace_stub_description(cls, existing, fetched):
+        existing_text = str(existing or "").strip()
+        fetched_text = str(fetched or "").strip()
+        if not existing_text or not fetched_text:
+            return False
+        if len(existing_text) >= cls.STUB_DESCRIPTION_MAX_CHARS:
+            return False
+        return len(fetched_text) > len(existing_text) * 2
 
     @staticmethod
     def _is_blank(value):

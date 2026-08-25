@@ -396,6 +396,29 @@ def test_linkedin_parser_fetches_detail_for_existing_job_missing_description(
     assert jobs[0]["employmentType"] == "Full-time"
 
 
+def test_linkedin_parser_reads_nested_job_description_markup():
+    html = """
+    <html>
+      <h1 class="top-card-layout__title">Forward Deployed Engineering Intern</h1>
+      <a class="topcard__org-name-link">Warp</a>
+      <span class="topcard__flavor--bullet">Los Angeles, CA</span>
+      <div class="show-more-less-html__markup show-more-less-html__markup--clamp-after-5 relative overflow-hidden">
+        <p><strong>Los Angeles, CA | 3 Month Internship | Path to Full Time</strong></p>
+        <p>Warp is building the agentic development environment.</p>
+        <p>Interns work with Python, TypeScript, and customer deployments.</p>
+      </div>
+    </html>
+    """
+
+    parsed = LinkedInParser()._parse_job_detail(html)
+
+    assert parsed["jobTitle"] == "Forward Deployed Engineering Intern"
+    assert parsed["companyName"] == "Warp"
+    assert "Los Angeles, CA | 3 Month Internship" in parsed["description"]
+    assert "Warp is building the agentic development environment." in parsed["description"]
+    assert "Python" in parsed["description"]
+
+
 @pytest.mark.django_db
 def test_linkedin_parser_fetches_detail_for_new_job_when_new_or_missing(monkeypatch):
     source = JobSource(
