@@ -84,6 +84,7 @@ Roadmap and progress: [PROGRESS.md](PROGRESS.md).
 10. [Celery Background Tasks](#celery-background-tasks)
 11. [Post-Install Verification](#post-install-verification)
 12. [Testing](#testing)
+13. [Production Deployment](#production-deployment)
 
 ---
 
@@ -251,6 +252,20 @@ Additional variables from `docker-compose.yml` (defaults apply when not set in `
 | `SKILL_EMBEDDING_SYNC_ENABLED` | `true` | Enable automatic embedding sync (Beat + post-crawl) |
 | `SKILL_EMBEDDING_SYNC_AFTER_CRAWL` | `true` | Queue embedding sync after a successful crawl |
 | `USE_SQLITE` | `0` | Set `1` for SQLite (not recommended; no pgvector) |
+
+---
+
+## Production Deployment
+
+Production has a separate Compose stack with TLS termination, Gunicorn, strict
+Django security settings, non-root/read-only application containers, authenticated
+Redis, and no public PostgreSQL or Redis ports. See
+[Production deployment](docs/production-deployment.md) for secret generation,
+certificate setup, validation, startup, and failure recovery.
+
+Do not deploy the development `docker-compose.yml`; it intentionally uses
+`runserver`, source bind mounts, development dependencies, and public local
+service ports.
 
 ---
 

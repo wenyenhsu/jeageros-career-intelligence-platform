@@ -1,40 +1,48 @@
-# for dev
+FROM python:3.12-slim AS builder
 
-#FROM python:3.12-slim
-#
-#ENV PYTHONDONTWRITEBYTECODE=1
-#ENV PYTHONUNBUFFERED=1
-#
-#WORKDIR /app
-#
-#RUN apt-get update && apt-get install -y --no-install-recommends     build-essential libpq-dev && rm -rf /var/lib/apt/lists/*
-#
-#COPY requirements/ /app/requirements/
-#RUN pip install --no-cache-dir -r /app/requirements/dev.txt
-#
-#COPY . /app
-#WORKDIR /app/src
-#
-#CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_ROOT_USER_ACTION=ignore
 
-#for production
-FROM python:3.12-slim
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-WORKDIR /app
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential libpq-dev \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements/ /app/requirements/
 ARG REQUIREMENTS_FILE=base.txt
-RUN pip install --no-cache-dir -r /app/requirements/${REQUIREMENTS_FILE} && \
-    pip install --no-cache-dir gunicorn==23.0.0
+RUN pip install -r /app/requirements/${REQUIREMENTS_FILE}
 
-COPY . /app
+
+FROM python:3.12-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH"
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /opt/venv /opt/venv
+
+RUN groupadd --gid 10001 django \
+    && useradd --uid 10001 --gid django --create-home --shell /usr/sbin/nologin django \
+    && mkdir -p /app/staticfiles /app/media \
+    && chown -R django:django /app
+
+COPY --chown=django:django . /app
+RUN chmod 755 /app/scripts/start-production.sh
+
 WORKDIR /app/src
+USER django
 
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "120"]
+EXPOSE 8000
+
+CMD ["/app/scripts/start-production.sh"]

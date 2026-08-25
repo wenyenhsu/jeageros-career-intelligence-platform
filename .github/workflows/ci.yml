@@ -11,4 +11,15 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements/dev.txt
-      - run: python src/manage.py test
+      - name: Run test suite
+        working-directory: src
+        run: pytest -q
+      - name: Validate production security settings
+        env:
+          SECRET_KEY: ci-only-production-check-key-with-more-than-50-unique-safe-characters-7294
+          ALLOWED_HOSTS: jobs.example.com
+          CSRF_TRUSTED_ORIGINS: https://jobs.example.com
+          DB_PASSWORD: ci-only-database-password
+          CELERY_BROKER_URL: redis://:ci-only-redis-password@redis:6379/0
+          CELERY_RESULT_BACKEND: redis://:ci-only-redis-password@redis:6379/0
+        run: python src/manage.py check --deploy --settings=config.settings.prod

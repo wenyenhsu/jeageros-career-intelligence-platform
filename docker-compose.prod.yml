@@ -1,0 +1,130 @@
+x-app: &app
+  image: jeageros-job-tracker:${APP_IMAGE_TAG:-latest}
+  build:
+    context: .
+    args:
+      REQUIREMENTS_FILE: base.txt
+  env_file:
+    - ${PRODUCTION_ENV_FILE:-.env.production}
+  environment:
+    DJANGO_SETTINGS_MODULE: config.settings.prod
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  restart: unless-stopped
+  init: true
+  security_opt:
+    - no-new-privileges:true
+  read_only: true
+  tmpfs:
+    - /tmp
+  volumes:
+    - application_media:/app/media
+
+services:
+  web:
+    <<: *app
+    command: /app/scripts/start-production.sh
+    expose:
+      - "8000"
+    volumes:
+      - staticfiles:/app/staticfiles
+      - application_media:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import socket; socket.create_connection(('127.0.0.1', 8000), 2).close()"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  celery-worker:
+    <<: *app
+    command: celery -A config worker --loglevel=info
+    depends_on:
+      web:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-beat:
+    <<: *app
+    command: celery -A config beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    depends_on:
+      web:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./deploy/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${TLS_CERTIFICATE_PATH:?Set TLS_CERTIFICATE_PATH}:/etc/nginx/tls/fullchain.pem:ro
+      - ${TLS_PRIVATE_KEY_PATH:?Set TLS_PRIVATE_KEY_PATH}:/etc/nginx/tls/privkey.pem:ro
+      - staticfiles:/staticfiles:ro
+    depends_on:
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+
+  db:
+    image: pgvector/pgvector:pg15
+    environment:
+      POSTGRES_DB: ${DB_NAME:?Set DB_NAME}
+      POSTGRES_USER: ${DB_USER:?Set DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
+    command:
+      - sh
+      - -c
+      - 'test -n "$$REDIS_PASSWORD" && exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"'
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep PONG'
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  application_media:
+  postgres_data:
+  redis_data:
+  staticfiles:

@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 .env
+.env.production
 .venv/
 staticfiles/
 media/
@@ -30,5 +31,4 @@ docker-compose.override.yml
 # Google Drive service account
 google-drive-service-account.json
 *service-account*.json
-
 

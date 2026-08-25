@@ -5,6 +5,9 @@ services:
       args:
         REQUIREMENTS_FILE: dev.txt
     command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    # Development bind mounts may use the host user's UID; production remains
+    # non-root in docker-compose.prod.yml.
+    user: root
 
     env_file:
       - .env
@@ -35,6 +38,7 @@ services:
       args:
         REQUIREMENTS_FILE: dev.txt
     command: celery -A config worker --loglevel=info
+    user: root
 
     env_file:
       - .env
@@ -62,6 +66,7 @@ services:
       args:
         REQUIREMENTS_FILE: dev.txt
     command: celery -A config beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    user: root
 
     env_file:
       - .env
