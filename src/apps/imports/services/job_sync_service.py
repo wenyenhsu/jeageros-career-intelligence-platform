@@ -1,7 +1,8 @@
-from django.db.models import Q
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.imports.models import PipelineLog
+from apps.jobs.identity import JobIdentityService
 from apps.jobs.models import JobPost
 
 from .company_upsert_service import CompanyUpsertService
@@ -23,16 +24,26 @@ class JobSyncService:
             data["company_name"],
             cls._company_website(data),
         )
+        identity = JobIdentityService.build(
+            source_url=data.get("source_url", ""),
+            external_id=data.get("external_id", ""),
+            source=data.get("source", ""),
+            company_name=company_result.company.name,
+        )
         if job is None:
-            job = cls._find_existing_job(
-                external_id=data.get("external_id", ""),
-                source_url=data.get("source_url", ""),
-            )
+            job = cls._find_existing_job(identity)
         synced_at = timezone.now()
         fields = cls._job_fields(data, company_result.company, synced_at)
 
         if job is None:
-            job = JobPost.objects.create(**fields)
+            try:
+                with transaction.atomic():
+                    job = JobPost.objects.create(**fields)
+            except IntegrityError:
+                job = cls._find_existing_job(identity)
+                if job is None:
+                    raise
+                return cls.upsert_job(data, job=job)
             MonitoringService.log_success(
                 step_name="job_upsert",
                 message="Created job during sync.",
@@ -147,18 +158,29 @@ class JobSyncService:
         return result
 
     @classmethod
-    def _find_existing_job(cls, external_id="", source_url=""):
-        filters = None
-        if external_id:
-            filters = Q(external_id=external_id)
-        if source_url:
-            source_url_filter = Q(source_url=source_url)
-            filters = (
-                source_url_filter if filters is None else filters | source_url_filter
+    def _find_existing_job(cls, identity):
+        queryset = JobPost.objects.select_related("company")
+        url_match = None
+        external_id_match = None
+        if identity.canonical_source_url:
+            url_match = queryset.filter(
+                canonical_source_url=identity.canonical_source_url
+            ).first()
+        if identity.source_key and identity.normalized_external_id:
+            external_id_match = queryset.filter(
+                source_key=identity.source_key,
+                normalized_external_id=identity.normalized_external_id,
+            ).first()
+        if (
+            url_match is not None
+            and external_id_match is not None
+            and url_match.pk != external_id_match.pk
+        ):
+            raise ValueError(
+                "Job identity conflict: canonical URL and source-scoped external ID "
+                "match different jobs."
             )
-        if filters is None:
-            return None
-        return JobPost.objects.filter(filters).select_related("company").first()
+        return url_match or external_id_match
 
     @classmethod
     def _record_missing_jobs_without_closing(
@@ -198,6 +220,12 @@ class JobSyncService:
 
     @classmethod
     def _job_fields(cls, data, company, synced_at):
+        identity = JobIdentityService.build(
+            source_url=data.get("source_url", ""),
+            external_id=data.get("external_id", ""),
+            source=data.get("source", ""),
+            company_name=company.name,
+        )
         job_type = JobPost.normalize_job_type(
             data.get("employment_type") or data.get("job_type") or ""
         )
@@ -205,7 +233,10 @@ class JobSyncService:
             "company": company,
             "title": data["title"],
             "source_url": data.get("source_url") or "",
+            "canonical_source_url": identity.canonical_source_url,
             "external_id": data.get("external_id") or "",
+            "normalized_external_id": identity.normalized_external_id,
+            "source_key": identity.source_key,
             "source_type": JobPost.SourceType.URL,
             "status": cls._job_status_from_data(data),
             "location": data.get("location") or "",
@@ -227,7 +258,10 @@ class JobSyncService:
     def _preserve_existing_values(fields, job):
         preserved_fields = {
             "source_url",
+            "canonical_source_url",
             "external_id",
+            "normalized_external_id",
+            "source_key",
             "location",
             "remote_type",
             "job_type",

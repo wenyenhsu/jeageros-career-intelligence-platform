@@ -2,6 +2,7 @@ from rest_framework import serializers
 from apps.applications.models import Application
 from apps.companies.models import Company
 from apps.imports.models import CrawlRun, JobSource, PipelineLog
+from apps.jobs.identity import JobIdentityService
 from apps.jobs.models import JobPost
 from apps.skills.models import SkillKeyword
 
@@ -20,6 +21,11 @@ class JobPostSerializer(serializers.ModelSerializer):
     class Meta:
         model = JobPost
         fields = "__all__"
+        read_only_fields = (
+            "canonical_source_url",
+            "normalized_external_id",
+            "source_key",
+        )
 
     def validate(self, attrs):
         if "job_type" in attrs:
@@ -28,6 +34,48 @@ class JobPostSerializer(serializers.ModelSerializer):
             attrs["employment_type"] = JobPost.normalize_job_type(
                 attrs["employment_type"]
             )
+        instance = self.instance
+        company = attrs.get("company") or getattr(instance, "company", None)
+        source_url = attrs.get(
+            "source_url",
+            getattr(instance, "source_url", ""),
+        )
+        external_id = attrs.get(
+            "external_id",
+            getattr(instance, "external_id", ""),
+        )
+        identity = JobIdentityService.build(
+            source_url=source_url,
+            external_id=external_id,
+            source=getattr(instance, "source_key", ""),
+            company_name=getattr(company, "name", ""),
+        )
+        queryset = JobPost.objects.all()
+        if instance is not None:
+            queryset = queryset.exclude(pk=instance.pk)
+        errors = {}
+        if (
+            identity.canonical_source_url
+            and queryset.filter(
+                canonical_source_url=identity.canonical_source_url
+            ).exists()
+        ):
+            errors["source_url"] = (
+                "A job with this canonical source URL already exists."
+            )
+        if (
+            identity.source_key
+            and identity.normalized_external_id
+            and queryset.filter(
+                source_key=identity.source_key,
+                normalized_external_id=identity.normalized_external_id,
+            ).exists()
+        ):
+            errors["external_id"] = (
+                "A job with this external ID already exists for the same source."
+            )
+        if errors:
+            raise serializers.ValidationError(errors)
         return attrs
 
     def get_skill_set_names(self, obj):

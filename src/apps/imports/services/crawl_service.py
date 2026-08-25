@@ -10,6 +10,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from apps.imports.models import CrawlRun, JobSource, PipelineLog
+from apps.jobs.identity import JobIdentityService
 from apps.jobs.models import JobPost
 
 from .company_upsert_service import CompanyUpsertService
@@ -570,12 +571,20 @@ class CrawlService:
 
     @staticmethod
     def _normalized_job_exact_key(job_data):
-        external_id = str(job_data.get("external_id") or "").strip().casefold()
-        source_url = str(job_data.get("source_url") or "").strip().casefold()
-        if external_id:
-            return ("external_id", external_id)
-        if source_url:
-            return ("source_url", source_url)
+        identity = JobIdentityService.build(
+            source_url=job_data.get("source_url", ""),
+            external_id=job_data.get("external_id", ""),
+            source=job_data.get("source", ""),
+            company_name=job_data.get("company_name", ""),
+        )
+        if identity.canonical_source_url:
+            return ("canonical_source_url", identity.canonical_source_url)
+        if identity.source_key and identity.normalized_external_id:
+            return (
+                "source_external_id",
+                identity.source_key,
+                identity.normalized_external_id,
+            )
         return None
 
     @staticmethod

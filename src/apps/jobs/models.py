@@ -4,6 +4,8 @@ from django.db import models
 from apps.common.models import TimeStampedModel
 from apps.companies.models import Company
 
+from .identity import JobIdentityService
+
 
 class JobPost(TimeStampedModel):
     class SourceType(models.TextChoices):
@@ -45,7 +47,25 @@ class JobPost(TimeStampedModel):
     )
     title = models.CharField(max_length=255)
     source_url = models.URLField(blank=True)
+    canonical_source_url = models.CharField(
+        max_length=1000,
+        blank=True,
+        db_index=True,
+        editable=False,
+    )
     external_id = models.CharField(max_length=255, blank=True, db_index=True)
+    normalized_external_id = models.CharField(
+        max_length=255,
+        blank=True,
+        db_index=True,
+        editable=False,
+    )
+    source_key = models.CharField(
+        max_length=255,
+        blank=True,
+        db_index=True,
+        editable=False,
+    )
     source_type = models.CharField(
         max_length=20, choices=SourceType.choices, default=SourceType.MANUAL
     )
@@ -77,16 +97,49 @@ class JobPost(TimeStampedModel):
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["canonical_source_url"],
+                condition=~models.Q(canonical_source_url=""),
+                name="jobs_jobpost_unique_canonical_url",
+            ),
+            models.UniqueConstraint(
+                fields=["source_key", "normalized_external_id"],
+                condition=(
+                    ~models.Q(source_key="") & ~models.Q(normalized_external_id="")
+                ),
+                name="jobs_jobpost_unique_source_external_id",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.company.name} - {self.title}"
 
     def save(self, *args, **kwargs):
+        identity = JobIdentityService.build(
+            source_url=self.source_url,
+            external_id=self.external_id,
+            source=self.source_key,
+            company_name=self.company.name if self.company_id else "",
+        )
+        self.canonical_source_url = identity.canonical_source_url
+        self.normalized_external_id = identity.normalized_external_id
+        self.source_key = identity.source_key
         normalized_job_type = self.normalize_job_type(
             self.employment_type or self.job_type
         )
         self.job_type = normalized_job_type
         self.employment_type = normalized_job_type
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            update_fields = set(update_fields)
+            if "source_url" in update_fields:
+                update_fields.update({"canonical_source_url", "source_key"})
+            if "external_id" in update_fields:
+                update_fields.add("normalized_external_id")
+            if update_fields & {"company", "company_id", "source_key"}:
+                update_fields.add("source_key")
+            kwargs["update_fields"] = list(update_fields)
         super().save(*args, **kwargs)
 
     @property

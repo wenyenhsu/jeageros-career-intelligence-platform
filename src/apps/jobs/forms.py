@@ -13,6 +13,7 @@ from apps.skills.models import (
 )
 
 from .models import JobPost
+from .identity import JobIdentityService
 
 
 def attach_job_url_preview_attrs(
@@ -200,6 +201,42 @@ class JobPostForm(forms.ModelForm):
         value = self.cleaned_data.get("skill_keywords", "")
         self.keyword_analysis = self.analyze_skill_keywords(value)
         return value
+
+    def clean(self):
+        cleaned_data = super().clean()
+        identity = JobIdentityService.build(
+            source_url=cleaned_data.get("source_url", ""),
+            external_id=cleaned_data.get("external_id", ""),
+            source=getattr(self.instance, "source_key", ""),
+            company_name=cleaned_data.get("company", ""),
+        )
+        queryset = JobPost.objects.all()
+        if self.instance.pk:
+            queryset = queryset.exclude(pk=self.instance.pk)
+
+        if (
+            identity.canonical_source_url
+            and queryset.filter(
+                canonical_source_url=identity.canonical_source_url
+            ).exists()
+        ):
+            self.add_error(
+                "source_url",
+                "A job with this canonical source URL already exists.",
+            )
+        if (
+            identity.source_key
+            and identity.normalized_external_id
+            and queryset.filter(
+                source_key=identity.source_key,
+                normalized_external_id=identity.normalized_external_id,
+            ).exists()
+        ):
+            self.add_error(
+                "external_id",
+                "A job with this external ID already exists for the same source.",
+            )
+        return cleaned_data
 
     @property
     def existing_keyword_analysis(self):
