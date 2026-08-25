@@ -35,6 +35,10 @@ from .skill_mapping_service import SkillMappingService
 from .skill_pipeline_service import SkillPipelineResult, SkillPipelineService
 from .skill_verification_service import SkillVerificationService
 from .source_detector import SourceDetector
+from .source_job_status_service import (
+    SourceJobStatusService,
+    SourceJobStatusSignal,
+)
 from .sync_result import CompanyUpsertResult, JobUpsertResult, SyncResult
 
 __all__ = [
@@ -77,5 +81,7 @@ __all__ = [
     "SkillPipelineService",
     "SkillVerificationService",
     "SourceDetector",
+    "SourceJobStatusService",
+    "SourceJobStatusSignal",
     "SyncResult",
 ]

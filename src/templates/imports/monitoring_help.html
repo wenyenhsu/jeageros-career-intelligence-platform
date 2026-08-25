@@ -132,8 +132,8 @@
           </tr>
           <tr>
             <td><code>Closed</code></td>
-            <td>Known jobs marked closed because they were missing from the newest crawl scope.</td>
-            <td>Records are preserved; they are not deleted.</td>
+            <td>Known jobs marked closed because the normalized source metadata explicitly reported a closed, expired, inactive, or removed posting.</td>
+            <td>Missing jobs and transient fetch errors remain active. Records are preserved; they are not deleted.</td>
           </tr>
           <tr>
             <td><code>Errors</code></td>

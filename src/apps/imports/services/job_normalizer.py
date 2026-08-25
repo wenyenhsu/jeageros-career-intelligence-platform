@@ -4,6 +4,7 @@ from datetime import date, datetime
 from typing import Any
 
 from .internship_schedule_extractor import InternshipScheduleExtractor
+from .source_job_status_service import SourceJobStatusService
 from .source_detector import SourceDetector
 
 
@@ -421,7 +422,7 @@ class JobNormalizer:
     @classmethod
     def _metadata(cls, raw, source_type):
         metadata = raw.get("metadata") if isinstance(raw.get("metadata"), dict) else {}
-        metadata = dict(metadata)
+        metadata = SourceJobStatusService.promote_explicit_raw_metadata(raw, metadata)
         metadata.setdefault("source", source_type)
         metadata.setdefault("raw_payload", raw)
         return metadata

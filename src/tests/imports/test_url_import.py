@@ -369,6 +369,34 @@ def test_url_refresh_force_fetches_a_complete_job(company, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_forced_url_refresh_closes_job_from_explicit_source_metadata(
+    company, monkeypatch
+):
+    job = JobPost.objects.create(
+        company=company,
+        title="Backend Engineer",
+        source_url="https://www.linkedin.com/jobs/view/445/",
+        status=JobPost.StatusChoices.ACTIVE,
+    )
+    monkeypatch.setattr(
+        ParserRegistry,
+        "get_parser_for_url",
+        lambda url: _FakeParser(
+            _fetched_raw_job(
+                title="Backend Engineer",
+                metadata={"source_confirms_closed": True},
+            )
+        ),
+    )
+
+    result = JobUrlRefreshService.refresh(job, force=True)
+
+    job.refresh_from_db()
+    assert result.fetched is True
+    assert job.status == JobPost.StatusChoices.CLOSED
+
+
+@pytest.mark.django_db
 def test_job_create_enqueues_url_refresh_when_source_url_is_present(
     client, company, monkeypatch
 ):

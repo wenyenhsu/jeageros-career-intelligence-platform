@@ -9,6 +9,7 @@ from .internship_schedule_extractor import parse_iso_date
 from .job_normalizer import CanonicalJobPayload
 from .monitoring_service import MonitoringService
 from .source_detector import SourceDetector
+from .source_job_status_service import SourceJobStatusService
 from .sync_result import JobUpsertResult, SyncResult
 
 
@@ -44,6 +45,8 @@ class JobSyncService:
                     "source_url": job.source_url,
                 },
             )
+            if job.status == JobPost.StatusChoices.CLOSED:
+                cls._log_explicit_close(job, data, created=True)
             return JobUpsertResult(
                 job=job,
                 created=True,
@@ -79,6 +82,8 @@ class JobSyncService:
             previous_status != JobPost.StatusChoices.CLOSED
             and job.status == JobPost.StatusChoices.CLOSED
         )
+        if closed:
+            cls._log_explicit_close(job, data)
         return JobUpsertResult(
             job=job,
             created=False,
@@ -242,8 +247,9 @@ class JobSyncService:
             existing_value = getattr(job, field_name, "")
             if incoming_value in (None, "") and existing_value not in (None, ""):
                 fields[field_name] = existing_value
-        # Manual status only until auto close detection is restored.
-        fields["status"] = job.status
+        source_confirms_closed = fields.get("status") == JobPost.StatusChoices.CLOSED
+        if not (job.status == JobPost.StatusChoices.ACTIVE and source_confirms_closed):
+            fields["status"] = job.status
         return fields
 
     @classmethod
@@ -264,46 +270,33 @@ class JobSyncService:
 
     @classmethod
     def _job_status_from_data(cls, data):
-        # New jobs default to ACTIVE; existing jobs keep manual status during sync.
+        metadata = (
+            data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+        )
+        if SourceJobStatusService.indicates_closed(metadata):
+            return JobPost.StatusChoices.CLOSED
         return JobPost.StatusChoices.ACTIVE
 
-    # @classmethod
-    # def _metadata_indicates_closed(cls, metadata):
-    #     if not isinstance(metadata, dict):
-    #         return False
-    #
-    #     for key, value in metadata.items():
-    #         normalized_key = cls._normalize_metadata_key(key)
-    #         if normalized_key in cls.CLOSED_METADATA_BOOLEAN_KEYS and cls._is_truthy(
-    #             value
-    #         ):
-    #             return True
-    #         if normalized_key in cls.CLOSED_POSTING_STATUS_KEYS:
-    #             normalized_value = cls._normalize_metadata_value(value)
-    #             if normalized_value in cls.CLOSED_POSTING_STATUS_VALUES:
-    #                 return True
-    #         if normalized_key in cls.CLOSED_LINK_STATUS_KEYS:
-    #             normalized_value = cls._normalize_metadata_value(value)
-    #             if normalized_value in cls.CLOSED_LINK_STATUS_VALUES:
-    #                 return True
-    #
-    #     return False
-    #
-    # @staticmethod
-    # def _normalize_metadata_key(value):
-    #     return str(value).strip().casefold().replace("-", "_").replace(" ", "_")
-    #
-    # @staticmethod
-    # def _normalize_metadata_value(value):
-    #     return " ".join(str(value).strip().casefold().replace("_", " ").split())
-    #
-    # @staticmethod
-    # def _is_truthy(value):
-    #     if isinstance(value, bool):
-    #         return value
-    #     if isinstance(value, str):
-    #         return value.strip().casefold() in {"1", "true", "yes", "y"}
-    #     return bool(value)
+    @classmethod
+    def _log_explicit_close(cls, job, data, created=False):
+        metadata = (
+            data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+        )
+        signal = SourceJobStatusService.closed_signal(metadata)
+        MonitoringService.log_success(
+            step_name="job_close_detection",
+            message="Marked job as closed from an explicit source signal.",
+            service_name=cls.__name__,
+            job=job,
+            company=job.company,
+            metadata={
+                "reason": "explicit_source_signal",
+                "source_signal": signal.as_dict() if signal else {},
+                "created": created,
+                "external_id": job.external_id,
+                "source_url": job.source_url,
+            },
+        )
 
     @staticmethod
     def _validate_job_data(data):

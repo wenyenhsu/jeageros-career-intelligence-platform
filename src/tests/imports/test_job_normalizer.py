@@ -102,6 +102,22 @@ def test_greenhouse_payload_normalization():
     assert payload.metadata["department"] == "Engineering"
 
 
+def test_normalizer_promotes_only_explicit_source_status_fields():
+    payload = JobNormalizer.normalize(
+        {
+            "title": "Backend Engineer",
+            "company_name": "OpenAI",
+            "source_url": "https://jobs.example.com/backend",
+            "postingStatus": "expired",
+            "status": "expired",
+        }
+    )
+
+    assert payload.metadata["posting_status"] == "expired"
+    assert "status" not in payload.metadata
+    assert payload.metadata["raw_payload"]["status"] == "expired"
+
+
 def test_lever_payload_normalization():
     payload = JobNormalizer.normalize(
         {

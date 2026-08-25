@@ -344,7 +344,16 @@ def test_company_sync_does_not_close_missing_jobs_within_same_source_scope(compa
 
 
 @pytest.mark.django_db
-def test_company_sync_preserves_active_when_source_reports_not_accepting(company):
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"no_longer_accepting_applications": True},
+        {"postingStatus": "expired"},
+        {"accepting_applications": False},
+        {"source_url_status": 410},
+    ],
+)
+def test_company_sync_closes_active_job_on_explicit_source_signal(company, metadata):
     job = JobPost.objects.create(
         company=company,
         title="Data Engineer",
@@ -366,7 +375,7 @@ def test_company_sync_preserves_active_when_source_reports_not_accepting(company
                 "location": "Remote",
                 "employment_type": "FULL_TIME",
                 "description": "This role is no longer accepting applications.",
-                "metadata": {"no_longer_accepting_applications": True},
+                "metadata": metadata,
             }
         ],
     )
@@ -374,8 +383,15 @@ def test_company_sync_preserves_active_when_source_reports_not_accepting(company
     job.refresh_from_db()
     assert result.jobs_created == 0
     assert result.jobs_updated == 1
-    assert result.jobs_closed == 0
-    assert job.status == JobPost.StatusChoices.ACTIVE
+    assert result.jobs_closed == 1
+    assert result.job_results[0].closed is True
+    assert job.status == JobPost.StatusChoices.CLOSED
+    assert PipelineLog.objects.filter(
+        step_name="job_close_detection",
+        status=PipelineLog.StatusChoices.SUCCESS,
+        job=job,
+        metadata__reason="explicit_source_signal",
+    ).exists()
 
 
 @pytest.mark.django_db
@@ -516,6 +532,60 @@ def test_company_sync_preserves_manual_closed_status(company):
     job.refresh_from_db()
     assert result.jobs_closed == 0
     assert job.status == JobPost.StatusChoices.CLOSED
+
+
+@pytest.mark.django_db
+def test_company_sync_preserves_applied_status_when_source_reports_closed(company):
+    job = JobPost.objects.create(
+        company=company,
+        title="Backend Engineer",
+        source_type=JobPost.SourceType.URL,
+        source_url="https://www.linkedin.com/jobs/view/301",
+        external_id="linkedin-301",
+        status=JobPost.StatusChoices.APPLIED,
+    )
+
+    result = JobSyncService.sync_company(
+        company,
+        [
+            {
+                "source": "linkedin",
+                "title": "Backend Engineer",
+                "company_name": company.name,
+                "source_url": job.source_url,
+                "external_id": job.external_id,
+                "description": "The source has closed this posting.",
+                "metadata": {"source_confirms_closed": True},
+            }
+        ],
+    )
+
+    job.refresh_from_db()
+    assert result.jobs_closed == 0
+    assert job.status == JobPost.StatusChoices.APPLIED
+
+
+@pytest.mark.django_db
+def test_job_sync_creates_closed_job_from_explicit_source_signal():
+    result = JobSyncService.upsert_job(
+        {
+            "source": "greenhouse",
+            "title": "Expired Role",
+            "company_name": "OpenAI",
+            "source_url": "https://boards.greenhouse.io/openai/jobs/expired",
+            "external_id": "expired-role",
+            "metadata": {"posting_status": "inactive"},
+        }
+    )
+
+    assert result.created is True
+    assert result.closed is False
+    assert result.job.status == JobPost.StatusChoices.CLOSED
+    assert PipelineLog.objects.filter(
+        step_name="job_close_detection",
+        job=result.job,
+        metadata__created=True,
+    ).exists()
 
 
 @pytest.mark.django_db

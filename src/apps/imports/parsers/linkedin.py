@@ -386,6 +386,19 @@ class LinkedInParser(BaseParser):
         employment_type = criteria.get(
             "employment type"
         ) or self._extract_detail_job_type(content)
+        metadata = {
+            "linkedin_criteria": criteria,
+            "source_parser": self.parser_type,
+        }
+        closed_evidence = self._closed_page_evidence(content)
+        if closed_evidence:
+            metadata.update(
+                {
+                    "source_confirms_closed": True,
+                    "posting_status": "closed",
+                    "closed_evidence": closed_evidence,
+                }
+            )
         raw_job = {
             "jobTitle": self._extract_class_text(content, "top-card-layout__title")
             or self._extract_tag_text(content, "h1"),
@@ -398,12 +411,26 @@ class LinkedInParser(BaseParser):
             "employmentType": employment_type,
             "description": description,
             "postedAt": self._extract_time_value(content),
-            "metadata": {
-                "linkedin_criteria": criteria,
-                "source_parser": self.parser_type,
-            },
+            "metadata": metadata,
         }
         return {key: value for key, value in raw_job.items() if value}
+
+    @classmethod
+    def _closed_page_evidence(cls, content):
+        status_area = re.split(
+            r'class=["\'][^"\']*show-more-less-html__markup[^"\']*["\']',
+            content or "",
+            maxsplit=1,
+            flags=re.IGNORECASE,
+        )[0]
+        page_text = cls._html_to_text(status_area).casefold()
+        phrases = (
+            "no longer accepting applications",
+            "this job is no longer available",
+            "this job posting is no longer available",
+            "this position has been filled",
+        )
+        return next((phrase for phrase in phrases if phrase in page_text), "")
 
     def _extract_criteria(self, content):
         criteria = {}

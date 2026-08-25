@@ -419,6 +419,38 @@ def test_linkedin_parser_reads_nested_job_description_markup():
     assert "Python" in parsed["description"]
 
 
+def test_linkedin_parser_emits_explicit_closed_metadata_from_page_banner():
+    html = """
+    <html>
+      <h1 class="top-card-layout__title">Backend Engineer</h1>
+      <a class="topcard__org-name-link">OpenAI</a>
+      <div class="closed-job-alert">No longer accepting applications</div>
+    </html>
+    """
+
+    parsed = LinkedInParser()._parse_job_detail(html)
+
+    assert parsed["metadata"]["source_confirms_closed"] is True
+    assert parsed["metadata"]["posting_status"] == "closed"
+    assert parsed["metadata"]["closed_evidence"] == "no longer accepting applications"
+
+
+def test_linkedin_parser_does_not_treat_description_text_as_closed_banner():
+    html = """
+    <html>
+      <h1 class="top-card-layout__title">Backend Engineer</h1>
+      <a class="topcard__org-name-link">OpenAI</a>
+      <div class="show-more-less-html__markup">
+        Build tooling for customers who are no longer accepting applications.
+      </div>
+    </html>
+    """
+
+    parsed = LinkedInParser()._parse_job_detail(html)
+
+    assert "source_confirms_closed" not in parsed["metadata"]
+
+
 @pytest.mark.django_db
 def test_linkedin_parser_fetches_detail_for_new_job_when_new_or_missing(monkeypatch):
     source = JobSource(
@@ -981,4 +1013,3 @@ def test_source_create_view_supports_greenhouse_resource(client):
     assert source.resource == JobSource.ResourceChoices.GREENHOUSE
     assert source.filter_config["search_keywords"] == ["data analyst"]
     assert source.filter_config["board_tokens"] == ["stripe", "databricks"]
-
