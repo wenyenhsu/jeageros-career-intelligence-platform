@@ -15,23 +15,37 @@ from django.views.generic import (
 from .models import Company
 from .forms import CompanyForm
 from .search import filter_companies_for_search
-from apps.imports.services import JobSyncService
+from apps.imports.services import CompanyJobRefreshService
 
 
 @login_required
 @require_POST
 def company_sync_jobs(request, pk):
     company = get_object_or_404(Company, pk=pk)
-    result = JobSyncService.sync_company(company)
-    messages.success(
-        request,
-        (
-            "Job sync completed: "
-            f"{result.jobs_created} created, "
-            f"{result.jobs_updated} updated, "
-            f"{result.jobs_closed} closed."
-        ),
-    )
+    result = CompanyJobRefreshService.queue(company)
+
+    if result.queued_jobs:
+        add_message = messages.warning if result.failed_jobs else messages.success
+        add_message(
+            request,
+            (
+                f"Queued {result.queued_jobs} job refresh task(s). "
+                f"Skipped {result.skipped_without_url} without a source URL, "
+                f"{result.skipped_unsupported_url} unsupported, "
+                f"and {result.skipped_archived} archived. "
+                f"Failed to queue {result.failed_jobs}."
+            ),
+        )
+    elif result.failed_jobs:
+        messages.error(
+            request,
+            f"No jobs were queued; {result.failed_jobs} refresh task(s) failed to queue.",
+        )
+    else:
+        messages.info(
+            request,
+            "No refreshable jobs found. Add a supported source URL to a non-archived job.",
+        )
     return redirect("company-detail", pk=company.pk)
 
 

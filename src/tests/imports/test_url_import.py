@@ -337,6 +337,38 @@ def test_url_refresh_does_not_run_for_google_drive_folder(company):
 
 
 @pytest.mark.django_db
+def test_url_refresh_force_fetches_a_complete_job(company, monkeypatch):
+    job = JobPost.objects.create(
+        company=company,
+        title="Typed Title",
+        source_url="https://www.linkedin.com/jobs/view/444/",
+        location="Remote",
+    )
+    JobPostSkill.objects.create(
+        job_post=job,
+        skill_set=SkillSet.objects.create(name="Python"),
+        source_type=SkillAttachmentSource.MANUAL,
+    )
+    fetched_urls = []
+    monkeypatch.setattr(
+        ParserRegistry,
+        "get_parser_for_url",
+        lambda url: fetched_urls.append(url) or _FakeParser(_fetched_raw_job()),
+    )
+
+    skipped = JobUrlRefreshService.refresh(job)
+    refreshed = JobUrlRefreshService.refresh(job, force=True)
+
+    job.refresh_from_db()
+    assert skipped.skipped is True
+    assert refreshed.fetched is True
+    assert fetched_urls == [job.source_url]
+    assert job.last_synced_at is not None
+    assert job.title == "Typed Title"
+    assert job.location == "Remote"
+
+
+@pytest.mark.django_db
 def test_job_create_enqueues_url_refresh_when_source_url_is_present(
     client, company, monkeypatch
 ):

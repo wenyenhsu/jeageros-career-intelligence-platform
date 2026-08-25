@@ -1,6 +1,10 @@
 from .internship_schedule_extractor import InternshipScheduleExtractor
 from .job_extractor import ExtractedJob, JobExtractor
 from .company_upsert_service import CompanyUpsertService
+from .company_job_refresh_service import (
+    CompanyJobRefreshQueueResult,
+    CompanyJobRefreshService,
+)
 from .crawl_service import CrawlService
 from .job_sync_service import JobSyncService
 from .job_url_preview_service import JobUrlPreviewResult, JobUrlPreviewService
@@ -36,6 +40,8 @@ from .sync_result import CompanyUpsertResult, JobUpsertResult, SyncResult
 __all__ = [
     "CompanyUpsertResult",
     "CompanyUpsertService",
+    "CompanyJobRefreshQueueResult",
+    "CompanyJobRefreshService",
     "APIParser",
     "CanonicalJobPayload",
     "CareerSiteParser",

@@ -73,15 +73,19 @@ class JobUrlRefreshService:
 
     @classmethod
     def needs_refresh(cls, job):
-        url = cls._source_url(job)
-        if not url or cls._is_drive_url(url):
+        if not cls.supports_refresh(job):
             return False
         has_location = not cls._is_blank(getattr(job, "location", ""))
         has_skills = job.skill_links.exists()
         return not (has_location and has_skills)
 
     @classmethod
-    def refresh(cls, job, analysis_run_id=None):
+    def supports_refresh(cls, job):
+        url = cls._source_url(job)
+        return bool(url) and not cls._is_drive_url(url)
+
+    @classmethod
+    def refresh(cls, job, analysis_run_id=None, force=False):
         if job is None or not getattr(job, "pk", None):
             raise JobUrlRefreshError("A saved job is required.")
 
@@ -92,10 +96,30 @@ class JobUrlRefreshService:
             service_name=cls.__name__,
             job=job,
             company=job.company,
-            metadata=cls._refresh_metadata(job, analysis_run_id),
+            metadata=cls._refresh_metadata(
+                job,
+                analysis_run_id,
+                {"force": force},
+            ),
         )
 
-        if not cls.needs_refresh(job):
+        if not cls.supports_refresh(job):
+            MonitoringService.log_event(
+                step_name="job_url_refresh",
+                status=PipelineLog.StatusChoices.SKIPPED,
+                message=cls.UNSUPPORTED_MESSAGE,
+                service_name=cls.__name__,
+                job=job,
+                company=job.company,
+                metadata=cls._refresh_metadata(
+                    job,
+                    analysis_run_id,
+                    {"skipped": True, "unsupported": True, "force": force},
+                ),
+            )
+            return JobUrlRefreshResult(job=job, skipped=True)
+
+        if not force and not cls.needs_refresh(job):
             MonitoringService.log_success(
                 step_name="job_url_refresh",
                 message="Skipped URL refresh; location and skills are already present.",
@@ -103,7 +127,9 @@ class JobUrlRefreshService:
                 job=job,
                 company=job.company,
                 metadata=cls._refresh_metadata(
-                    job, analysis_run_id, {"skipped": True}
+                    job,
+                    analysis_run_id,
+                    {"skipped": True, "force": False},
                 ),
             )
             return JobUrlRefreshResult(job=job, skipped=True)
@@ -119,7 +145,9 @@ class JobUrlRefreshService:
                     job=job,
                     company=job.company,
                     metadata=cls._refresh_metadata(
-                        job, analysis_run_id, {"skipped": True, "unsupported": True}
+                        job,
+                        analysis_run_id,
+                        {"skipped": True, "unsupported": True, "force": force},
                     ),
                 )
                 return JobUrlRefreshResult(
@@ -145,7 +173,11 @@ class JobUrlRefreshService:
                 job=job,
                 company=getattr(job, "company", None),
                 error=exc,
-                metadata=cls._refresh_metadata(job, analysis_run_id),
+                metadata=cls._refresh_metadata(
+                    job,
+                    analysis_run_id,
+                    {"force": force},
+                ),
             )
             return JobUrlRefreshResult(job=job, error=str(exc))
 
@@ -161,6 +193,7 @@ class JobUrlRefreshService:
                 {
                     "source_url": job.source_url,
                     "skills_attached": skills_attached,
+                    "force": force,
                 },
             ),
         )

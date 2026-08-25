@@ -94,10 +94,10 @@ crawl_enabled_job_sources = crawl_all_sources
 
 
 @shared_task(name="apps.imports.tasks.refresh_job_from_url")
-def refresh_job_from_url(job_id, analysis_run_id=None):
+def refresh_job_from_url(job_id, analysis_run_id=None, force=False):
     from apps.jobs.models import JobPost
 
-    task_metadata = {"job_id": job_id}
+    task_metadata = {"job_id": job_id, "force": force}
     if analysis_run_id:
         task_metadata = MonitoringService.analysis_metadata(
             analysis_run_id, task_metadata
@@ -130,7 +130,11 @@ def refresh_job_from_url(job_id, analysis_run_id=None):
             MonitoringService.record_job_skill_analysis_progress(analysis_run_id)
         return {"success": False, "error": "Job not found.", "job_id": job_id}
 
-    result = JobUrlRefreshService.refresh(job, analysis_run_id=analysis_run_id)
+    result = JobUrlRefreshService.refresh(
+        job,
+        analysis_run_id=analysis_run_id,
+        force=force,
+    )
     payload = result.as_dict()
     if analysis_run_id:
         payload = MonitoringService.analysis_metadata(analysis_run_id, payload)
