@@ -59,6 +59,14 @@ class JobSource(models.Model):
                     f"{self.get_resource_display()} sources must use one of these "
                     f"domains: {expected_domains}."
                 )
+            elif (
+                self.resource == self.ResourceChoices.LEVER
+                and not SourceDetector.lever_site(base_url)
+            ):
+                errors["base_url"] = (
+                    "Lever sources must include a site slug, for example "
+                    "https://jobs.lever.co/acme."
+                )
 
         if errors:
             raise ValidationError(errors)

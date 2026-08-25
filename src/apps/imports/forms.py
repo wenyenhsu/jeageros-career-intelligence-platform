@@ -66,7 +66,13 @@ class JobSourceForm(forms.ModelForm):
             "default_job_type": "",
         },
         JobSource.ResourceChoices.HANDSHAKE: dict(GENERIC_CRAWL_DEFAULTS),
-        JobSource.ResourceChoices.LEVER: dict(GENERIC_CRAWL_DEFAULTS),
+        JobSource.ResourceChoices.LEVER: {
+            **GENERIC_CRAWL_DEFAULTS,
+            "max_pages": 5,
+            "max_search_requests": 5,
+            "fetch_details": "false",
+            "request_delay_seconds": 1,
+        },
         JobSource.ResourceChoices.CAREER_SITE: dict(GENERIC_CRAWL_DEFAULTS),
         JobSource.ResourceChoices.RSS: {
             **GENERIC_CRAWL_DEFAULTS,

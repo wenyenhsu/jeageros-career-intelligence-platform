@@ -37,6 +37,16 @@ def test_source_detector_detects_supported_job_boards():
         == SourceDetector.LEVER
     )
     assert (
+        SourceDetector.detect_parser_type("https://jobs.eu.lever.co/openai")
+        == SourceDetector.LEVER
+    )
+    assert (
+        SourceDetector.detect_parser_type(
+            "https://api.lever.co/v0/postings/openai"
+        )
+        == SourceDetector.LEVER
+    )
+    assert (
         SourceDetector.detect_parser_type("https://app.joinhandshake.com/stu/jobs")
         == SourceDetector.HANDSHAKE
     )

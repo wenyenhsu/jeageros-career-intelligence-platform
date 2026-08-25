@@ -32,6 +32,24 @@ def test_greenhouse_host_aliases_share_one_canonical_identity():
     assert second == first
 
 
+def test_lever_api_and_hosted_urls_share_tenant_identity():
+    hosted = JobIdentityService.build(
+        source_url="https://jobs.eu.lever.co/acme/job-123?utm_source=email",
+        external_id="job-123",
+        company_name="Acme",
+    )
+    api = JobIdentityService.build(
+        source_url="https://api.eu.lever.co/v0/postings/acme/job-123",
+        external_id="job-123",
+        company_name="Acme",
+    )
+
+    assert hosted.canonical_source_url == "https://jobs.eu.lever.co/acme/job-123"
+    assert api.canonical_source_url == hosted.canonical_source_url
+    assert hosted.source_key == "lever:acme"
+    assert api.source_key == hosted.source_key
+
+
 def test_canonical_url_removes_tracking_but_preserves_job_query_parameters():
     canonical = JobIdentityService.canonicalize_url(
         "https://stripe.com/jobs/search?utm_campaign=test&gh_jid=8146271&ref=mail"

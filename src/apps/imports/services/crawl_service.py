@@ -136,8 +136,9 @@ class CrawlService:
 
         cooldown_until = cls._rate_limited_until(source)
         if cooldown_until and cooldown_until > timezone.now():
+            source_label = source.get_resource_display() or "provider"
             message = (
-                "Job source is cooling down after LinkedIn rate limiting until "
+                f"Job source is cooling down after {source_label} rate limiting until "
                 f"{timezone.localtime(cooldown_until).strftime('%Y-%m-%d %H:%M:%S %Z')}."
             )
             source_summary["status"] = "skipped"

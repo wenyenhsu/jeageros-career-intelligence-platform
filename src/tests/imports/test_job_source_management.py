@@ -52,6 +52,11 @@ def test_source_detector_preserves_explicit_generic_html_resource():
             "https://job-boards.greenhouse.io/acme",
         ),
         (JobSource.ResourceChoices.LEVER, "https://jobs.lever.co/acme"),
+        (JobSource.ResourceChoices.LEVER, "https://jobs.eu.lever.co/acme"),
+        (
+            JobSource.ResourceChoices.LEVER,
+            "https://api.lever.co/v0/postings/acme",
+        ),
         (JobSource.ResourceChoices.CAREER_SITE, "https://careers.example.com/jobs"),
         (JobSource.ResourceChoices.RSS, "https://careers.example.com/jobs.xml"),
         (JobSource.ResourceChoices.API, "https://api.example.com/jobs"),
@@ -75,6 +80,19 @@ def test_job_source_rejects_provider_url_mismatch():
         source.full_clean()
 
     assert "jobs.lever.co" in exc_info.value.message_dict["base_url"][0]
+
+
+def test_job_source_rejects_lever_url_without_site_slug():
+    source = JobSource(
+        name="Missing Lever site",
+        resource=JobSource.ResourceChoices.LEVER,
+        base_url="https://jobs.lever.co/",
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        source.full_clean()
+
+    assert "site slug" in exc_info.value.message_dict["base_url"][0]
 
 
 def test_enabled_job_source_requires_base_url():

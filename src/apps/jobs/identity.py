@@ -25,6 +25,12 @@ class JobIdentityService:
         "job-boards.greenhouse.io",
         "my.greenhouse.io",
     }
+    LEVER_HOST_MAP = {
+        "jobs.lever.co": "jobs.lever.co",
+        "jobs.eu.lever.co": "jobs.eu.lever.co",
+        "api.lever.co": "jobs.lever.co",
+        "api.eu.lever.co": "jobs.eu.lever.co",
+    }
 
     @classmethod
     def build(
@@ -81,6 +87,13 @@ class JobIdentityService:
                 host = "greenhouse.io"
                 path = f"/{board_token}/jobs/{job_id}"
                 query_pairs = []
+        elif host in cls.LEVER_HOST_MAP:
+            lever_parts = cls._lever_path_parts(host, path)
+            if lever_parts:
+                site, posting_id = lever_parts
+                host = cls.LEVER_HOST_MAP[host]
+                path = f"/{site}/{posting_id}"
+                query_pairs = []
 
         query = urlencode(sorted(query_pairs), doseq=True)
         return urlunsplit(("https", host, path, query, ""))
@@ -102,8 +115,14 @@ class JobIdentityService:
             greenhouse_parts = cls._greenhouse_path_parts(path)
             board_token = greenhouse_parts[0] if greenhouse_parts else company_key
             return cls._namespaced("greenhouse", board_token or host)
-        if host == "jobs.lever.co":
-            tenant = cls._first_path_segment(path) or company_key
+        if host in cls.LEVER_HOST_MAP:
+            lever_parts = cls._lever_path_parts(host, path)
+            tenant = (
+                lever_parts[0]
+                if lever_parts
+                else cls._lever_site_from_path(host, path)
+            )
+            tenant = tenant or company_key
             return cls._namespaced("lever", tenant or host)
         if host.endswith("handshake.com"):
             return "handshake"
@@ -136,6 +155,26 @@ class JobIdentityService:
     @staticmethod
     def normalize_external_id(value):
         return str(value or "").strip().casefold()
+
+    @classmethod
+    def _lever_path_parts(cls, host, path):
+        segments = [segment for segment in str(path or "").split("/") if segment]
+        if host in {"api.lever.co", "api.eu.lever.co"}:
+            if len(segments) < 4 or segments[:2] != ["v0", "postings"]:
+                return None
+            return segments[2], segments[3]
+        if len(segments) < 2:
+            return None
+        return segments[0], segments[1]
+
+    @staticmethod
+    def _lever_site_from_path(host, path):
+        segments = [segment for segment in str(path or "").split("/") if segment]
+        if host in {"api.lever.co", "api.eu.lever.co"}:
+            if len(segments) >= 3 and segments[:2] == ["v0", "postings"]:
+                return segments[2]
+            return ""
+        return segments[0] if segments else ""
 
     @classmethod
     def _identity_query_pairs(cls, query):

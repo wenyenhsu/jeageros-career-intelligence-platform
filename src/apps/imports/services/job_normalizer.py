@@ -159,6 +159,7 @@ class JobNormalizer:
             "employer",
             "employerName",
             "employer_name",
+            "leverCompanyName",
         ),
         "title": (
             "title",

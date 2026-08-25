@@ -31,7 +31,12 @@ class SourceDetector:
             "boards.greenhouse.io",
             "job-boards.greenhouse.io",
         ),
-        LEVER: ("jobs.lever.co",),
+        LEVER: (
+            "jobs.lever.co",
+            "jobs.eu.lever.co",
+            "api.lever.co",
+            "api.eu.lever.co",
+        ),
     }
 
     @classmethod
@@ -66,6 +71,23 @@ class SourceDetector:
                 return parser_type
 
         return cls.CAREER_SITE
+
+    @classmethod
+    def lever_site(cls, url):
+        url = str(url or "").strip()
+        if not url:
+            return ""
+        if "://" not in url:
+            url = f"https://{url}"
+        parsed = urlparse(url)
+        host = cls._host(url)
+        segments = [segment for segment in parsed.path.split("/") if segment]
+        if host in {"jobs.lever.co", "jobs.eu.lever.co"}:
+            return segments[0] if segments else ""
+        if host in {"api.lever.co", "api.eu.lever.co"}:
+            if len(segments) >= 3 and segments[:2] == ["v0", "postings"]:
+                return segments[2]
+        return ""
 
     @staticmethod
     def _source_url(source):
