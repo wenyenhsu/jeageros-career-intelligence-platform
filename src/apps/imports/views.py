@@ -3,6 +3,8 @@ from urllib.parse import urlencode
 import json
 
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.shortcuts import render
@@ -32,10 +34,12 @@ from .search import filter_job_sources_for_search
 from .services import JobArchiveService, JobUrlRefreshService, MonitoringService
 
 
+@login_required
 def job_url_import(request):
     return JobSourceListView.as_view()(request)
 
 
+@login_required
 def monitoring_dashboard(request):
     crawl_run_id = request.GET.get("crawl_run_id") or request.GET.get("run")
     resume_run_id = request.GET.get("resume_run_id") or request.session.get(
@@ -55,7 +59,7 @@ def monitoring_dashboard(request):
     )
 
 
-class MissingSkillJobListView(ListView):
+class MissingSkillJobListView(LoginRequiredMixin, ListView):
     model = JobPost
     template_name = "imports/missing_skill_job_list.html"
     context_object_name = "jobs"
@@ -84,6 +88,7 @@ class MissingSkillJobListView(ListView):
         return context
 
 
+@login_required
 @require_POST
 def run_missing_skill_analysis(request):
     from apps.imports.tasks import refresh_job_from_url
@@ -126,6 +131,7 @@ def run_missing_skill_analysis(request):
     return redirect(url)
 
 
+@login_required
 def job_skill_analysis_status(request):
     run_id = request.GET.get("skill_analysis_run_id") or request.session.get(
         "skill_analysis_run_id"
@@ -196,6 +202,7 @@ def _filtered_missing_skill_jobs(request):
     return queryset
 
 
+@login_required
 @require_POST
 def archive_jobs(request):
     age_months = request.POST.get("age_months", "3")
@@ -237,6 +244,7 @@ def archive_jobs(request):
     return redirect(f"{reverse('monitoring-dashboard')}#job-archive")
 
 
+@login_required
 @require_POST
 def restore_job_archive(request, pk):
     archive_run = get_object_or_404(JobArchiveRun, pk=pk)
@@ -271,6 +279,7 @@ def restore_job_archive(request, pk):
     return redirect(f"{reverse('monitoring-dashboard')}#job-archive")
 
 
+@login_required
 def download_job_archive(request, pk):
     archive_run = get_object_or_404(JobArchiveRun, pk=pk)
     content = json.dumps(archive_run.payload or {}, indent=2, ensure_ascii=False)
@@ -281,6 +290,7 @@ def download_job_archive(request, pk):
     return response
 
 
+@login_required
 @require_POST
 def run_all_sources(request):
     label = "All enabled job sources"
@@ -289,6 +299,7 @@ def run_all_sources(request):
     return _crawl_started_response(request, label, crawl_run, error=error)
 
 
+@login_required
 @require_POST
 def run_source(request, pk):
     source = get_object_or_404(JobSource, pk=pk)
@@ -297,6 +308,7 @@ def run_source(request, pk):
     return _crawl_started_response(request, source.name, crawl_run, error=error)
 
 
+@login_required
 @require_POST
 def copy_source(request, pk):
     source = get_object_or_404(JobSource, pk=pk)
@@ -340,6 +352,7 @@ def copy_source(request, pk):
     return redirect("source-list")
 
 
+@login_required
 def crawl_run_status(request, pk):
     try:
         payload = MonitoringService.run_status(crawl_run_id=pk, recent_limit=30)
@@ -348,6 +361,7 @@ def crawl_run_status(request, pk):
     return JsonResponse(payload)
 
 
+@login_required
 @require_POST
 def abort_crawl_run(request, pk):
     crawl_run = get_object_or_404(CrawlRun, pk=pk)
@@ -549,7 +563,7 @@ def _monitoring_link(summary):
     )
 
 
-class JobSourceListView(ListView):
+class JobSourceListView(LoginRequiredMixin, ListView):
     model = JobSource
     template_name = "imports/job_source_list.html"
     context_object_name = "sources"
@@ -573,35 +587,35 @@ class JobSourceListView(ListView):
         return context
 
 
-class JobSourceDetailView(DetailView):
+class JobSourceDetailView(LoginRequiredMixin, DetailView):
     model = JobSource
     template_name = "imports/job_source_detail.html"
     context_object_name = "source"
 
 
-class JobSourceHelpView(TemplateView):
+class JobSourceHelpView(LoginRequiredMixin, TemplateView):
     template_name = "imports/job_source_help.html"
 
 
-class MonitoringHelpView(TemplateView):
+class MonitoringHelpView(LoginRequiredMixin, TemplateView):
     template_name = "imports/monitoring_help.html"
 
 
-class JobSourceCreateView(CreateView):
+class JobSourceCreateView(LoginRequiredMixin, CreateView):
     model = JobSource
     form_class = JobSourceForm
     template_name = "imports/job_source_form.html"
     success_url = reverse_lazy("source-list")
 
 
-class JobSourceUpdateView(UpdateView):
+class JobSourceUpdateView(LoginRequiredMixin, UpdateView):
     model = JobSource
     form_class = JobSourceForm
     template_name = "imports/job_source_form.html"
     success_url = reverse_lazy("source-list")
 
 
-class JobSourceDeleteView(DeleteView):
+class JobSourceDeleteView(LoginRequiredMixin, DeleteView):
     model = JobSource
     template_name = "imports/job_source_confirm_delete.html"
     success_url = reverse_lazy("source-list")

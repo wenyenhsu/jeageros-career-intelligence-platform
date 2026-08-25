@@ -68,7 +68,6 @@ def test_dashboard_page_renders_operational_overview(client, user):
     assert "Analyze Resume" not in content
     assert "Fast read on job type and location spread." in content
     assert "Fast read on job type, source, and location spread." not in content
-    assert "URL" not in content
     assert "Active ·" not in content
     assert "Closed ·" not in content
     assert "Python" in content

@@ -62,14 +62,23 @@ class ApplicationForm(forms.ModelForm):
             "materials_pack": "Copies the AI or Infra pack, then tailors the cover letter to the job URL.",
         }
 
-    def __init__(self, *args, allow_manual_job=False, **kwargs):
+    def __init__(self, *args, allow_manual_job=False, acting_user=None, **kwargs):
         self.allow_manual_job = allow_manual_job
+        self.acting_user = acting_user
+        self.lock_user = bool(
+            acting_user
+            and acting_user.is_authenticated
+            and not acting_user.is_staff
+        )
         super().__init__(*args, **kwargs)
         self._original_pack = (
             self.instance.materials_pack if self.instance.pk else ""
         ) or ""
         self.copied_pack = False
         self.cover_letter_tailor_result = None
+
+        if self.lock_user:
+            self.fields.pop("user", None)
 
         pack_field = self.fields["materials_pack"]
         pack_field.required = False
@@ -224,7 +233,9 @@ class ApplicationForm(forms.ModelForm):
                     cleaned_data["job_post"] = existing_job
                     job_post = existing_job
 
-        user = cleaned_data.get("user")
+        user = self.acting_user if self.lock_user else cleaned_data.get("user")
+        if self.lock_user:
+            cleaned_data["user"] = user
         if user and job_post:
             existing_application = Application.objects.filter(
                 user=user,
@@ -242,6 +253,8 @@ class ApplicationForm(forms.ModelForm):
         copied_pack = False
         with transaction.atomic():
             application = super().save(commit=False)
+            if self.lock_user:
+                application.user = self.acting_user
             if not application.job_post_id:
                 application.job_post = self._create_job_post()
             if commit:

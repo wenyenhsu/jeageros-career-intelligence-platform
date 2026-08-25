@@ -16,8 +16,8 @@ def guest_user(db):
 
 
 @pytest.mark.django_db
-def test_user_list_redirects_anonymous(client):
-    response = client.get(reverse('user-list'))
+def test_user_list_redirects_anonymous(anonymous_client):
+    response = anonymous_client.get(reverse('user-list'))
     assert response.status_code == 302
     assert '/accounts/login/' in response.url
 

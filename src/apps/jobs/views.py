@@ -1,5 +1,6 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy
@@ -25,7 +26,7 @@ from .search import (
 )
 
 
-class JobListView(ListView):
+class JobListView(LoginRequiredMixin, ListView):
     model = JobPost
     template_name = "jobs/job_list.html"
     context_object_name = "jobs"
@@ -57,7 +58,7 @@ class JobListView(ListView):
         return context
 
 
-class JobDetailView(DetailView):
+class JobDetailView(LoginRequiredMixin, DetailView):
     model = JobPost
     template_name = "jobs/job_detail.html"
     context_object_name = "job"
@@ -67,7 +68,7 @@ class JobDetailView(DetailView):
     )
 
 
-class JobCreateView(CreateView):
+class JobCreateView(LoginRequiredMixin, CreateView):
     model = JobPost
     form_class = JobPostForm
     template_name = "jobs/job_form.html"
@@ -85,7 +86,7 @@ class JobCreateView(CreateView):
         return context
 
 
-class JobUpdateView(UpdateView):
+class JobUpdateView(LoginRequiredMixin, UpdateView):
     model = JobPost
     form_class = JobPostForm
     template_name = "jobs/job_form.html"
@@ -103,7 +104,7 @@ class JobUpdateView(UpdateView):
         return context
 
 
-class JobDeleteView(DeleteView):
+class JobDeleteView(LoginRequiredMixin, DeleteView):
     model = JobPost
     success_url = reverse_lazy("job-list")
 
@@ -188,6 +189,7 @@ def _skill_keyword_lookup():
     return lookup
 
 
+@login_required
 @require_GET
 def preview_job_url(request):
     from apps.imports.services import JobUrlPreviewService

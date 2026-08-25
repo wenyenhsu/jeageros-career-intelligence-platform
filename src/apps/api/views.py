@@ -12,6 +12,7 @@ from apps.analytics.services import (
     SkillCandidateService,
 )
 from apps.applications.models import Application
+from apps.common.mixins import scope_queryset_to_user
 from apps.applications.search import filter_applications_for_search
 from apps.companies.models import Company
 from apps.companies.search import filter_companies_for_search
@@ -95,11 +96,24 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             "job_post__skill_sets",
             "job_post__skill_sets__keywords",
         )
+        queryset = scope_queryset_to_user(queryset, self.request.user)
         query = self.request.query_params.get("q", "").strip()
         if not query:
             return queryset
 
         return filter_applications_for_search(queryset, query)
+
+    def perform_create(self, serializer):
+        if self.request.user.is_staff:
+            serializer.save()
+            return
+        serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer):
+        if self.request.user.is_staff:
+            serializer.save()
+            return
+        serializer.save(user=serializer.instance.user)
 
 
 class SkillKeywordViewSet(viewsets.ModelViewSet):
@@ -314,8 +328,16 @@ def analytics_job_categories(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def analytics_application_comparison(request, pk):
+    application = scope_queryset_to_user(
+        Application.objects.all(),
+        request.user,
+    ).filter(pk=pk).first()
+    if application is None:
+        return Response({"detail": "Not found."}, status=404)
     service = SkillAnalyticsService()
-    return Response(service.application_skill_comparison(application_id=pk))
+    return Response(
+        service.application_skill_comparison(application_id=application.pk)
+    )
 
 
 @api_view(["GET"])

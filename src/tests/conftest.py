@@ -1,5 +1,6 @@
 import pytest
 from django.contrib.auth import get_user_model
+from django.test import Client
 from apps.companies.models import Company
 from apps.jobs.models import JobPost
 from apps.applications.models import Application
@@ -8,6 +9,18 @@ from apps.applications.models import Application
 @pytest.fixture
 def user(db):
     return get_user_model().objects.create_user(username='tester', password='pass12345')
+
+
+@pytest.fixture
+def anonymous_client():
+    return Client()
+
+
+@pytest.fixture
+def client(user):
+    authenticated_client = Client()
+    authenticated_client.force_login(user)
+    return authenticated_client
 
 
 @pytest.fixture

@@ -1,6 +1,8 @@
 from uuid import uuid4
 
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse, reverse_lazy
@@ -12,6 +14,7 @@ from django.views.generic import (
     UpdateView,
     DeleteView,
 )
+from apps.common.mixins import UserOwnedQuerySetMixin, scope_queryset_to_user
 from .forms import ApplicationForm
 from .models import Application
 from .search import filter_applications_for_search
@@ -74,21 +77,22 @@ def _application_form_success(
     return redirect(redirect_url)
 
 
-class ApplicationListView(ListView):
+class ApplicationListView(UserOwnedQuerySetMixin, ListView):
     model = Application
     template_name = "applications/application_list.html"
     context_object_name = "applications"
+    queryset = Application.objects.select_related(
+        "job_post__company",
+        "user",
+    ).prefetch_related(
+        "skill_sets",
+        "skill_sets__keywords",
+        "job_post__skill_sets",
+        "job_post__skill_sets__keywords",
+    )
 
     def get_queryset(self):
-        queryset = Application.objects.select_related(
-            "job_post__company",
-            "user",
-        ).prefetch_related(
-            "skill_sets",
-            "skill_sets__keywords",
-            "job_post__skill_sets",
-            "job_post__skill_sets__keywords",
-        )
+        queryset = super().get_queryset()
         query = self.request.GET.get("q", "").strip()
         if not query:
             return queryset
@@ -102,7 +106,7 @@ class ApplicationListView(ListView):
         return context
 
 
-class ApplicationDetailView(DetailView):
+class ApplicationDetailView(UserOwnedQuerySetMixin, DetailView):
     model = Application
     template_name = "applications/application_detail.html"
     context_object_name = "application"
@@ -123,7 +127,7 @@ class ApplicationDetailView(DetailView):
         return context
 
 
-class ApplicationCreateView(CreateView):
+class ApplicationCreateView(LoginRequiredMixin, CreateView):
     model = Application
     form_class = ApplicationForm
     template_name = "applications/application_form.html"
@@ -132,6 +136,7 @@ class ApplicationCreateView(CreateView):
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
         kwargs["allow_manual_job"] = True
+        kwargs["acting_user"] = self.request.user
         return kwargs
 
     def get_initial(self):
@@ -160,11 +165,16 @@ class ApplicationCreateView(CreateView):
         return super().form_invalid(form)
 
 
-class ApplicationUpdateView(UpdateView):
+class ApplicationUpdateView(UserOwnedQuerySetMixin, UpdateView):
     model = Application
     form_class = ApplicationForm
     template_name = "applications/application_form.html"
     success_url = reverse_lazy("application-list")
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["acting_user"] = self.request.user
+        return kwargs
 
     def form_valid(self, form):
         self.object = form.save()
@@ -181,15 +191,19 @@ class ApplicationUpdateView(UpdateView):
         return super().form_invalid(form)
 
 
-class ApplicationDeleteView(DeleteView):
+class ApplicationDeleteView(UserOwnedQuerySetMixin, DeleteView):
     model = Application
     success_url = reverse_lazy("application-list")
 
 
+@login_required
 @require_POST
 def run_application_ats_scan(request, pk):
     application = get_object_or_404(
-        Application.objects.select_related("job_post__company"),
+        scope_queryset_to_user(
+            Application.objects.select_related("job_post__company"),
+            request.user,
+        ),
         pk=pk,
     )
     try:
@@ -219,10 +233,14 @@ def run_application_ats_scan(request, pk):
     return redirect("application-detail", pk=pk)
 
 
+@login_required
 @require_POST
 def apply_application_materials_pack(request, pk):
     application = get_object_or_404(
-        Application.objects.select_related("job_post__company"),
+        scope_queryset_to_user(
+            Application.objects.select_related("job_post__company"),
+            request.user,
+        ),
         pk=pk,
     )
     next_url = request.POST.get("next") or ""
@@ -251,6 +269,7 @@ def apply_application_materials_pack(request, pk):
     return redirect(next_url)
 
 
+@login_required
 @require_GET
 def cover_letter_tailor_status(request):
     run_id = normalize_run_id(request.GET.get("run_id"))

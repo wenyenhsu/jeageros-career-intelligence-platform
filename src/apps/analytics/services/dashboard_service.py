@@ -11,8 +11,9 @@ from apps.skills.models import JobPostSkill
 class DashboardService:
     recent_limit = 5
 
-    def operational_summary(self):
+    def operational_summary(self, user=None):
         today = timezone.localdate()
+        applications = self._application_queryset(user)
         latest_crawl_run = CrawlRun.objects.first()
         source_counts = self._source_counts()
         recent_failures = PipelineLog.objects.filter(
@@ -20,10 +21,10 @@ class DashboardService:
         )[: self.recent_limit]
 
         return {
-            "kpis": self._kpis(today),
-            "application_status_counts": self._application_status_counts(),
+            "kpis": self._kpis(today, applications),
+            "application_status_counts": self._application_status_counts(applications),
             "recent_jobs": self._recent_jobs(),
-            "recent_applications": self._recent_applications(),
+            "recent_applications": self._recent_applications(applications),
             "latest_crawl_run": latest_crawl_run,
             "source_counts": source_counts,
             "crawl_history": self._crawl_history(source_counts=source_counts),
@@ -42,11 +43,18 @@ class DashboardService:
             },
         }
 
-    def _kpis(self, today):
+    @staticmethod
+    def _application_queryset(user):
+        queryset = Application.objects.all()
+        if user is not None and user.is_authenticated and not user.is_staff:
+            queryset = queryset.filter(user=user)
+        return queryset
+
+    def _kpis(self, today, applications):
         return {
             "total_jobs": JobPost.objects.count(),
-            "total_applications": Application.objects.count(),
-            "applications_today": Application.objects.filter(
+            "total_applications": applications.count(),
+            "applications_today": applications.filter(
                 applied_at__date=today,
             ).count(),
             "active_companies": Company.objects.filter(job_posts__isnull=False)
@@ -55,10 +63,10 @@ class DashboardService:
             "enabled_sources": JobSource.objects.filter(enabled=True).count(),
         }
 
-    def _application_status_counts(self):
+    def _application_status_counts(self, applications):
         status_labels = dict(Application.Status.choices)
         rows = (
-            Application.objects.values("status")
+            applications.values("status")
             .annotate(total=Count("id"))
             .order_by("status")
         )
@@ -74,8 +82,8 @@ class DashboardService:
     def _recent_jobs(self):
         return JobPost.objects.select_related("company")[: self.recent_limit]
 
-    def _recent_applications(self):
-        return Application.objects.select_related(
+    def _recent_applications(self, applications):
+        return applications.select_related(
             "job_post",
             "job_post__company",
             "user",

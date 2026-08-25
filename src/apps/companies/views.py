@@ -1,4 +1,6 @@
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy
 from django.views.decorators.http import require_POST
@@ -16,6 +18,7 @@ from .search import filter_companies_for_search
 from apps.imports.services import JobSyncService
 
 
+@login_required
 @require_POST
 def company_sync_jobs(request, pk):
     company = get_object_or_404(Company, pk=pk)
@@ -32,7 +35,7 @@ def company_sync_jobs(request, pk):
     return redirect("company-detail", pk=company.pk)
 
 
-class CompanyListView(ListView):
+class CompanyListView(LoginRequiredMixin, ListView):
     model = Company
     template_name = "companies/company_list.html"
     context_object_name = "companies"
@@ -50,27 +53,27 @@ class CompanyListView(ListView):
         return context
 
 
-class CompanyDetailView(DetailView):
+class CompanyDetailView(LoginRequiredMixin, DetailView):
     model = Company
     template_name = "companies/company_detail.html"
     context_object_name = "company"
 
 
-class CompanyCreateView(CreateView):
+class CompanyCreateView(LoginRequiredMixin, CreateView):
     model = Company
     form_class = CompanyForm
     template_name = "companies/company_form.html"
     success_url = reverse_lazy("company-list")
 
 
-class CompanyUpdateView(UpdateView):
+class CompanyUpdateView(LoginRequiredMixin, UpdateView):
     model = Company
     form_class = CompanyForm
     template_name = "companies/company_form.html"
     success_url = reverse_lazy("company-list")
 
 
-class CompanyDeleteView(DeleteView):
+class CompanyDeleteView(LoginRequiredMixin, DeleteView):
     model = Company
     template_name = "companies/company_confirm_delete.html"
     success_url = reverse_lazy("company-list")

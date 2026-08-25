@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from django.conf import settings
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import close_old_connections
 from django.http import JsonResponse
@@ -26,12 +27,14 @@ from .services import (
 )
 
 
+@login_required
 def dashboard(request):
-    context = DashboardService().operational_summary()
+    context = DashboardService().operational_summary(user=request.user)
     context.update(_resume_analysis_session_context(request))
     return render(request, "dashboard/index.html", context)
 
 
+@login_required
 def analytics_dashboard(request):
     filters = request.GET
     skill_service = SkillAnalyticsService()
@@ -105,6 +108,7 @@ def analytics_dashboard(request):
     return render(request, "analytics/dashboard.html", context)
 
 
+@login_required
 def resume_analysis_status(request):
     resume_run_id = request.GET.get("resume_run_id") or request.session.get(
         "resume_analysis_run_id"
@@ -404,6 +408,7 @@ def _resume_analysis_session_context(request):
     }
 
 
+@login_required
 def skill_analytics(request):
     service = SkillAnalyticsService()
     context = {
@@ -415,6 +420,7 @@ def skill_analytics(request):
     return render(request, "analytics/skills.html", context)
 
 
+@login_required
 def company_analytics(request):
     skill_service = SkillAnalyticsService()
     service = CompanyAnalyticsService(skill_service=skill_service)
@@ -436,6 +442,7 @@ def company_analytics(request):
     return render(request, "analytics/companies.html", context)
 
 
+@login_required
 def trend_analytics(request):
     service = SkillAnalyticsService()
     context = {
