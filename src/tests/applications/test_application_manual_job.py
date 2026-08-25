@@ -158,3 +158,73 @@ def test_create_view_saves_manual_job_application(client, user):
     assert application.job_post.title == "Software Engineer"
     assert application.job_post.company.name == "Stripe"
     assert application.company_display == "Stripe"
+
+
+@pytest.mark.django_db
+def test_create_view_copies_existing_job_skills(client, user, job):
+    from apps.skills.models import ApplicationSkill, JobPostSkill, SkillSet
+
+    skill = SkillSet.objects.create(name="Python")
+    JobPostSkill.objects.create(job_post=job, skill_set=skill, score=88)
+
+    response = client.post(
+        reverse("application-create"),
+        data=_create_data(user, job_post=job.pk),
+    )
+
+    assert response.status_code == 302
+    application = Application.objects.get(user=user, job_post=job)
+    copied = ApplicationSkill.objects.get(application=application, skill_set=skill)
+    assert copied.score == 88
+
+
+@pytest.mark.django_db
+def test_create_view_enqueues_url_refresh_when_job_url_is_present(
+    client, user, monkeypatch
+):
+    from django.contrib.messages import get_messages
+
+    queued = []
+    monkeypatch.setattr(
+        "apps.imports.tasks.refresh_job_from_url.delay",
+        lambda job_id: queued.append(job_id),
+    )
+
+    response = client.post(
+        reverse("application-create"),
+        data=_create_data(
+            user,
+            company="Crowe",
+            job_title="AI Functional Intern",
+            source_url="https://www.linkedin.com/jobs/view/987654/",
+        ),
+    )
+
+    assert response.status_code == 302
+    application = Application.objects.get(user=user)
+    assert queued == [application.job_post_id]
+    messages = [str(message) for message in get_messages(response.wsgi_request)]
+    assert "Fetching location and skills from the job URL." in messages
+
+
+@pytest.mark.django_db
+def test_create_view_does_not_enqueue_url_refresh_without_job_url(
+    client, user, monkeypatch
+):
+    queued = []
+    monkeypatch.setattr(
+        "apps.imports.tasks.refresh_job_from_url.delay",
+        lambda job_id: queued.append(job_id),
+    )
+
+    response = client.post(
+        reverse("application-create"),
+        data=_create_data(
+            user,
+            company="Stripe",
+            job_title="Software Engineer",
+        ),
+    )
+
+    assert response.status_code == 302
+    assert queued == []

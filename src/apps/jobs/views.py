@@ -13,8 +13,8 @@ from django.views.generic import (
 )
 from apps.applications.models import Application
 from apps.applications.services import record_status_transition
+from apps.imports.services.skill_attach_service import SkillAttachService
 from apps.skills.models import SkillKeyword
-from apps.skills.models import ApplicationSkill
 from .forms import JobPostForm
 from .models import JobPost
 from .search import (
@@ -128,7 +128,7 @@ def apply_to_job(request, pk):
     )
 
     if created:
-        _copy_job_skills_to_application(job, application)
+        SkillAttachService.copy_job_skills_to_application(job, application)
         messages.success(
             request,
             f"Added {job.title_display} to Applications.",
@@ -153,7 +153,7 @@ def apply_to_job(request, pk):
                     user=request.user,
                 )
 
-        copied = _copy_job_skills_to_application(job, application)
+        copied = SkillAttachService.copy_job_skills_to_application(job, application)
         if copied:
             messages.success(
                 request,
@@ -166,23 +166,6 @@ def apply_to_job(request, pk):
             )
 
     return redirect("application-list")
-
-
-def _copy_job_skills_to_application(job, application):
-    copied = 0
-    for job_skill in job.skill_links.all():
-        _, created = ApplicationSkill.objects.get_or_create(
-            application=application,
-            skill_set=job_skill.skill_set,
-            defaults={
-                "score": job_skill.score,
-                "source_type": job_skill.source_type,
-                "extraction_metadata": dict(job_skill.extraction_metadata or {}),
-            },
-        )
-        if created:
-            copied += 1
-    return copied
 
 
 def _skill_keyword_lookup():

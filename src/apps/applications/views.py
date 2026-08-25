@@ -40,7 +40,27 @@ def _queue_copied_pack_tailor(request, form, application):
     return run_id
 
 
-def _application_form_success(request, form, application, redirect_url):
+def _queue_job_skill_refresh(request, application):
+    from apps.imports.services import JobUrlRefreshService
+    from apps.imports.services.skill_attach_service import SkillAttachService
+    from apps.imports.tasks import refresh_job_from_url
+
+    job = getattr(application, "job_post", None)
+    if job is None:
+        return False
+    SkillAttachService.copy_job_skills_to_application(job, application)
+    if not JobUrlRefreshService.needs_refresh(job):
+        return False
+    refresh_job_from_url.delay(job.id)
+    messages.info(request, "Fetching location and skills from the job URL.")
+    return True
+
+
+def _application_form_success(
+    request, form, application, redirect_url, extract_job_skills=False
+):
+    if extract_job_skills:
+        _queue_job_skill_refresh(request, application)
     run_id = _queue_copied_pack_tailor(request, form, application)
     if _wants_json(request):
         return JsonResponse(
@@ -124,7 +144,11 @@ class ApplicationCreateView(CreateView):
     def form_valid(self, form):
         self.object = form.save()
         return _application_form_success(
-            self.request, form, self.object, self.get_success_url()
+            self.request,
+            form,
+            self.object,
+            self.get_success_url(),
+            extract_job_skills=True,
         )
 
     def form_invalid(self, form):

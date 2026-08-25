@@ -114,6 +114,53 @@ def test_url_refresh_fills_empty_location_and_attaches_skills(company, monkeypat
 
 
 @pytest.mark.django_db
+@override_settings(CRAWL_SKILL_PIPELINE_ENABLED=True, CRAWL_SKILL_AUTO_CREATE=True)
+def test_url_refresh_copies_extracted_skills_to_related_application(
+    company, user, monkeypatch
+):
+    from apps.applications.models import Application
+    from apps.skills.models import ApplicationSkill
+
+    job = JobPost.objects.create(
+        company=company,
+        title="Machine Learning Software Engineer Intern",
+        source_url="https://www.linkedin.com/jobs/view/987654/",
+    )
+    application = Application.objects.create(user=user, job_post=job)
+    monkeypatch.setattr(
+        ParserRegistry,
+        "get_parser_for_url",
+        lambda url: _FakeParser(_fetched_raw_job()),
+    )
+
+    class FakePipeline:
+        def process_job_post(self, job_post, canonical_job_payload, auto_create=None):
+            skill = SkillSet.objects.create(name="Python")
+            JobPostSkill.objects.create(
+                job_post=job_post,
+                skill_set=skill,
+                source_type=SkillAttachmentSource.OLLAMA_PIPELINE,
+                score=90,
+            )
+            return SkillPipelineResult(
+                job_id=job_post.id,
+                success=True,
+                attached_count=1,
+            )
+
+    monkeypatch.setattr(
+        "apps.imports.services.job_url_refresh_service.SkillPipelineService",
+        FakePipeline,
+    )
+
+    JobUrlRefreshService.refresh(job)
+
+    copied = ApplicationSkill.objects.get(application=application)
+    assert copied.skill_set.name == "Python"
+    assert copied.score == 90
+
+
+@pytest.mark.django_db
 @override_settings(CRAWL_SKILL_PIPELINE_ENABLED=True)
 def test_url_refresh_does_not_overwrite_typed_location(company, monkeypatch):
     job = JobPost.objects.create(

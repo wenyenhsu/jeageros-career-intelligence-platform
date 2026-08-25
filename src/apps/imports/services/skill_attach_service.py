@@ -204,6 +204,34 @@ class SkillAttachService:
             extraction_metadata=extraction_metadata,
         )
 
+    @classmethod
+    def copy_job_skills_to_application(cls, job, application):
+        if job is None or application is None:
+            return 0
+        copied = 0
+        for job_skill in job.skill_links.all():
+            _, created = ApplicationSkill.objects.get_or_create(
+                application=application,
+                skill_set=job_skill.skill_set,
+                defaults={
+                    "score": job_skill.score,
+                    "source_type": job_skill.source_type,
+                    "extraction_metadata": dict(job_skill.extraction_metadata or {}),
+                },
+            )
+            if created:
+                copied += 1
+        return copied
+
+    @classmethod
+    def copy_job_skills_to_related_applications(cls, job):
+        if job is None:
+            return 0
+        return sum(
+            cls.copy_job_skills_to_application(job, application)
+            for application in job.applications.all()
+        )
+
     def _attach(
         self,
         model,

@@ -10,6 +10,14 @@ from apps.applications.services.cover_letter_tailor_service import (
 from apps.applications.services.materials_pack_service import MaterialsPackService
 
 
+@pytest.fixture(autouse=True)
+def _skip_job_url_refresh(monkeypatch):
+    monkeypatch.setattr(
+        "apps.imports.tasks.refresh_job_from_url.delay",
+        lambda *args, **kwargs: None,
+    )
+
+
 class FakeCoverRewriter:
     def __init__(self, text="Tailored cover letter about Kubernetes.", error=None):
         self.text = text

@@ -9,6 +9,7 @@ from .job_normalizer import CanonicalJobPayload, JobNormalizer
 from .job_sync_service import JobSyncService
 from .monitoring_service import MonitoringService
 from .parser_registry import ParserRegistry
+from .skill_attach_service import SkillAttachService
 from .skill_pipeline_service import SkillPipelineService
 
 
@@ -129,6 +130,12 @@ class JobUrlRefreshService:
             upsert_result = JobSyncService.upsert_job(merged, job=job)
             job = upsert_result.job
             skills_attached = cls._run_skill_pipeline(job, merged)
+            job = (
+                JobPost.objects.select_related("company")
+                .prefetch_related("skill_links", "applications")
+                .get(pk=job.pk)
+            )
+            SkillAttachService.copy_job_skills_to_related_applications(job)
         except Exception as exc:
             MonitoringService.log_failure(
                 step_name="job_url_refresh",
