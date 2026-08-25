@@ -9,7 +9,7 @@ from django.db import close_old_connections
 
 from .ats_document_writer import AtsDocumentWriter
 from .ats_keyword_extractor import AtsKeywordError, AtsKeywordExtractor
-from .ats_scan_service import AtsScanService
+from .cover_letter_layout import merge_letter_text, read_cover_letter_text, strip_html
 from .materials_folder_service import MaterialsFolderService
 from .materials_pack_service import MaterialsPackService
 from ..models import GOOGLE_DRIVE_HOSTS
@@ -154,7 +154,7 @@ class CoverLetterTailorService:
                 logger.exception("Job URL fetch failed for cover letter tailor")
                 fetched = ""
 
-        description = fetched or stored
+        description = strip_html(fetched or stored)
         if not description:
             if url:
                 return {
@@ -201,7 +201,12 @@ class CoverLetterTailorService:
                 "backups": [],
             }
 
-        rewritten = str(rewritten or "").strip()
+        rewritten = merge_letter_text(
+            cover_text,
+            rewritten,
+            company=application.company_display or "",
+            job_title=application.job_title_display or "",
+        )
         if not rewritten:
             return {
                 "tailored": False,
@@ -214,9 +219,7 @@ class CoverLetterTailorService:
         written = []
         backups = []
         for path in cover_files:
-            result = self.document_writer.overwrite_file(
-                path, title="Cover Letter", text=rewritten
-            )
+            result = self.document_writer.overwrite_cover_letter(path, rewritten)
             written.append(path.name)
             if result.get("backup"):
                 backups.append(result["backup"])
@@ -312,15 +315,21 @@ class CoverLetterTailorService:
             path = folder / name
             if path.is_file():
                 files.append(path)
-        if files:
-            return files
-        return [
-            path
-            for path in sorted(folder.iterdir(), key=lambda item: item.name.casefold())
-            if path.is_file()
-            and cls._is_cover_letter_name(path.name)
-            and ".original" not in path.name.casefold()
-        ]
+        if not files:
+            files = [
+                path
+                for path in folder.iterdir()
+                if path.is_file()
+                and cls._is_cover_letter_name(path.name)
+                and ".original" not in path.name.casefold()
+            ]
+        return sorted(
+            files,
+            key=lambda item: (
+                0 if item.suffix.casefold() == ".docx" else 1,
+                item.name.casefold(),
+            ),
+        )
 
     @staticmethod
     def _is_cover_letter_name(name):
@@ -329,17 +338,7 @@ class CoverLetterTailorService:
 
     @classmethod
     def _read_text(cls, path):
-        path = Path(path)
-        try:
-            text = AtsScanService.read_document_text(path)
-            if text:
-                return text
-        except Exception:
-            logger.exception("Failed to parse cover letter %s", path.name)
-        try:
-            return " ".join(path.read_text(encoding="utf-8", errors="ignore").split())
-        except OSError:
-            return ""
+        return read_cover_letter_text(path)
 
     @staticmethod
     def _is_drive_url(url):

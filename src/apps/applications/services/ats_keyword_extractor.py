@@ -58,10 +58,26 @@ class AtsKeywordExtractor:
             try:
                 data = json.loads(payload)
             except json.JSONDecodeError:
-                return payload.strip()
+                return AtsKeywordExtractor._normalize_letter_payload(payload)
         if isinstance(data, dict):
-            return str(data.get("text") or data.get("draft") or "").strip()
-        return str(data or "").strip()
+            paragraphs = data.get("paragraphs")
+            if isinstance(paragraphs, list) and paragraphs:
+                return AtsKeywordExtractor._normalize_letter_payload(
+                    "\n\n".join(
+                        str(item).strip() for item in paragraphs if str(item).strip()
+                    )
+                )
+            return AtsKeywordExtractor._normalize_letter_payload(
+                str(data.get("text") or data.get("draft") or "")
+            )
+        return AtsKeywordExtractor._normalize_letter_payload(str(data or ""))
+
+    @staticmethod
+    def _normalize_letter_payload(text):
+        value = str(text or "").strip()
+        if "\n" not in value and "\\n" in value:
+            value = value.replace("\\n", "\n")
+        return value.strip()
 
     def _parse_keywords(self, payload):
         data = payload
@@ -141,12 +157,20 @@ class AtsKeywordExtractor:
     ):
         return (
             f"Rewrite this cover letter for {job_title} at {company}. "
+            "The original letter was written for a different employer. "
+            "Retarget the recipient, greeting, job title, and body to this job. "
+            "Do not keep the previous company name or previous role. "
             "Use wording from the job description where it truthfully fits. "
             "Keep facts truthful. Do not invent employers, titles, dates, or skills. "
             "Do not use a market skill catalog or synonyms that are not in the "
             "job description or the original letter. "
-            "Keep a professional 3-4 paragraph cover letter. "
-            "Return only JSON: {\"text\": \"cover letter\"}.\n\n"
+            "Keep the visual layout only: name, contact, date, recipient, "
+            "greeting, 3-4 body paragraphs, closing, and signature each on "
+            "separate lines. Separate body paragraphs with a blank line. "
+            "Do not add a title such as Cover Letter. "
+            "Do not collapse the header, recipient, or greeting into one paragraph. "
+            "Do not copy HTML, markdown, or bullet lists from the job description. "
+            "Return only JSON: {\"text\": \"cover letter with line breaks\"}.\n\n"
             f"Job description:\n{str(job_description or '')[:8000]}\n\n"
             f"Original cover letter:\n{str(cover_letter_text or '')[:8000]}"
         )

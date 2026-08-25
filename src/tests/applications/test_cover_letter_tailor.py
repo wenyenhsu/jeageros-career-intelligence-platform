@@ -269,3 +269,130 @@ def test_create_json_returns_cover_letter_run_id(
     ).json()
     assert status["status"] == "SUCCESS"
     assert status["progress"] == 100
+
+
+def _write_letter_docx(path, company="Rippling"):
+    from docx import Document
+    from docx.shared import Pt
+
+    document = Document()
+    name = document.add_paragraph("WEN-YEN (HANK) HSU")
+    name.runs[0].bold = True
+    name.runs[0].font.size = Pt(14)
+    document.add_paragraph(
+        "Los Angeles, CA | +1 (213) 536-3478 | godhanko@gmail.com"
+    )
+    document.add_paragraph("August 19, 2026")
+    document.add_paragraph("")
+    document.add_paragraph(company)
+    document.add_paragraph("Machine Learning Team")
+    document.add_paragraph("San Francisco, CA")
+    document.add_paragraph(f"Dear {company} Hiring Team:")
+    document.add_paragraph(
+        f"I am writing to apply for the intern position at {company}."
+    )
+    document.add_paragraph("My research focuses on multimodal AI agents.")
+    document.add_paragraph("Previous experience at TSMC and Entegris.")
+    document.add_paragraph("I would welcome the opportunity to contribute.")
+    document.add_paragraph("Best regards,")
+    document.add_paragraph("Wen-Yen (Hank) Hsu")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    document.save(path)
+
+
+@pytest.mark.django_db
+def test_tailor_keeps_cover_letter_layout_after_jd_rewrite(
+    application, job, application_materials_root, settings
+):
+    from docx import Document
+    from pypdf import PdfReader
+
+    job.company.name = "Crowe"
+    job.company.save(update_fields=["name"])
+    job.source_url = "https://example.com/jobs/backend"
+    job.save(update_fields=["source_url"])
+    root = Path(settings.RESUME_TEMPLATE_ROOT)
+    _write_letter_docx(root / "Cover_Letter_AI.docx")
+    (root / "Cover_Letter_AI.pdf").write_text("template pdf", encoding="utf-8")
+    (root / "WenYenHsu_Resume_AI.pdf").write_text("resume", encoding="utf-8")
+    MaterialsPackService().apply_pack(application, "AI")
+    mashed = (
+        "Cover Letter HANK HSU Los Angeles, CA | other@example.com "
+        "August 19, 2026 Crowe AI Team San Francisco, CA "
+        "Dear Crowe Hiring Team: I am writing about Kubernetes. "
+        "Best regards, Someone Else"
+    )
+    rewriter = FakeCoverRewriter(text=mashed)
+
+    result = CoverLetterTailorService(
+        extractor=rewriter,
+        fetch_description=lambda url: "<p>Need <b>Kubernetes</b>.</p>",
+    ).run(application)
+
+    dest = Path(application.materials_local_path)
+    doc = Document(dest / "Cover_Letter_AI.docx")
+    texts = [
+        paragraph.text.strip()
+        for paragraph in doc.paragraphs
+        if paragraph.text.strip()
+    ]
+    pdf_text = PdfReader(str(dest / "Cover_Letter_AI.pdf")).pages[0].extract_text()
+
+    assert result["tailored"] is True
+    assert "\n" in rewriter.calls[0]["cover_letter_text"]
+    assert "<p>" not in rewriter.calls[0]["job_description"]
+    assert texts[0] == "WEN-YEN (HANK) HSU"
+    assert texts[1].startswith("Los Angeles, CA")
+    assert "godhanko@gmail.com" in texts[1]
+    assert any(line.startswith("Dear Crowe") for line in texts)
+    assert any(line == "San Francisco, CA" for line in texts)
+    assert any("Kubernetes" in line for line in texts)
+    assert "Cover Letter" not in texts
+    assert doc.paragraphs[0].runs[0].bold is True
+    assert pdf_text.splitlines()[0].strip() == "WEN-YEN (HANK) HSU"
+    assert "Cover Letter" not in pdf_text.splitlines()[0]
+    assert "Kubernetes" in pdf_text
+    assert "Rippling" not in pdf_text
+
+
+@pytest.mark.django_db
+def test_tailor_updates_pdf_when_model_copies_original_letter(
+    application, job, application_materials_root, settings
+):
+    from docx import Document
+    from pypdf import PdfReader
+
+    job.company.name = "Crowe"
+    job.company.save(update_fields=["name"])
+    job.title = "AI Functional Intern"
+    job.source_url = "https://example.com/jobs/backend"
+    job.save(update_fields=["title", "source_url"])
+    root = Path(settings.RESUME_TEMPLATE_ROOT)
+    _write_letter_docx(root / "Cover_Letter_AI.docx")
+    (root / "Cover_Letter_AI.pdf").write_text("template pdf", encoding="utf-8")
+    (root / "WenYenHsu_Resume_AI.pdf").write_text("resume", encoding="utf-8")
+    MaterialsPackService().apply_pack(application, "AI")
+
+    class EchoRewriter:
+        def rewrite_cover_letter(
+            self, job_title, company, cover_letter_text, job_description
+        ):
+            return cover_letter_text
+
+    result = CoverLetterTailorService(
+        extractor=EchoRewriter(),
+        fetch_description=lambda url: "Need Kubernetes.",
+    ).run(application)
+
+    dest = Path(application.materials_local_path)
+    pdf_text = PdfReader(str(dest / "Cover_Letter_AI.pdf")).pages[0].extract_text()
+    doc = Document(dest / "Cover_Letter_AI.docx")
+    texts = [paragraph.text for paragraph in doc.paragraphs]
+
+    assert result["tailored"] is True
+    assert "Crowe" in pdf_text
+    assert "Rippling" not in pdf_text
+    assert "AI Functional Intern" in pdf_text
+    assert any(line == "Crowe" for line in texts)
+    assert any("Dear Crowe" in line for line in texts)
+    assert "Rippling" not in "\n".join(texts)
