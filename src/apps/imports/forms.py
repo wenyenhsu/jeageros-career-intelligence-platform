@@ -5,13 +5,40 @@ from django import forms
 from .models import JobSource
 from .services.internship_schedule_extractor import parse_year_month
 
+GENERIC_CRAWL_DEFAULTS = {
+    "max_pages": 1,
+    "fetch_details": "new_or_missing",
+    "max_search_requests": 3,
+    "max_detail_requests": 3,
+    "request_delay_seconds": 2,
+    "rolling_search": True,
+    "rate_limit_cooldown_minutes": 60,
+    "default_job_type": "",
+}
+
+GENERIC_FILTER_DEFAULTS = {
+    "location": [],
+    "remote_only": False,
+    "workplace_types": [],
+    "job_types": [],
+    "search_keywords": [],
+    "include_keywords": [],
+    "exclude_keywords": [],
+    "target_companies": [],
+    "location_aliases": [],
+}
+
 
 class JobSourceForm(forms.ModelForm):
     DEFAULT_BASE_URLS = {
         JobSource.ResourceChoices.LINKEDIN: "https://www.linkedin.com/jobs/search/",
         JobSource.ResourceChoices.GREENHOUSE: "https://my.greenhouse.io/",
-        # JobSource.ResourceChoices.HANDSHAKE: "https://app.joinhandshake.com/stu/postings",
-        # JobSource.ResourceChoices.GENERIC_HTML: "",
+        JobSource.ResourceChoices.HANDSHAKE: "https://app.joinhandshake.com/stu/postings",
+        JobSource.ResourceChoices.LEVER: "https://jobs.lever.co/",
+        JobSource.ResourceChoices.CAREER_SITE: "",
+        JobSource.ResourceChoices.RSS: "",
+        JobSource.ResourceChoices.API: "",
+        JobSource.ResourceChoices.GENERIC_HTML: "",
     }
 
     DEFAULT_CRAWL_CONFIGS = {
@@ -38,26 +65,18 @@ class JobSourceForm(forms.ModelForm):
             "date_posted": "r604800",
             "default_job_type": "",
         },
-        # JobSource.ResourceChoices.HANDSHAKE: {
-        #     "max_pages": 1,
-        #     "fetch_details": "new_or_missing",
-        #     "max_search_requests": 5,
-        #     "max_detail_requests": 5,
-        #     "request_delay_seconds": 2,
-        #     "rolling_search": True,
-        #     "rate_limit_cooldown_minutes": 60,
-        #     "default_job_type": "",
-        # },
-        # JobSource.ResourceChoices.GENERIC_HTML: {
-        #     "max_pages": 1,
-        #     "fetch_details": "all",
-        #     "max_search_requests": 3,
-        #     "max_detail_requests": 3,
-        #     "request_delay_seconds": 1,
-        #     "rolling_search": True,
-        #     "rate_limit_cooldown_minutes": 60,
-        #     "default_job_type": "",
-        # },
+        JobSource.ResourceChoices.HANDSHAKE: dict(GENERIC_CRAWL_DEFAULTS),
+        JobSource.ResourceChoices.LEVER: dict(GENERIC_CRAWL_DEFAULTS),
+        JobSource.ResourceChoices.CAREER_SITE: dict(GENERIC_CRAWL_DEFAULTS),
+        JobSource.ResourceChoices.RSS: {
+            **GENERIC_CRAWL_DEFAULTS,
+            "fetch_details": "false",
+        },
+        JobSource.ResourceChoices.API: {
+            **GENERIC_CRAWL_DEFAULTS,
+            "fetch_details": "false",
+        },
+        JobSource.ResourceChoices.GENERIC_HTML: dict(GENERIC_CRAWL_DEFAULTS),
     }
 
     DEFAULT_FILTER_CONFIGS = {
@@ -84,26 +103,12 @@ class JobSourceForm(forms.ModelForm):
             "board_tokens": [],
             "location_aliases": [],
         },
-        # JobSource.ResourceChoices.HANDSHAKE: {
-        #     "location": [],
-        #     "remote_only": False,
-        #     "workplace_types": ["Remote", "Hybrid", "On-site"],
-        #     "job_types": [],
-        #     "search_keywords": [],
-        #     "include_keywords": [],
-        #     "exclude_keywords": [],
-        #     "target_companies": [],
-        # },
-        # JobSource.ResourceChoices.GENERIC_HTML: {
-        #     "location": [],
-        #     "remote_only": False,
-        #     "workplace_types": [],
-        #     "job_types": [],
-        #     "search_keywords": [],
-        #     "include_keywords": [],
-        #     "exclude_keywords": [],
-        #     "target_companies": [],
-        # },
+        JobSource.ResourceChoices.HANDSHAKE: dict(GENERIC_FILTER_DEFAULTS),
+        JobSource.ResourceChoices.LEVER: dict(GENERIC_FILTER_DEFAULTS),
+        JobSource.ResourceChoices.CAREER_SITE: dict(GENERIC_FILTER_DEFAULTS),
+        JobSource.ResourceChoices.RSS: dict(GENERIC_FILTER_DEFAULTS),
+        JobSource.ResourceChoices.API: dict(GENERIC_FILTER_DEFAULTS),
+        JobSource.ResourceChoices.GENERIC_HTML: dict(GENERIC_FILTER_DEFAULTS),
     }
 
     MANAGED_CRAWL_CONFIG_KEYS = {
@@ -365,7 +370,9 @@ class JobSourceForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        user = kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
+        self.user_can_manage_resource = user is None or user.is_staff
         self._normalized_crawl_config = {}
         self._normalized_filter_config = {}
         self.fields["resource"].widget.attrs.update(
@@ -377,8 +384,19 @@ class JobSourceForm(forms.ModelForm):
                 "data-base-url-target": "id_base_url",
             }
         )
+        if not self.user_can_manage_resource:
+            resource_attrs = dict(self.fields["resource"].widget.attrs)
+            self.fields["resource"].widget = forms.HiddenInput(attrs=resource_attrs)
+            self.fields["resource"].disabled = True
         if not self.is_bound:
             self._set_initial_config_values()
+
+    @property
+    def resource_display(self):
+        resource = self.initial.get("resource") or getattr(
+            self.instance, "resource", ""
+        )
+        return dict(JobSource.ResourceChoices.choices).get(resource, resource)
 
     def clean(self):
         cleaned_data = super().clean()

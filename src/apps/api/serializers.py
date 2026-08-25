@@ -1,3 +1,6 @@
+from copy import copy
+
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 from apps.applications.models import Application
 from apps.companies.models import Company
@@ -144,6 +147,23 @@ class JobSourceSerializer(serializers.ModelSerializer):
     class Meta:
         model = JobSource
         fields = "__all__"
+
+    def get_fields(self):
+        fields = super().get_fields()
+        request = self.context.get("request")
+        if request is not None and not request.user.is_staff:
+            fields["resource"].read_only = True
+        return fields
+
+    def validate(self, attrs):
+        candidate = copy(self.instance) if self.instance is not None else JobSource()
+        for field_name, value in attrs.items():
+            setattr(candidate, field_name, value)
+        try:
+            candidate.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.message_dict) from exc
+        return attrs
 
 
 class CrawlRunSerializer(serializers.ModelSerializer):

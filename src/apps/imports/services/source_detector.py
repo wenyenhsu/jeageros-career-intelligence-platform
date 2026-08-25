@@ -49,7 +49,7 @@ class SourceDetector:
         if resource_type in cls.SPECIFIC_PARSER_TYPES:
             return resource_type
         if resource_type in cls.GENERIC_PARSER_TYPES:
-            return cls.CAREER_SITE
+            return resource_type
         if detected_type:
             return detected_type
 

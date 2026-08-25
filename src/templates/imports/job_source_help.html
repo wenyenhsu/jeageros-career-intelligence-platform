@@ -8,9 +8,11 @@
     <p class="text-muted mb-0">How each source setting affects crawling, filtering, and stored job data.</p>
   </div>
   <div class="d-flex flex-wrap gap-2">
-    <a href="{% url 'source-create' %}" class="btn btn-primary">
-      <i class="bi bi-plus-lg me-1"></i>Create source
-    </a>
+    {% if user.is_staff %}
+      <a href="{% url 'source-create' %}" class="btn btn-primary">
+        <i class="bi bi-plus-lg me-1"></i>Create source
+      </a>
+    {% endif %}
     <a href="{% url 'source-list' %}" class="btn btn-outline-secondary">
       Sources
     </a>
@@ -24,8 +26,8 @@
         <h2 class="h5 fw-bold">Configuration Flow</h2>
         <p class="text-muted mb-3">The form is a structured editor for the JSON fields stored on each JobSource.</p>
         <ol class="mb-0">
-          <li>Use the LinkedIn resource type.</li>
-          <li>The form fills safe LinkedIn defaults.</li>
+          <li>A system administrator creates the source and selects its parser family.</li>
+          <li>The form fills source-specific defaults where available.</li>
           <li>Edit the crawl and filter parameters.</li>
           <li>Saving writes normalized values into <code>crawl_config</code> and <code>filter_config</code>.</li>
           <li>The crawler reads those values during the next source run.</li>
@@ -38,7 +40,7 @@
     <div class="card border-0 shadow-sm h-100">
       <div class="card-body">
         <h2 class="h5 fw-bold">Resource Defaults</h2>
-        <p class="text-muted">Only LinkedIn is user-selectable right now. Other parser families remain internal extension points until their crawlers are production-ready.</p>
+        <p class="text-muted">Resource types are selected by system administrators. LinkedIn and Greenhouse have live listing adapters; the remaining registered types are extension points and may require configured raw payloads until their provider adapter is completed.</p>
         <div class="table-responsive">
           <table class="table align-middle mb-0">
             <thead>
@@ -53,6 +55,31 @@
                 <td><span class="badge text-bg-secondary">LinkedIn</span></td>
                 <td><code>https://www.linkedin.com/jobs/search/</code></td>
                 <td>LinkedIn job search pages. Filters should be configured in the form instead of hardcoded into the URL.</td>
+              </tr>
+              <tr>
+                <td><span class="badge text-bg-secondary">Greenhouse</span></td>
+                <td><code>https://my.greenhouse.io/</code></td>
+                <td>Greenhouse boards selected with board tokens in the filter configuration.</td>
+              </tr>
+              <tr>
+                <td><span class="badge text-bg-secondary">Handshake</span></td>
+                <td><code>https://app.joinhandshake.com/stu/postings</code></td>
+                <td>Registered provider type; live authenticated crawling still requires a provider adapter.</td>
+              </tr>
+              <tr>
+                <td><span class="badge text-bg-secondary">Lever</span></td>
+                <td><code>https://jobs.lever.co/</code></td>
+                <td>Registered provider type; use configured raw jobs until its listing adapter is completed.</td>
+              </tr>
+              <tr>
+                <td><span class="badge text-bg-secondary">Career Site / Generic HTML</span></td>
+                <td>Company-specific URL</td>
+                <td>Generic JSON-LD job detail extraction and source-specific extension points.</td>
+              </tr>
+              <tr>
+                <td><span class="badge text-bg-secondary">RSS / API</span></td>
+                <td>Feed or endpoint URL</td>
+                <td>Registered feed and endpoint types; payload adapters can be added without changing downstream sync.</td>
               </tr>
             </tbody>
           </table>
@@ -82,7 +109,7 @@
           </tr>
           <tr>
             <td><code>Resource</code></td>
-            <td>Parser family used by source detection and crawling.</td>
+            <td>System-managed parser family used by source detection and crawling.</td>
             <td><code>LinkedIn</code></td>
           </tr>
           <tr>

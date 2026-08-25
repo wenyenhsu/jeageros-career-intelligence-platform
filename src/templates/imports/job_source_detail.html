@@ -12,10 +12,12 @@
         </div>
         <div class="d-flex gap-2">
           <a href="{% url 'source-update' source.pk %}" class="btn btn-warning px-4">Edit</a>
-          <form method="post" action="{% url 'source-delete' source.pk %}" class="d-inline">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-danger" onclick="return confirm('Delete this source?');">Delete</button>
-          </form>
+          {% if user.is_staff %}
+            <form method="post" action="{% url 'source-delete' source.pk %}" class="d-inline">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-danger" onclick="return confirm('Delete this source?');">Delete</button>
+            </form>
+          {% endif %}
         </div>
       </div>
 

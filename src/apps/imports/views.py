@@ -5,6 +5,7 @@ import json
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.shortcuts import render
@@ -311,6 +312,8 @@ def run_source(request, pk):
 @login_required
 @require_POST
 def copy_source(request, pk):
+    if not request.user.is_staff:
+        raise PermissionDenied
     source = get_object_or_404(JobSource, pk=pk)
     copied_source = JobSource.objects.create(
         name=_next_source_copy_name(source.name),
@@ -601,21 +604,40 @@ class MonitoringHelpView(LoginRequiredMixin, TemplateView):
     template_name = "imports/monitoring_help.html"
 
 
-class JobSourceCreateView(LoginRequiredMixin, CreateView):
+class StaffRequiredMixin:
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_staff:
+            raise PermissionDenied
+        return super().dispatch(request, *args, **kwargs)
+
+
+class JobSourceFormUserMixin:
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["user"] = self.request.user
+        return kwargs
+
+
+class JobSourceCreateView(
+    LoginRequiredMixin,
+    StaffRequiredMixin,
+    JobSourceFormUserMixin,
+    CreateView,
+):
     model = JobSource
     form_class = JobSourceForm
     template_name = "imports/job_source_form.html"
     success_url = reverse_lazy("source-list")
 
 
-class JobSourceUpdateView(LoginRequiredMixin, UpdateView):
+class JobSourceUpdateView(LoginRequiredMixin, JobSourceFormUserMixin, UpdateView):
     model = JobSource
     form_class = JobSourceForm
     template_name = "imports/job_source_form.html"
     success_url = reverse_lazy("source-list")
 
 
-class JobSourceDeleteView(LoginRequiredMixin, DeleteView):
+class JobSourceDeleteView(LoginRequiredMixin, StaffRequiredMixin, DeleteView):
     model = JobSource
     template_name = "imports/job_source_confirm_delete.html"
     success_url = reverse_lazy("source-list")

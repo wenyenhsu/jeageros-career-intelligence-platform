@@ -15,9 +15,11 @@
         <i class="bi bi-play-fill me-1"></i>Run all sources
       </button>
     </form>
-    <a href="{% url 'source-create' %}" class="btn btn-primary">
-      <i class="bi bi-plus-lg me-1"></i>Create source
-    </a>
+    {% if user.is_staff %}
+      <a href="{% url 'source-create' %}" class="btn btn-primary">
+        <i class="bi bi-plus-lg me-1"></i>Create source
+      </a>
+    {% endif %}
   </div>
 </div>
 
@@ -158,13 +160,17 @@
                   {% csrf_token %}
                   <button type="submit" class="btn btn-outline-success btn-sm">Run</button>
                 </form>
-                <form method="post" action="{% url 'source-copy' source.pk %}" class="d-inline">
-                  {% csrf_token %}
-                  <button type="submit" class="btn btn-outline-secondary btn-sm">Copy</button>
-                </form>
+                {% if user.is_staff %}
+                  <form method="post" action="{% url 'source-copy' source.pk %}" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline-secondary btn-sm">Copy</button>
+                  </form>
+                {% endif %}
                 <a href="{% url 'source-detail' source.pk %}" class="btn btn-outline-primary btn-sm">View</a>
                 <a href="{% url 'source-update' source.pk %}" class="btn btn-outline-secondary btn-sm">Edit</a>
-                <a href="{% url 'source-delete' source.pk %}" class="btn btn-outline-danger btn-sm">Delete</a>
+                {% if user.is_staff %}
+                  <a href="{% url 'source-delete' source.pk %}" class="btn btn-outline-danger btn-sm">Delete</a>
+                {% endif %}
               </div>
             </td>
           </tr>
@@ -178,7 +184,11 @@
                   <a href="{% url 'source-list' %}" class="btn btn-outline-secondary">Clear search</a>
                 {% else %}
                   <p class="mb-2 mt-2">No sources yet.</p>
-                  <a href="{% url 'source-create' %}" class="btn btn-primary">Create your first source</a>
+                  {% if user.is_staff %}
+                    <a href="{% url 'source-create' %}" class="btn btn-primary">Create your first source</a>
+                  {% else %}
+                    <span class="text-muted">Ask a system administrator to add one.</span>
+                  {% endif %}
                 {% endif %}
               </div>
             </td>

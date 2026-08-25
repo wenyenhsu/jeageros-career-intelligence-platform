@@ -1,6 +1,6 @@
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from django.db.models import Q
 from apps.analytics.services import (
@@ -138,9 +138,17 @@ class SkillKeywordViewSet(viewsets.ModelViewSet):
         return queryset
 
 
+class JobSourcePermission(BasePermission):
+    def has_permission(self, request, view):
+        if view.action in {"create", "destroy"}:
+            return bool(request.user and request.user.is_staff)
+        return bool(request.user and request.user.is_authenticated)
+
+
 class JobSourceViewSet(viewsets.ModelViewSet):
     queryset = JobSource.objects.all()
     serializer_class = JobSourceSerializer
+    permission_classes = (JobSourcePermission,)
 
 
 class CrawlRunViewSet(viewsets.ReadOnlyModelViewSet):

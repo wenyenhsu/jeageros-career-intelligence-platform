@@ -43,14 +43,16 @@ def test_source_list_view(client):
     assert "Abort" in content
     assert reverse("source-run-abort", args=[0]) in content
     assert "Run" in content
-    assert "Copy" in content
-    assert reverse("source-copy", args=[source.id]) in content
-    assert "Delete" in content
-    assert reverse("source-delete", args=[source.id]) in content
+    assert "Copy" not in content
+    assert reverse("source-copy", args=[source.id]) not in content
+    assert reverse("source-delete", args=[source.id]) not in content
+    assert "Create source" not in content
 
 
 @pytest.mark.django_db
-def test_source_create_view(client):
+def test_source_create_view(client, user):
+    user.is_staff = True
+    user.save(update_fields=["is_staff"])
     payload = {
         "name": "LinkedIn",
         "resource": JobSource.Resource.LINKEDIN,
@@ -96,7 +98,9 @@ def test_source_create_view(client):
 
 
 @pytest.mark.django_db
-def test_source_create_form_exposes_resource_base_url_defaults(client):
+def test_source_create_form_exposes_resource_base_url_defaults(client, user):
+    user.is_staff = True
+    user.save(update_fields=["is_staff"])
     response = client.get(reverse("source-create"))
 
     assert response.status_code == 200
@@ -105,7 +109,8 @@ def test_source_create_form_exposes_resource_base_url_defaults(client):
     assert "data-base-url-target" in content
     assert "id_base_url" in content
     assert "https://www.linkedin.com/jobs/search/" in content
-    assert "https://app.joinhandshake.com/stu/postings" not in content
+    assert "https://app.joinhandshake.com/stu/postings" in content
+    assert "https://jobs.lever.co/" in content
     assert "data-default-config-values" in content
     assert "max_search_requests" in content
     assert "workplace_types" in content
@@ -144,8 +149,8 @@ def test_source_help_view_explains_form_parameters(client):
     assert "Target companies" in content
     assert "Internship start month" in content
     assert "LinkedIn" in content
-    assert "Handshake" not in content
-    assert "Generic HTML" not in content
+    assert "Handshake" in content
+    assert "Generic HTML" in content
 
 
 def test_source_form_fills_default_base_url_when_missing():
@@ -286,7 +291,9 @@ def test_source_form_preserves_runtime_crawl_config_keys():
 
 
 @pytest.mark.django_db
-def test_source_delete_view(client):
+def test_source_delete_view(client, user):
+    user.is_staff = True
+    user.save(update_fields=["is_staff"])
     source = JobSource.objects.create(
         name="LinkedIn",
         resource=JobSource.Resource.LINKEDIN,
@@ -300,7 +307,9 @@ def test_source_delete_view(client):
 
 
 @pytest.mark.django_db
-def test_source_copy_view_duplicates_source_without_runtime_state(client):
+def test_source_copy_view_duplicates_source_without_runtime_state(client, user):
+    user.is_staff = True
+    user.save(update_fields=["is_staff"])
     source = JobSource.objects.create(
         name="LinkedIn data career",
         resource=JobSource.Resource.LINKEDIN,
@@ -343,7 +352,9 @@ def test_source_copy_view_duplicates_source_without_runtime_state(client):
 
 
 @pytest.mark.django_db
-def test_source_copy_view_uses_next_available_copy_name(client):
+def test_source_copy_view_uses_next_available_copy_name(client, user):
+    user.is_staff = True
+    user.save(update_fields=["is_staff"])
     source = JobSource.objects.create(
         name="LinkedIn",
         resource=JobSource.Resource.LINKEDIN,

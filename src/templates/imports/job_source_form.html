@@ -9,7 +9,7 @@
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
           <div>
             <h1 class="h3 fw-bold mb-1">Job source form</h1>
-            <p class="text-muted mb-0">Set the resource and crawl rules for a source.</p>
+            <p class="text-muted mb-0">Set crawl and filter rules for a source. Resource types are system-managed.</p>
           </div>
           <a href="{% url 'source-help' %}" class="btn btn-outline-secondary">
             Parameter guide
@@ -29,7 +29,16 @@
             <h2 class="h5 fw-bold mb-3">Source</h2>
             <div class="row g-3">
               {% include 'imports/partials/source_form_field.html' with field=form.name classes='col-12 col-md-6' %}
-              {% include 'imports/partials/source_form_field.html' with field=form.resource classes='col-12 col-md-6' %}
+              {% if form.user_can_manage_resource %}
+                {% include 'imports/partials/source_form_field.html' with field=form.resource classes='col-12 col-md-6' %}
+              {% else %}
+                <div class="col-12 col-md-6">
+                  <label class="form-label">Resource</label>
+                  <input class="form-control" value="{{ form.resource_display }}" readonly>
+                  {{ form.resource }}
+                  <div class="form-text">Managed by a system administrator.</div>
+                </div>
+              {% endif %}
               {% include 'imports/partials/source_form_field.html' with field=form.base_url classes='col-12' %}
               {% include 'imports/partials/source_form_field.html' with field=form.enabled classes='col-12 col-md-6' %}
               {% include 'imports/partials/source_form_field.html' with field=form.crawl_interval_minutes classes='col-12 col-md-6' %}

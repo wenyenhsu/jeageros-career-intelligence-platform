@@ -978,7 +978,9 @@ def test_greenhouse_parser_fetches_embed_job_url(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_source_create_view_supports_greenhouse_resource(client):
+def test_source_create_view_supports_greenhouse_resource(client, user):
+    user.is_staff = True
+    user.save(update_fields=["is_staff"])
     payload = {
         "name": "Greenhouse Data Analyst",
         "resource": JobSource.ResourceChoices.GREENHOUSE,

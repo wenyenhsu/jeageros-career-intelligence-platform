@@ -1,17 +1,17 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
 class JobSource(models.Model):
     class ResourceChoices(models.TextChoices):
-        # import resources check
         LINKEDIN = "LINKEDIN", "LinkedIn"
+        HANDSHAKE = "HANDSHAKE", "Handshake"
         GREENHOUSE = "GREENHOUSE", "Greenhouse"
-        # HANDSHAKE = "HANDSHAKE", "Handshake"
-        # LEVER = "LEVER", "Lever"
-        # CAREER_SITE = "CAREER_SITE", "Career Site"
-        # RSS = "RSS", "RSS"
-        # API = "API", "API"
-        # GENERIC_HTML = "GENERIC_HTML", "Generic HTML"
+        LEVER = "LEVER", "Lever"
+        CAREER_SITE = "CAREER_SITE", "Career Site"
+        RSS = "RSS", "RSS"
+        API = "API", "API"
+        GENERIC_HTML = "GENERIC_HTML", "Generic HTML"
 
     Resource = ResourceChoices
 
@@ -33,6 +33,35 @@ class JobSource(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.get_resource_display()})"
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        base_url = str(self.base_url or "").strip()
+
+        if self.enabled and not base_url:
+            errors["base_url"] = "An enabled job source requires a base URL."
+
+        if base_url and self.resource in {
+            self.ResourceChoices.LINKEDIN,
+            self.ResourceChoices.HANDSHAKE,
+            self.ResourceChoices.GREENHOUSE,
+            self.ResourceChoices.LEVER,
+        }:
+            from .services.source_detector import SourceDetector
+
+            detected_resource = SourceDetector.detect_url(base_url)
+            if detected_resource != self.resource:
+                expected_domains = ", ".join(
+                    SourceDetector.DOMAIN_PARSER_TYPES[self.resource]
+                )
+                errors["base_url"] = (
+                    f"{self.get_resource_display()} sources must use one of these "
+                    f"domains: {expected_domains}."
+                )
+
+        if errors:
+            raise ValidationError(errors)
 
 
 class CrawlRun(models.Model):
