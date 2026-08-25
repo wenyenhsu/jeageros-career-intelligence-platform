@@ -27,6 +27,36 @@ def test_create_page_shows_manual_job_fields(client):
     assert 'name="company"' in content
     assert 'name="job_title"' in content
     assert "Type a company name" in content
+    assert 'name="priority"' in content
+    assert 'class="form-select"' in content
+    assert ">1 — Highest<" in content
+    assert ">3 — Medium<" in content
+    assert ">5 — Lowest<" in content
+    assert 'type="number"' not in content
+    assert 'name="materials_pack"' in content
+    assert ">Select<" in content
+    assert 'value="AI"' in content
+    assert 'value="INFRA"' in content
+    assert "Copies the AI or Infra pack, then tailors the cover letter" in content
+
+
+@pytest.mark.django_db
+def test_priority_field_is_a_dropdown():
+    form = ApplicationForm()
+    widget = form.fields["priority"].widget
+
+    assert widget.input_type == "select"
+    assert list(form.fields["priority"].choices) == list(Application.Priority.choices)
+
+
+@pytest.mark.django_db
+def test_form_rejects_priority_outside_one_to_five(user, job):
+    form = ApplicationForm(
+        data=_create_data(user, job_post=job.pk, priority=9),
+    )
+
+    assert not form.is_valid()
+    assert "priority" in form.errors
 
 
 @pytest.mark.django_db

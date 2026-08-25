@@ -2,6 +2,7 @@ import pytest
 from django.urls import reverse
 from pathlib import Path
 
+from apps.applications.models import Application
 from apps.applications.services.materials_pack_service import (
     MaterialsPackError,
     MaterialsPackService,
@@ -98,3 +99,42 @@ def test_materials_pack_view_copies_ai_files(
 def test_invalid_pack_raises(application):
     with pytest.raises(MaterialsPackError):
         MaterialsPackService().apply_pack(application, "")
+
+
+@pytest.mark.django_db
+def test_create_page_shows_materials_pack_dropdown(client):
+    response = client.get(reverse("application-create"))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "Materials" in content
+    assert 'name="materials_pack"' in content
+    assert 'value="AI"' in content
+    assert 'value="INFRA"' in content
+
+
+@pytest.mark.django_db
+def test_create_view_copies_selected_materials_pack(
+    client, user, application_materials_root, settings
+):
+    _seed_templates(settings)
+
+    response = client.post(
+        reverse("application-create"),
+        data={
+            "user": user.pk,
+            "status": Application.Status.SAVED,
+            "priority": 3,
+            "company": "Rippling",
+            "job_title": "Software Engineer",
+            "materials_pack": "AI",
+        },
+    )
+
+    assert response.status_code == 302
+    application = Application.objects.get(user=user)
+    dest = Path(application.materials_local_path)
+    assert application.materials_pack == "AI"
+    assert (dest / "WenYenHsu_Resume_AI.pdf").read_text(encoding="utf-8") == (
+        "template WenYenHsu_Resume_AI.pdf"
+    )

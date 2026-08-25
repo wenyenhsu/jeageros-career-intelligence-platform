@@ -38,6 +38,13 @@ class Application(TimeStampedModel):
         AI = "AI", "AI"
         INFRA = "INFRA", "Infra"
 
+    class Priority(models.IntegerChoices):
+        HIGHEST = 1, "1 — Highest"
+        HIGH = 2, "2 — High"
+        MEDIUM = 3, "3 — Medium"
+        LOW = 4, "4 — Low"
+        LOWEST = 5, "5 — Lowest"
+
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     job_post = models.ForeignKey(
         JobPost, on_delete=models.CASCADE, related_name="applications"
@@ -46,7 +53,10 @@ class Application(TimeStampedModel):
         max_length=20, choices=Status.choices, default=Status.SAVED
     )
     applied_at = models.DateTimeField(null=True, blank=True)
-    priority = models.PositiveSmallIntegerField(default=3)
+    priority = models.PositiveSmallIntegerField(
+        choices=Priority.choices,
+        default=Priority.MEDIUM,
+    )
     referral = models.BooleanField(default=False)
     skill_sets = models.ManyToManyField(
         "skills.SkillSet",

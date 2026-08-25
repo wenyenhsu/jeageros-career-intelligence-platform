@@ -10,6 +10,7 @@ from apps.jobs.models import JobPost
 
 from .models import Application, GOOGLE_DRIVE_HOSTS, normalize_materials_url
 from .services.materials_folder_service import MaterialsFolderService
+from .services.materials_pack_service import MaterialsPackService
 
 
 class ApplicationForm(forms.ModelForm):
@@ -39,6 +40,7 @@ class ApplicationForm(forms.ModelForm):
             "applied_at",
             "priority",
             "referral",
+            "materials_pack",
             "materials_url",
         ]
         widgets = {
@@ -49,13 +51,29 @@ class ApplicationForm(forms.ModelForm):
                 attrs={"type": "datetime-local", "class": "form-control"},
                 format="%Y-%m-%dT%H:%M",
             ),
-            "priority": forms.NumberInput(attrs={"class": "form-control"}),
+            "priority": forms.Select(attrs={"class": "form-select"}),
             "referral": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "materials_pack": forms.Select(attrs={"class": "form-select"}),
+        }
+        labels = {
+            "materials_pack": "Materials",
+        }
+        help_texts = {
+            "materials_pack": "Copies the AI or Infra pack, then tailors the cover letter to the job URL.",
         }
 
     def __init__(self, *args, allow_manual_job=False, **kwargs):
         self.allow_manual_job = allow_manual_job
         super().__init__(*args, **kwargs)
+        self._original_pack = (
+            self.instance.materials_pack if self.instance.pk else ""
+        ) or ""
+        self.copied_pack = False
+        self.cover_letter_tailor_result = None
+
+        pack_field = self.fields["materials_pack"]
+        pack_field.required = False
+        pack_field.choices = [("", "Select"), *Application.MaterialsPack.choices]
 
         job_post_field = self.fields["job_post"]
         job_post_field.label = "Linked JobPost"
@@ -171,6 +189,19 @@ class ApplicationForm(forms.ModelForm):
     def clean_materials_url(self):
         return normalize_materials_url(self.cleaned_data.get("materials_url"))
 
+    def clean_materials_pack(self):
+        pack = (self.cleaned_data.get("materials_pack") or "").strip()
+        if not pack:
+            return ""
+        pack_key = MaterialsPackService.normalize_pack(pack)
+        if not pack_key:
+            raise forms.ValidationError("Choose AI or Infra.")
+        if pack_key != self._original_pack:
+            source_dir = MaterialsPackService.template_root()
+            if source_dir is None or not source_dir.is_dir():
+                raise forms.ValidationError("Resume template folder was not found.")
+        return pack_key
+
     def clean(self):
         cleaned_data = super().clean()
         job_post = cleaned_data.get("job_post")
@@ -201,16 +232,26 @@ class ApplicationForm(forms.ModelForm):
                 )
         return cleaned_data
 
-    @transaction.atomic
     def save(self, commit=True):
-        application = super().save(commit=False)
-        if not application.job_post_id:
-            application.job_post = self._create_job_post()
-        if commit:
-            application.save()
-            self.save_m2m()
-            MaterialsFolderService().ensure_folders(application)
+        copied_pack = False
+        with transaction.atomic():
+            application = super().save(commit=False)
+            if not application.job_post_id:
+                application.job_post = self._create_job_post()
+            if commit:
+                application.save()
+                self.save_m2m()
+                MaterialsFolderService().ensure_folders(application)
+                copied_pack = self._copy_selected_materials_pack(application)
+        self.copied_pack = copied_pack
         return application
+
+    def _copy_selected_materials_pack(self, application):
+        pack = (self.cleaned_data.get("materials_pack") or "").strip()
+        if not pack or pack == self._original_pack:
+            return False
+        MaterialsPackService().apply_pack(application, pack)
+        return True
 
     def _find_existing_job(self, cleaned_data):
         source_url = (cleaned_data.get("source_url") or "").strip()

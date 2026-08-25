@@ -47,6 +47,23 @@ class AtsDocumentWriter:
         self._write_plain_docx(target.with_suffix(".docx"), title=title, body=text)
         return {"path": target, "backup": backup}
 
+    def overwrite_file(self, path, title, text):
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        backup_path = path.with_name(f"{path.stem}.original{path.suffix}")
+        backup = ""
+        if path.exists() and not backup_path.exists():
+            shutil.copy2(path, backup_path)
+            backup = backup_path.name
+        suffix = path.suffix.casefold()
+        if suffix == ".pdf":
+            self.write_plain_pdf(path, title=title, body=text)
+        elif suffix == ".docx":
+            self._write_plain_docx(path, title=title, body=text)
+        else:
+            path.write_text(str(text or "").rstrip() + "\n", encoding="utf-8")
+        return {"path": path, "backup": backup}
+
     @classmethod
     def write_plain_pdf(cls, path, title, body):
         lines = cls._wrap_lines(f"{title}\n\n{body}")

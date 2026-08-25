@@ -38,6 +38,21 @@ class AtsKeywordExtractor:
         payload = self._call_ollama(
             self._build_rewrite_prompt(kind, job_title, company, resume_text, unmatched)
         )
+        return self._payload_text(payload)
+
+    def rewrite_cover_letter(self, job_title, company, cover_letter_text, job_description):
+        payload = self._call_ollama(
+            self._build_cover_letter_prompt(
+                job_title, company, cover_letter_text, job_description
+            )
+        )
+        text = self._payload_text(payload)
+        if not text:
+            raise AtsKeywordError("Cover letter rewrite returned no text.")
+        return text
+
+    @staticmethod
+    def _payload_text(payload):
         data = payload
         if isinstance(payload, str):
             try:
@@ -119,4 +134,19 @@ class AtsKeywordExtractor:
             f"Unmatched keywords: {missing}. "
             "Return only JSON: {\"text\": \"markdown draft\"}.\n\n"
             f"{resume_text[:12000]}"
+        )
+
+    def _build_cover_letter_prompt(
+        self, job_title, company, cover_letter_text, job_description
+    ):
+        return (
+            f"Rewrite this cover letter for {job_title} at {company}. "
+            "Use wording from the job description where it truthfully fits. "
+            "Keep facts truthful. Do not invent employers, titles, dates, or skills. "
+            "Do not use a market skill catalog or synonyms that are not in the "
+            "job description or the original letter. "
+            "Keep a professional 3-4 paragraph cover letter. "
+            "Return only JSON: {\"text\": \"cover letter\"}.\n\n"
+            f"Job description:\n{str(job_description or '')[:8000]}\n\n"
+            f"Original cover letter:\n{str(cover_letter_text or '')[:8000]}"
         )

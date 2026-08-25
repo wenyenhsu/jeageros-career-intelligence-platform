@@ -13,7 +13,7 @@
                         <p class="text-muted mb-0">Create or update an application record.</p>
                     </div>
 
-                    <form method="post" novalidate>
+                    <form method="post" novalidate data-cover-letter-progress-form>
                         {% csrf_token %}
 
                         {% if form.non_field_errors %}
@@ -104,6 +104,15 @@
                             <div class="text-danger small">{{ form.referral.errors }}</div>
                         </div>
 
+                        <div class="mb-3">
+                            <label class="form-label">{{ form.materials_pack.label }}</label>
+                            {{ form.materials_pack }}
+                            {% if form.materials_pack.help_text %}
+                                <div class="form-text">{{ form.materials_pack.help_text }}</div>
+                            {% endif %}
+                            <div class="text-danger small">{{ form.materials_pack.errors }}</div>
+                        </div>
+
                         <div class="mb-4">
                             <label class="form-label">{{ form.materials_url.label }}</label>
                             {{ form.materials_url }}
@@ -129,4 +138,60 @@
         </div>
     </div>
 </div>
+<script>
+(() => {
+  const form = document.querySelector("[data-cover-letter-progress-form]");
+  if (!form) return;
+
+  let allowNative = false;
+  form.addEventListener("submit", async (event) => {
+    if (allowNative) return;
+    const pack = form.querySelector('[name="materials_pack"]');
+    if (!pack || !pack.value) return;
+
+    event.preventDefault();
+    const runId = (window.crypto && crypto.randomUUID)
+      ? crypto.randomUUID().replaceAll("-", "")
+      : String(Date.now());
+    let hidden = form.querySelector('[name="cover_letter_run_id"]');
+    if (!hidden) {
+      hidden = document.createElement("input");
+      hidden.type = "hidden";
+      hidden.name = "cover_letter_run_id";
+      form.appendChild(hidden);
+    }
+    hidden.value = runId;
+    if (window.jaegerosStartCoverLetterRun) {
+      window.jaegerosStartCoverLetterRun(runId, {
+        progress: 12,
+        label: "Saving application",
+      });
+    }
+
+    try {
+      const response = await fetch(form.getAttribute("action") || window.location.href, {
+        method: "POST",
+        body: new FormData(form),
+        headers: {
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      });
+      const payload = await response.json();
+      if (!response.ok || payload.success === false) {
+        allowNative = true;
+        form.submit();
+        return;
+      }
+      if (payload.cover_letter_run_id && window.jaegerosStartCoverLetterRun) {
+        window.jaegerosStartCoverLetterRun(payload.cover_letter_run_id);
+      }
+      window.location.href = payload.redirect_url || "{% url 'application-list' %}";
+    } catch (error) {
+      allowNative = true;
+      form.submit();
+    }
+  });
+})();
+</script>
 {% endblock %}

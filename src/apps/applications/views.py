@@ -1,7 +1,10 @@
+from uuid import uuid4
+
 from django.contrib import messages
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse, reverse_lazy
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 from django.views.generic import (
     CreateView,
     DetailView,
@@ -13,7 +16,42 @@ from .forms import ApplicationForm
 from .models import Application
 from .search import filter_applications_for_search
 from .services.ats_scan_service import AtsScanError, AtsScanService
+from .services.cover_letter_tailor_service import (
+    get_cover_letter_progress,
+    normalize_run_id,
+    queue_cover_letter_tailor,
+)
 from .services.materials_pack_service import MaterialsPackError, MaterialsPackService
+
+
+def _wants_json(request):
+    accept = (request.headers.get("Accept") or "").casefold()
+    return (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or "application/json" in accept
+    )
+
+
+def _queue_copied_pack_tailor(request, form, application):
+    if not getattr(form, "copied_pack", False):
+        return ""
+    run_id = normalize_run_id(request.POST.get("cover_letter_run_id")) or uuid4().hex
+    queue_cover_letter_tailor(application.pk, run_id)
+    return run_id
+
+
+def _application_form_success(request, form, application, redirect_url):
+    run_id = _queue_copied_pack_tailor(request, form, application)
+    if _wants_json(request):
+        return JsonResponse(
+            {
+                "success": True,
+                "cover_letter_run_id": run_id,
+                "redirect_url": redirect_url,
+            },
+            status=202 if run_id else 200,
+        )
+    return redirect(redirect_url)
 
 
 class ApplicationListView(ListView):
@@ -83,12 +121,40 @@ class ApplicationCreateView(CreateView):
             initial["user"] = user
         return initial
 
+    def form_valid(self, form):
+        self.object = form.save()
+        return _application_form_success(
+            self.request, form, self.object, self.get_success_url()
+        )
+
+    def form_invalid(self, form):
+        if _wants_json(self.request):
+            return JsonResponse(
+                {"success": False, "error": "Please fix the form errors."},
+                status=400,
+            )
+        return super().form_invalid(form)
+
 
 class ApplicationUpdateView(UpdateView):
     model = Application
     form_class = ApplicationForm
     template_name = "applications/application_form.html"
     success_url = reverse_lazy("application-list")
+
+    def form_valid(self, form):
+        self.object = form.save()
+        return _application_form_success(
+            self.request, form, self.object, self.get_success_url()
+        )
+
+    def form_invalid(self, form):
+        if _wants_json(self.request):
+            return JsonResponse(
+                {"success": False, "error": "Please fix the form errors."},
+                status=400,
+            )
+        return super().form_invalid(form)
 
 
 class ApplicationDeleteView(DeleteView):
@@ -159,3 +225,20 @@ def apply_application_materials_pack(request, pk):
             f"Copied {result['pack']} materials into the local folder.",
         )
     return redirect(next_url)
+
+
+@require_GET
+def cover_letter_tailor_status(request):
+    run_id = normalize_run_id(request.GET.get("run_id"))
+    payload = get_cover_letter_progress(run_id)
+    if not payload:
+        return JsonResponse(
+            {
+                "run_id": run_id,
+                "status": "PENDING",
+                "progress": 8,
+                "current_step": {"label": "Waiting for status"},
+                "error": "",
+            }
+        )
+    return JsonResponse(payload)
