@@ -12,6 +12,7 @@ EXPECTED_RESOURCES = {
     SourceDetector.HANDSHAKE,
     SourceDetector.GREENHOUSE,
     SourceDetector.LEVER,
+    SourceDetector.INTERSTRIDE,
     SourceDetector.CAREER_SITE,
     SourceDetector.RSS,
     SourceDetector.API,
@@ -56,6 +57,10 @@ def test_source_detector_preserves_explicit_generic_html_resource():
         (
             JobSource.ResourceChoices.LEVER,
             "https://api.lever.co/v0/postings/acme",
+        ),
+        (
+            JobSource.ResourceChoices.INTERSTRIDE,
+            "https://student.interstride.com/",
         ),
         (JobSource.ResourceChoices.CAREER_SITE, "https://careers.example.com/jobs"),
         (JobSource.ResourceChoices.RSS, "https://careers.example.com/jobs.xml"),

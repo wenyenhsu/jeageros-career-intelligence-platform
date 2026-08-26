@@ -35,6 +35,7 @@ class JobSourceForm(forms.ModelForm):
         JobSource.ResourceChoices.GREENHOUSE: "https://my.greenhouse.io/",
         JobSource.ResourceChoices.HANDSHAKE: "https://app.joinhandshake.com/stu/postings",
         JobSource.ResourceChoices.LEVER: "https://jobs.lever.co/",
+        JobSource.ResourceChoices.INTERSTRIDE: "https://student.interstride.com/",
         JobSource.ResourceChoices.CAREER_SITE: "",
         JobSource.ResourceChoices.RSS: "",
         JobSource.ResourceChoices.API: "",
@@ -72,6 +73,13 @@ class JobSourceForm(forms.ModelForm):
             "max_search_requests": 5,
             "fetch_details": "false",
             "request_delay_seconds": 1,
+        },
+        JobSource.ResourceChoices.INTERSTRIDE: {
+            **GENERIC_CRAWL_DEFAULTS,
+            "max_pages": 3,
+            "max_search_requests": 3,
+            "max_detail_requests": 3,
+            "request_delay_seconds": 2,
         },
         JobSource.ResourceChoices.CAREER_SITE: dict(GENERIC_CRAWL_DEFAULTS),
         JobSource.ResourceChoices.RSS: {
@@ -111,6 +119,10 @@ class JobSourceForm(forms.ModelForm):
         },
         JobSource.ResourceChoices.HANDSHAKE: dict(GENERIC_FILTER_DEFAULTS),
         JobSource.ResourceChoices.LEVER: dict(GENERIC_FILTER_DEFAULTS),
+        JobSource.ResourceChoices.INTERSTRIDE: {
+            **GENERIC_FILTER_DEFAULTS,
+            "location": ["United States"],
+        },
         JobSource.ResourceChoices.CAREER_SITE: dict(GENERIC_FILTER_DEFAULTS),
         JobSource.ResourceChoices.RSS: dict(GENERIC_FILTER_DEFAULTS),
         JobSource.ResourceChoices.API: dict(GENERIC_FILTER_DEFAULTS),

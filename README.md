@@ -35,7 +35,7 @@ JägerOS is a Django-based career intelligence platform for job tracking, applic
   - Recommends relevant job opportunities based on skill alignment, experience, and market fit scoring.
 ![reusme_3](docs/job_matches.png)
 - Job Source Crawler 
-  - Currently supports LinkedIn, with a scalable architecture designed for multiple job sources.
+  - Live adapters support LinkedIn, Greenhouse, Lever, and authenticated Interstride job search, with a scalable architecture for additional sources.
   - Automated scheduled crawling powered by Celery Beat.
 ![crawl](docs/crawl_data.png)
 - Career Management Platform
@@ -384,6 +384,17 @@ docker compose exec web python manage.py crawl_job_sources --source-id 1
 Output includes summaries for `Created`, `Updated`, `Closed`, `Filtered`, `Skills attached`, `Errors`, etc.
 
 **When to run**: After creating JobSources in Admin, or to trigger a crawl outside Celery Beat.
+
+Interstride sources require an authorized session token in the server environment:
+
+```bash
+INTERSTRIDE_AUTH_TOKEN=replace-with-an-authorized-session-token
+INTERSTRIDE_API_BASE_URL=https://web.production.interstride.com/api/v1/
+```
+
+Never store this token in `JobSource.crawl_config`. Restart the web and Celery
+worker services after changing the environment, then select `Interstride` as the
+admin-managed resource and use `https://student.interstride.com/` as its base URL.
 
 ---
 

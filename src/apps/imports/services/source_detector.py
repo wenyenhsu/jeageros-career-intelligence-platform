@@ -6,6 +6,7 @@ class SourceDetector:
     HANDSHAKE = "HANDSHAKE"
     GREENHOUSE = "GREENHOUSE"
     LEVER = "LEVER"
+    INTERSTRIDE = "INTERSTRIDE"
     CAREER_SITE = "CAREER_SITE"
     RSS = "RSS"
     API = "API"
@@ -16,6 +17,7 @@ class SourceDetector:
         HANDSHAKE,
         GREENHOUSE,
         LEVER,
+        INTERSTRIDE,
         RSS,
         API,
     }
@@ -37,6 +39,7 @@ class SourceDetector:
             "api.lever.co",
             "api.eu.lever.co",
         ),
+        INTERSTRIDE: ("interstride.com",),
     }
 
     @classmethod

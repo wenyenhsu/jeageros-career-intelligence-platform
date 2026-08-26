@@ -8,6 +8,7 @@ class JobSource(models.Model):
         HANDSHAKE = "HANDSHAKE", "Handshake"
         GREENHOUSE = "GREENHOUSE", "Greenhouse"
         LEVER = "LEVER", "Lever"
+        INTERSTRIDE = "INTERSTRIDE", "Interstride"
         CAREER_SITE = "CAREER_SITE", "Career Site"
         RSS = "RSS", "RSS"
         API = "API", "API"
@@ -47,6 +48,7 @@ class JobSource(models.Model):
             self.ResourceChoices.HANDSHAKE,
             self.ResourceChoices.GREENHOUSE,
             self.ResourceChoices.LEVER,
+            self.ResourceChoices.INTERSTRIDE,
         }:
             from .services.source_detector import SourceDetector
 

@@ -11,6 +11,7 @@ from apps.imports.services import (
     GenericHTMLParser,
     GreenhouseParser,
     HandshakeParser,
+    InterstrideParser,
     LeverParser,
     LinkedInParser,
     ParserRegistry,
@@ -49,6 +50,10 @@ def test_source_detector_detects_supported_job_boards():
     assert (
         SourceDetector.detect_parser_type("https://app.joinhandshake.com/stu/jobs")
         == SourceDetector.HANDSHAKE
+    )
+    assert (
+        SourceDetector.detect_parser_type("https://student.interstride.com/jobs/search")
+        == SourceDetector.INTERSTRIDE
     )
 
 
@@ -129,6 +134,10 @@ def test_parser_registry_returns_specific_and_generic_parsers():
         ParserRegistry.get_parser_class(SourceDetector.GREENHOUSE) is GreenhouseParser
     )
     assert ParserRegistry.get_parser_class(SourceDetector.LEVER) is LeverParser
+    assert (
+        ParserRegistry.get_parser_class(SourceDetector.INTERSTRIDE)
+        is InterstrideParser
+    )
     assert (
         ParserRegistry.get_parser_class(SourceDetector.CAREER_SITE) is CareerSiteParser
     )

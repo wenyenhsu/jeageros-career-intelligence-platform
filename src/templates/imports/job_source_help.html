@@ -40,7 +40,7 @@
     <div class="card border-0 shadow-sm h-100">
       <div class="card-body">
         <h2 class="h5 fw-bold">Resource Defaults</h2>
-        <p class="text-muted">Resource types are selected by system administrators. LinkedIn, Greenhouse, and Lever have live listing adapters; the remaining registered types are extension points and may require configured raw payloads until their provider adapter is completed.</p>
+        <p class="text-muted">Resource types are selected by system administrators. LinkedIn, Greenhouse, Lever, and Interstride have live listing adapters. Interstride requires an authorized token configured in the server environment; the remaining registered types are extension points and may require configured raw payloads until their provider adapter is completed.</p>
         <div class="table-responsive">
           <table class="table align-middle mb-0">
             <thead>
@@ -70,6 +70,11 @@
                 <td><span class="badge text-bg-secondary">Lever</span></td>
                 <td><code>https://jobs.lever.co/{site}</code></td>
                 <td>Public Postings API listing and detail extraction. The site slug is required; global and EU instances are supported.</td>
+              </tr>
+              <tr>
+                <td><span class="badge text-bg-secondary">Interstride</span></td>
+                <td><code>https://student.interstride.com/</code></td>
+                <td>Authenticated Interstride job search and detail API. Configure <code>INTERSTRIDE_AUTH_TOKEN</code> in the server environment; never store it in crawl config.</td>
               </tr>
               <tr>
                 <td><span class="badge text-bg-secondary">Career Site / Generic HTML</span></td>

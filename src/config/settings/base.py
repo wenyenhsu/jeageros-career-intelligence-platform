@@ -182,6 +182,13 @@ CRAWL_SKILL_AUTO_CREATE = (
     in {"1", "true", "yes", "on"}
 )
 
+INTERSTRIDE_API_BASE_URL = os.getenv(
+    "INTERSTRIDE_API_BASE_URL",
+    "https://web.production.interstride.com/api/v1/",
+).strip()
+INTERSTRIDE_AUTH_TOKEN = os.getenv("INTERSTRIDE_AUTH_TOKEN", "").strip()
+INTERSTRIDE_TIMEOUT_SECONDS = int(os.getenv("INTERSTRIDE_TIMEOUT_SECONDS", "12"))
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
