@@ -168,6 +168,7 @@ class JobSourceForm(forms.ModelForm):
         ("Full-time", "Full-time"),
         ("Part-time", "Part-time"),
         ("Internship", "Internship"),
+        ("PhD", "PhD"),
         ("Contract", "Contract"),
         ("Temporary", "Temporary"),
     )

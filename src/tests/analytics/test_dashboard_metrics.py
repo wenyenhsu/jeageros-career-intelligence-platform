@@ -60,6 +60,7 @@ def test_dashboard_page_renders_operational_overview(client, user):
     assert "Recent Jobs" in content
     assert "Platform Engineer" in content
     assert "Recent Applications" in content
+    assert content.count("application-status-applied") >= 2
     assert "Skill Coverage Snapshot" in content
     assert "Required Skill Snapshot" in content
     assert "Job Mix" in content

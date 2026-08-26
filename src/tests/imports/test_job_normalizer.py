@@ -259,6 +259,9 @@ def test_webpage_job_type_overrides_source_default_job_type():
         ("Fulltime", "FULL_TIME"),
         ("part time", "PART_TIME"),
         ("Intern", "INTERNSHIP"),
+        ("PHD", "PHD"),
+        ("Ph.D.", "PHD"),
+        ("Doctoral", "PHD"),
         ("temporary", "TEMPORARY"),
     ],
 )

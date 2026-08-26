@@ -37,6 +37,11 @@ def _display_timestamp(value):
     return date_format(timezone.localtime(value), "M j, g:i A")
 
 
+@pytest.mark.parametrize("raw_value", ["PHD", "Ph.D.", "Ph D", "Doctoral"])
+def test_job_type_normalizes_phd_aliases(raw_value):
+    assert JobPost.normalize_job_type(raw_value) == "PhD"
+
+
 @pytest.mark.django_db
 def test_job_detail_renders_skill_sets_and_job_type(client, company):
     job = JobPost.objects.create(

@@ -55,6 +55,19 @@ def test_application_helpers_return_linked_job_data(shared_application, company)
     assert application.skill_set_names == ["Interview Prep"]
 
 
+def test_application_status_badge_classes_are_distinct():
+    badge_classes = {
+        status: Application(status=status).status_badge_class
+        for status, _label in Application.Status.choices
+    }
+
+    assert len(set(badge_classes.values())) == len(Application.Status.choices)
+    assert "application-status-saved" in badge_classes[Application.Status.SAVED]
+    assert "application-status-applied" in badge_classes[Application.Status.APPLIED]
+    assert "application-status-offer" in badge_classes[Application.Status.OFFER]
+    assert "application-status-rejected" in badge_classes[Application.Status.REJECTED]
+
+
 @pytest.mark.django_db
 def test_application_list_displays_linked_job_info(
     client,
@@ -76,6 +89,7 @@ def test_application_list_displays_linked_job_info(
     assert 'target="_blank"' in content
     assert 'rel="noopener"' in content
     assert "Applied" in content
+    assert "application-status-applied" in content
 
 
 @pytest.mark.django_db
@@ -195,6 +209,7 @@ def test_application_detail_displays_linked_job_info_and_application_fields(
     assert "Status History" in content
     assert "SAVED" in content
     assert "APPLIED" in content
+    assert "application-status-applied" in content
 
 
 @pytest.mark.django_db

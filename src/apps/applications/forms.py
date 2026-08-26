@@ -2,6 +2,7 @@ from urllib.parse import urlparse
 
 from django import forms
 from django.db import transaction
+from django.utils import timezone
 
 from apps.companies.models import Company
 from apps.imports.services.company_upsert_service import CompanyUpsertService
@@ -113,9 +114,16 @@ class ApplicationForm(forms.ModelForm):
             )
 
         if self.instance and self.instance.applied_at:
-            self.initial["applied_at"] = self.instance.applied_at.strftime(
-                "%Y-%m-%dT%H:%M"
-            )
+            local_applied_at = timezone.localtime(self.instance.applied_at)
+            self.initial["applied_at"] = local_applied_at.strftime("%Y-%m-%dT%H:%M")
+        elif (
+            not self.is_bound
+            and not self.instance.pk
+            and not self.initial.get("applied_at")
+        ):
+            self.initial["applied_at"] = timezone.localtime(
+                timezone.now()
+            ).replace(second=0, microsecond=0)
 
     def _add_manual_job_fields(self):
         self.fields["company"] = forms.CharField(

@@ -1,6 +1,9 @@
+from datetime import UTC, datetime
+
 import pytest
 from django.urls import reverse
 
+import apps.applications.forms as application_forms
 from apps.applications.forms import ApplicationForm
 from apps.applications.models import Application
 from apps.companies.models import Company
@@ -41,7 +44,22 @@ def test_create_page_shows_manual_job_fields(client):
     assert ">Select<" in content
     assert 'value="AI"' in content
     assert 'value="INFRA"' in content
+    assert 'value="PhD"' in content
     assert "Copies the AI or Infra pack, then tailors the cover letter" in content
+
+
+@pytest.mark.django_db
+def test_create_page_defaults_applied_at_to_current_local_time(client, monkeypatch):
+    monkeypatch.setattr(
+        application_forms.timezone,
+        "now",
+        lambda: datetime(2026, 8, 26, 17, 15, 42, tzinfo=UTC),
+    )
+
+    response = client.get(reverse("application-create"))
+
+    assert response.status_code == 200
+    assert 'value="2026-08-26T10:15"' in response.content.decode()
 
 
 @pytest.mark.django_db

@@ -34,6 +34,17 @@ class Application(TimeStampedModel):
         OFFER = "OFFER", "Offer"
         REJECTED = "REJECTED", "Rejected"
 
+    STATUS_BADGE_CLASSES = {
+        Status.SAVED: "application-status-badge application-status-saved",
+        Status.APPLIED: "application-status-badge application-status-applied",
+        Status.OA: "application-status-badge application-status-oa",
+        Status.PHONE: "application-status-badge application-status-phone",
+        Status.TECH: "application-status-badge application-status-tech",
+        Status.ONSITE: "application-status-badge application-status-onsite",
+        Status.OFFER: "application-status-badge application-status-offer",
+        Status.REJECTED: "application-status-badge application-status-rejected",
+    }
+
     class MaterialsPack(models.TextChoices):
         AI = "AI", "AI"
         INFRA = "INFRA", "Infra"
@@ -88,6 +99,17 @@ class Application(TimeStampedModel):
 
     def __str__(self):
         return f"{self.job_post.title} ({self.status})"
+
+    @classmethod
+    def badge_class_for_status(cls, status):
+        return cls.STATUS_BADGE_CLASSES.get(
+            status,
+            "application-status-badge application-status-unknown",
+        )
+
+    @property
+    def status_badge_class(self):
+        return self.badge_class_for_status(self.status)
 
     def _linked_job_post(self):
         try:

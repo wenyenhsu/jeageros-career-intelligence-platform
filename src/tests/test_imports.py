@@ -518,3 +518,7 @@ def test_source_run_abort_endpoint_marks_run_aborted(client):
         step_name="crawl_run",
         severity=PipelineLog.SeverityChoices.WARNING,
     ).exists()
+
+
+def test_job_source_form_includes_phd_job_type():
+    assert ("PhD", "PhD") in JobSourceForm.JOB_TYPE_CHOICES

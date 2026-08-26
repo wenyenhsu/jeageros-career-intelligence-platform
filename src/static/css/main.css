@@ -46,6 +46,47 @@ body {
   color: #64748b;
 }
 
+.application-status-badge {
+  color: #fff;
+  white-space: nowrap;
+}
+
+.application-status-saved {
+  background-color: #64748b;
+}
+
+.application-status-applied {
+  background-color: #2563eb;
+}
+
+.application-status-oa {
+  background-color: #0e7490;
+}
+
+.application-status-phone {
+  background-color: #4f46e5;
+}
+
+.application-status-tech {
+  background-color: #7e22ce;
+}
+
+.application-status-onsite {
+  background-color: #c2410c;
+}
+
+.application-status-offer {
+  background-color: #15803d;
+}
+
+.application-status-rejected {
+  background-color: #dc2626;
+}
+
+.application-status-unknown {
+  background-color: #475569;
+}
+
 .detail-panel {
   background: #f8fafc;
   border: 1px solid #e2e8f0;

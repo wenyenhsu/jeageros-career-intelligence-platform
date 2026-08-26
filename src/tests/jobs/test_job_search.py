@@ -232,6 +232,7 @@ def test_job_list_renders_job_type_filter(client, searchable_jobs):
     assert "All job types" in content
     assert "Full Time" in content
     assert "Internship" in content
+    assert "PhD" in content
 
 
 @pytest.mark.django_db

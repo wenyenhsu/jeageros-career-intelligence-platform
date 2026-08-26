@@ -38,6 +38,7 @@ class LinkedInParser(BaseParser):
         ("Full-time", r"\bfull[\s-]?time\b"),
         ("Part-time", r"\bpart[\s-]?time\b"),
         ("Internship", r"\binternship\b|\bco[\s-]?op\b"),
+        ("PhD", r"(?<!\w)ph\.?\s*d\.?(?!\w)|\bdoctoral\b|\bdoctorate\b"),
         ("Contract", r"\bcontract(or)?\b"),
         ("Temporary", r"\btemp(orary)?\b"),
     )

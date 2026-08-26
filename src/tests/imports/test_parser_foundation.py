@@ -20,6 +20,13 @@ from apps.imports.services import (
 from apps.jobs.models import JobPost
 
 
+def test_source_parsers_infer_phd_job_type():
+    assert LinkedInParser._extract_job_type_label("Ph.D. research program") == "PhD"
+
+    parser = GreenhouseParser(source="https://boards.greenhouse.io/example")
+    assert parser._infer_job_type({"title": "Doctoral Researcher"}) == "PhD"
+
+
 def test_source_detector_detects_supported_job_boards():
     assert (
         SourceDetector.detect_parser_type("https://www.linkedin.com/jobs/")

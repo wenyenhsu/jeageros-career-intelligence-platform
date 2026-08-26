@@ -75,6 +75,7 @@ class DashboardService:
                 "status": row["status"],
                 "label": status_labels.get(row["status"], row["status"] or "Unknown"),
                 "total": row["total"],
+                "badge_class": Application.badge_class_for_status(row["status"]),
             }
             for row in rows
         ]

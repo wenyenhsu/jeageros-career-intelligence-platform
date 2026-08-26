@@ -75,7 +75,7 @@
                             {{ application.location_display|default:"-" }}
                         </td>
                         <td>
-                            <span class="badge bg-primary">
+                            <span class="badge {{ application.status_badge_class }}">
                                 {{ application.get_status_display }}
                             </span>
                         </td>
