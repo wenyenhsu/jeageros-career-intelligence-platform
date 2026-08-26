@@ -558,6 +558,21 @@ def test_job_url_preview_rejects_google_drive_folder(client):
 
 
 @pytest.mark.django_db
+@override_settings(INTERSTRIDE_AUTH_TOKEN="")
+def test_job_url_preview_reports_missing_interstride_authentication(client):
+    response = client.get(
+        reverse("job-url-preview"),
+        {"url": "https://student.interstride.com/jobs/detail/198599886"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is False
+    assert "Interstride authentication is not configured" in payload["error"]
+    assert "INTERSTRIDE_AUTH_TOKEN" in payload["error"]
+
+
+@pytest.mark.django_db
 def test_job_create_page_wires_job_url_preview(client):
     response = client.get(reverse("job-create"))
 

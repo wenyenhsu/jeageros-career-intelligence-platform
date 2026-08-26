@@ -3,6 +3,12 @@ import re
 
 from apps.jobs.models import JobPost
 
+from ..parsers import (
+    InterstrideAuthError,
+    InterstrideNetworkError,
+    InterstridePayloadError,
+    InterstrideRateLimitError,
+)
 from .job_normalizer import CanonicalJobPayload, JobNormalizer
 from .job_url_refresh_service import JobUrlRefreshService
 from .parser_registry import ParserRegistry
@@ -50,9 +56,11 @@ class JobUrlPreviewService:
         existing = (
             JobPost.objects.filter(source_url=url).select_related("company").first()
         )
-        payload = cls._fetch_payload(url)
+        payload, fetch_error = cls._fetch_payload(url)
         if payload is None and existing is None:
-            return JobUrlPreviewResult(error=cls.FETCH_FAILED_MESSAGE)
+            return JobUrlPreviewResult(
+                error=fetch_error or cls.FETCH_FAILED_MESSAGE,
+            )
 
         company = cls._first_text(
             payload.get("company_name") if payload else "",
@@ -94,17 +102,26 @@ class JobUrlPreviewService:
         parser = ParserRegistry.get_parser_for_url(url)
         try:
             raw_jobs = parser.extract_single_job(url) or []
+        except (
+            InterstrideAuthError,
+            InterstrideNetworkError,
+            InterstridePayloadError,
+            InterstrideRateLimitError,
+        ) as exc:
+            return None, str(exc)
         except Exception:
-            return None
+            return None, ""
         if not raw_jobs:
-            return None
+            return None, ""
         try:
             payload = JobNormalizer.normalize(raw_jobs[0], source=url, validate=False)
         except Exception:
-            return None
+            return None, ""
         if isinstance(payload, CanonicalJobPayload):
-            return payload.as_dict()
-        return payload if isinstance(payload, dict) else None
+            return payload.as_dict(), ""
+        if isinstance(payload, dict):
+            return payload, ""
+        return None, ""
 
     @classmethod
     def _normalize_job_type(cls, value, title=""):

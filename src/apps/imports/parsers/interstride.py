@@ -183,8 +183,10 @@ class InterstrideParser(BaseParser):
         except HTTPError as exc:
             if exc.code in {401, 403}:
                 raise InterstrideAuthError(
-                    "Interstride rejected INTERSTRIDE_AUTH_TOKEN. Refresh the "
-                    "authorized account token and restart the worker."
+                    "Interstride authentication failed. Replace "
+                    "INTERSTRIDE_AUTH_TOKEN in the server environment with a "
+                    "current authorized-account token, then restart the web "
+                    "and Celery worker services."
                 ) from exc
             if exc.code in {429, 503}:
                 self._mark_rate_limited(exc.code)
@@ -529,9 +531,10 @@ class InterstrideParser(BaseParser):
         token = str(getattr(settings, "INTERSTRIDE_AUTH_TOKEN", "") or "").strip()
         if not token:
             raise InterstrideAuthError(
-                "Interstride crawling requires INTERSTRIDE_AUTH_TOKEN from an "
-                "authorized account. Store it in the server environment, not "
-                "JobSource crawl_config."
+                "Interstride authentication is not configured. Set "
+                "INTERSTRIDE_AUTH_TOKEN in the server environment from an "
+                "authorized account, then restart the web and Celery worker "
+                "services."
             )
         return token
 
