@@ -1,5 +1,16 @@
 # AGENTS.md
 
+## Assistant memory
+
+This repo keeps a short, file-based memory for the Cursor development assistant. **Memory RAG** retrieves matching files under [`memory/`](memory/). It is a separate corpus from SkillSet / ESCO / pgvector skill RAG.
+
+- Read [`memory/MEMORY.md`](memory/MEMORY.md), then open only the files that match the current task (`@memory` or search `memory/`).
+- When the user corrects a project rule or a repeated writing/workflow habit, add `memory/{prefix}_{slug}.md` and update the index.
+- Prefixes: `project_` (hard product rules), `feedback_` (corrected process), `reference_` (lookup facts), `user_` (personal preferences).
+- Never write secrets or token values into memory. Never store assistant memories in SkillSet.
+
+Architecture rules below stay in this file. Do not copy them wholesale into `memory/`.
+
 ## Project Goal
 
 This project is a Django-based job tracking system with the following core direction:

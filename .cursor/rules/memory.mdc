@@ -1,0 +1,37 @@
+---
+description: Persist user corrections as short project memory files
+alwaysApply: true
+---
+
+# Assistant memory files
+
+Development-assistant memory lives in `memory/*.md`. Retrieval over those files **is** the memory RAG. It is a separate corpus from SkillSet / ESCO / pgvector / Ollama skill RAG. Never query skill embeddings to answer assistant-memory questions.
+
+## Retrieve (RAG)
+
+For the current user request:
+
+1. Read `memory/MEMORY.md` (the index).
+2. Search `memory/` (filenames, titles, summaries) and open only the files that match this task.
+3. Prefer a few relevant files over dumping every memory into context.
+
+Manual trigger: `@memory` or “用 memory RAG 查 …”.
+
+## When to write
+
+Create or update a short file under `memory/` when the user corrects a **project rule** or a **repeated writing/workflow habit**. Same class of mistake a second time should already be on disk.
+
+Do not dump `AGENTS.md` architecture into memory. Do not write secrets, tokens, or credentials—environment variable **names** are OK.
+
+## How to name files
+
+`memory/{prefix}_{kebab-case-slug}.md`
+
+- `project_` — product/architecture hard rules
+- `feedback_` — corrected implementation or process
+- `reference_` — lookup facts (paths, env var names, UI behavior)
+- `user_` — personal preferences (gitignored)
+
+Keep each file about 5–15 lines. After writing, add one index line to `memory/MEMORY.md`: title, one-sentence summary, filename link.
+
+Do not paste memory contents into this rule.
